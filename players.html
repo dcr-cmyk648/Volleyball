@@ -75,32 +75,6 @@
       margin-bottom: 16px;
     }
 
-    .form-row {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      align-items: end;
-    }
-
-    .field {
-      flex: 1 1 260px;
-    }
-
-    .field label {
-      display: block;
-      font-size: 14px;
-      margin-bottom: 6px;
-      color: var(--muted);
-    }
-
-    .field input {
-      width: 100%;
-      padding: 10px;
-      font-size: 16px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-    }
-
     .player-list {
       display: grid;
       grid-template-columns: 1fr;
@@ -154,6 +128,21 @@
       background: white;
     }
 
+    .field label {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+      color: var(--muted);
+    }
+
+    .field input {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
     .dialog-actions {
       display: flex;
       gap: 10px;
@@ -172,7 +161,7 @@
     <div class="card">
       <h2>Players</h2>
       <button id="openAddPlayerDialog">Add Player</button>
-      <div class="small">Players are stored locally in the browser and sorted alphabetically.</div>
+      <div class="small">This page is the source of truth for the player database. Players are sorted alphabetically.</div>
     </div>
 
     <div class="card">
@@ -192,46 +181,61 @@
         <button id="savePlayerButton">Save Player</button>
         <button id="cancelPlayerButton" class="secondary">Cancel</button>
       </div>
-      <div class="small">Duplicate names are blocked to keep the list clean.</div>
+      <div class="small">Duplicate names are blocked.</div>
     </div>
   </dialog>
 
   <script>
-    const STORAGE_KEY = 'gameDayPlayers';
+    const PLAYER_STORAGE_KEY = 'gameDayPlayers';
+    const DEFAULT_PLAYERS = [
+      { id: 1, name: 'DustinR' }
+    ];
+
     const playerList = document.getElementById('playerList');
     const addPlayerDialog = document.getElementById('addPlayerDialog');
     const playerNameInput = document.getElementById('playerNameInput');
 
-    const defaultPlayers = [
-      { id: 1, name: 'Alex', present: false, team: '' },
-      { id: 2, name: 'Ben', present: false, team: '' },
-      { id: 3, name: 'Chris', present: false, team: '' },
-      { id: 4, name: 'David', present: false, team: '' },
-      { id: 5, name: 'Eli', present: false, team: '' },
-      { id: 6, name: 'Frank', present: false, team: '' },
-      { id: 7, name: 'Gabe', present: false, team: '' },
-      { id: 8, name: 'Henry', present: false, team: '' },
-      { id: 9, name: 'Ivan', present: false, team: '' },
-      { id: 10, name: 'Jake', present: false, team: '' }
-    ];
-
     let players = loadPlayers();
 
-    function loadPlayers() {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
+    function normalizePlayers(rawPlayers) {
+      if (!Array.isArray(rawPlayers)) {
+        return [];
       }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultPlayers));
-      return [...defaultPlayers];
+
+      return rawPlayers
+        .filter(player => player && typeof player.name === 'string')
+        .map(player => ({
+          id: player.id,
+          name: player.name.trim()
+        }))
+        .filter(player => player.name.length > 0);
+    }
+
+    function loadPlayers() {
+      const saved = localStorage.getItem(PLAYER_STORAGE_KEY);
+
+      if (!saved) {
+        localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(DEFAULT_PLAYERS));
+        return [...DEFAULT_PLAYERS];
+      }
+
+      try {
+        const parsed = JSON.parse(saved);
+        return normalizePlayers(parsed);
+      } catch (error) {
+        localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(DEFAULT_PLAYERS));
+        return [...DEFAULT_PLAYERS];
+      }
     }
 
     function savePlayers() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(players));
+      localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(players));
     }
 
     function getSortedPlayers() {
-      return [...players].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+      return [...players].sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+      );
     }
 
     function renderPlayers() {
@@ -257,7 +261,7 @@
         const deleteButton = document.createElement('button');
         deleteButton.className = 'danger';
         deleteButton.textContent = 'Delete';
-        deleteButton.addEventListener('click', () => deletePlayer(player.id));
+        deleteButton.addEventListener('click', () => deletePlayer(player.id, player.name));
 
         row.appendChild(name);
         row.appendChild(deleteButton);
@@ -267,6 +271,7 @@
 
     function addPlayer() {
       const rawName = playerNameInput.value.trim();
+
       if (!rawName) {
         alert('Enter a player name.');
         return;
@@ -283,9 +288,7 @@
 
       players.push({
         id: Date.now(),
-        name: rawName,
-        present: false,
-        team: ''
+        name: rawName
       });
 
       savePlayers();
@@ -294,10 +297,10 @@
       addPlayerDialog.close();
     }
 
-    function deletePlayer(playerId) {
-      const confirmation = prompt('Type DELETE to remove this player permanently.');
+    function deletePlayer(playerId, playerName) {
+      const confirmation = prompt(`Type delete to remove ${playerName}.`);
 
-      if (confirmation !== 'DELETE') {
+      if (confirmation !== 'delete') {
         return;
       }
 

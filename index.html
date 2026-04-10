@@ -1,234 +1,481 @@
-# index.html
-
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Personal Data Tracker</title>
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Game Day Tracker</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 20px;
-      background: #f5f5f5;
+    :root {
+      --bg: #f3f4f6;
+      --card: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: #d1d5db;
+      --red: #dc2626;
+      --blue: #2563eb;
+      --button: #111827;
+      --button-text: #ffffff;
     }
 
-    h1 {
-      margin-bottom: 20px;
-    }
-
-    .card {
-      background: white;
-      padding: 16px;
-      border-radius: 10px;
-      margin-bottom: 20px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-    }
-
-    input, button {
-      padding: 10px;
-      margin: 5px 0;
-      font-size: 16px;
-    }
-
-    input {
-      width: 100%;
+    * {
       box-sizing: border-box;
     }
 
-    button {
-      cursor: pointer;
-      margin-right: 8px;
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 16px;
     }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
     }
 
-    th, td {
-      border: 1px solid #ddd;
-      padding: 10px;
-      text-align: left;
-    }
-
-    th {
-      background: #eee;
-    }
-
-    .actions {
+    .topbar {
       display: flex;
-      gap: 8px;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
       flex-wrap: wrap;
+    }
+
+    h1, h2 {
+      margin: 0 0 12px;
+    }
+
+    .link-button,
+    button {
+      border: none;
+      background: var(--button);
+      color: var(--button-text);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 15px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    button.secondary {
+      background: #4b5563;
+    }
+
+    button.ghost {
+      background: #e5e7eb;
+      color: var(--text);
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      margin-bottom: 16px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .player-list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .player-row {
+      display: grid;
+      grid-template-columns: 28px 1fr auto;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fafafa;
+    }
+
+    .player-name {
+      font-size: 17px;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .player-name.none {
+      color: var(--text);
+    }
+
+    .player-name.red {
+      color: var(--red);
+    }
+
+    .player-name.blue {
+      color: var(--blue);
+    }
+
+    .tag {
+      font-size: 12px;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 8px;
+      min-width: 56px;
+      text-align: center;
+      background: white;
+    }
+
+    .summary {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .summary-box {
+      flex: 1 1 180px;
+      padding: 12px;
+      border-radius: 10px;
+      background: #f9fafb;
+      border: 1px solid var(--border);
+    }
+
+    .summary-box.red-box {
+      border-left: 5px solid var(--red);
+    }
+
+    .summary-box.blue-box {
+      border-left: 5px solid var(--blue);
+    }
+
+    .score-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+      color: var(--muted);
+    }
+
+    .field input {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    .log {
+      margin-top: 12px;
+      font-size: 14px;
+      color: var(--muted);
+      white-space: pre-wrap;
+      background: #f9fafb;
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+
+    .small {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 8px;
     }
   </style>
 </head>
 <body>
-  <h1>Personal Data Tracker</h1>
+  <div class="container">
+    <div class="topbar">
+      <h1>Who's Here Today?</h1>
+      <a href="players.html" class="link-button">Player Management</a>
+    </div>
 
-  <div class="card">
-    <h2>Add Entry</h2>
-    <input type="date" id="dateInput">
-    <input type="text" id="nameInput" placeholder="Name">
-    <input type="text" id="valueInput" placeholder="Value or Notes">
-    <button onclick="addEntry()">Add Entry</button>
-  </div>
+    <div class="card">
+      <h2>Available Players</h2>
+      <div class="controls">
+        <button id="assignTeamsButton">Assign Teams</button>
+        <button id="clearTeamsButton" class="secondary">Clear Teams</button>
+        <button id="selectAllButton" class="ghost">Mark All Present</button>
+        <button id="clearPresentButton" class="ghost">Clear Present</button>
+      </div>
 
-  <div class="card">
-    <h2>Actions</h2>
-    <div class="actions">
-      <button onclick="exportCSV()">Export CSV</button>
-      <button onclick="exportJSON()">Export JSON</button>
-      <input type="file" id="importFile" accept=".csv,.json" onchange="importFile(event)">
+      <div id="playerList" class="player-list"></div>
+
+      <div class="summary">
+        <div class="summary-box red-box">
+          <strong>Red Team</strong>
+          <div id="redSummary">0 players</div>
+        </div>
+        <div class="summary-box blue-box">
+          <strong>Blue Team</strong>
+          <div id="blueSummary">0 players</div>
+        </div>
+      </div>
+
+      <div class="small">
+        Tap a checkbox to mark a player present. Tap a player's name to cycle team assignment: none → red → blue.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Record Game</h2>
+      <div class="score-grid">
+        <div class="field">
+          <label for="redScore">Red score</label>
+          <input type="number" id="redScore" min="0" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="blueScore">Blue score</label>
+          <input type="number" id="blueScore" min="0" inputmode="numeric" />
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="recordNoScoreButton" class="secondary">No Score Recorded</button>
+        <button id="recordScoreButton">Input Score</button>
+      </div>
+
+      <div class="small">
+        Pressing either button creates a game record using today's date and the current team assignments for players marked present.
+      </div>
+
+      <div id="gameLog" class="log">No games recorded in this mock yet.</div>
     </div>
   </div>
 
-  <div class="card">
-    <h2>Entries</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Name</th>
-          <th>Value</th>
-          <th>Delete</th>
-        </tr>
-      </thead>
-      <tbody id="tableBody"></tbody>
-    </table>
-  </div>
-
   <script>
-    let entries = JSON.parse(localStorage.getItem('entries')) || [];
+    const STORAGE_KEY = 'gameDayPlayers';
+    const GAME_LOG_KEY = 'gameDayMockGames';
 
-    function saveEntries() {
-      localStorage.setItem('entries', JSON.stringify(entries));
-      renderTable();
+    const defaultPlayers = [
+      { id: 1, name: 'Alex', present: false, team: '' },
+      { id: 2, name: 'Ben', present: false, team: '' },
+      { id: 3, name: 'Chris', present: false, team: '' },
+      { id: 4, name: 'David', present: false, team: '' },
+      { id: 5, name: 'Eli', present: false, team: '' },
+      { id: 6, name: 'Frank', present: false, team: '' },
+      { id: 7, name: 'Gabe', present: false, team: '' },
+      { id: 8, name: 'Henry', present: false, team: '' },
+      { id: 9, name: 'Ivan', present: false, team: '' },
+      { id: 10, name: 'Jake', present: false, team: '' }
+    ];
+
+    let players = loadPlayers();
+    let gameRecords = loadGameRecords();
+
+    const playerList = document.getElementById('playerList');
+    const redSummary = document.getElementById('redSummary');
+    const blueSummary = document.getElementById('blueSummary');
+    const gameLog = document.getElementById('gameLog');
+
+    function loadPlayers() {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultPlayers));
+      return [...defaultPlayers];
     }
 
-    function renderTable() {
-      const tableBody = document.getElementById('tableBody');
-      tableBody.innerHTML = '';
+    function savePlayers() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(players));
+    }
 
-      entries.forEach((entry, index) => {
-        const row = document.createElement('tr');
+    function loadGameRecords() {
+      const saved = localStorage.getItem(GAME_LOG_KEY);
+      return saved ? JSON.parse(saved) : [];
+    }
 
-        row.innerHTML = `
-          <td>${entry.date}</td>
-          <td>${entry.name}</td>
-          <td>${entry.value}</td>
-          <td><button onclick="deleteEntry(${index})">Delete</button></td>
-        `;
+    function saveGameRecords() {
+      localStorage.setItem(GAME_LOG_KEY, JSON.stringify(gameRecords));
+    }
 
-        tableBody.appendChild(row);
+    function renderPlayers() {
+      playerList.innerHTML = '';
+
+      players.forEach((player) => {
+        const row = document.createElement('div');
+        row.className = 'player-row';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = player.present;
+        checkbox.addEventListener('change', () => {
+          player.present = checkbox.checked;
+          if (!player.present) {
+            player.team = '';
+          }
+          persistAndRender();
+        });
+
+        const name = document.createElement('div');
+        name.className = `player-name ${player.team || 'none'}`;
+        name.textContent = player.name;
+        name.addEventListener('click', () => {
+          if (!player.present) return;
+          player.team = nextTeam(player.team);
+          persistAndRender();
+        });
+
+        const tag = document.createElement('div');
+        tag.className = 'tag';
+        tag.textContent = player.present ? (player.team || 'present') : 'away';
+
+        row.appendChild(checkbox);
+        row.appendChild(name);
+        row.appendChild(tag);
+        playerList.appendChild(row);
       });
+
+      updateSummary();
+      renderGameLog();
     }
 
-    function addEntry() {
-      const date = document.getElementById('dateInput').value;
-      const name = document.getElementById('nameInput').value;
-      const value = document.getElementById('valueInput').value;
+    function nextTeam(currentTeam) {
+      if (currentTeam === '') return 'red';
+      if (currentTeam === 'red') return 'blue';
+      return '';
+    }
 
-      if (!date || !name || !value) {
-        alert('Fill out all fields.');
+    function persistAndRender() {
+      savePlayers();
+      renderPlayers();
+    }
+
+    function updateSummary() {
+      const redPlayers = players.filter((p) => p.present && p.team === 'red').map((p) => p.name);
+      const bluePlayers = players.filter((p) => p.present && p.team === 'blue').map((p) => p.name);
+
+      redSummary.textContent = redPlayers.length
+        ? `${redPlayers.length} players: ${redPlayers.join(', ')}`
+        : '0 players';
+
+      blueSummary.textContent = bluePlayers.length
+        ? `${bluePlayers.length} players: ${bluePlayers.join(', ')}`
+        : '0 players';
+    }
+
+    function assignTeams() {
+      const presentPlayers = players.filter((p) => p.present);
+      const shuffled = [...presentPlayers].sort(() => Math.random() - 0.5);
+
+      shuffled.forEach((player, index) => {
+        player.team = index % 2 === 0 ? 'red' : 'blue';
+      });
+
+      persistAndRender();
+    }
+
+    function clearTeams() {
+      players.forEach((player) => {
+        if (player.present) player.team = '';
+      });
+      persistAndRender();
+    }
+
+    function markAllPresent() {
+      players.forEach((player) => {
+        player.present = true;
+      });
+      persistAndRender();
+    }
+
+    function clearPresent() {
+      players.forEach((player) => {
+        player.present = false;
+        player.team = '';
+      });
+      persistAndRender();
+    }
+
+    function buildGameRecord(scoreMode) {
+      const today = new Date().toISOString().slice(0, 10);
+      const redPlayers = players.filter((p) => p.present && p.team === 'red').map((p) => p.name);
+      const bluePlayers = players.filter((p) => p.present && p.team === 'blue').map((p) => p.name);
+
+      if (redPlayers.length === 0 && bluePlayers.length === 0) {
+        alert('No assigned teams to record.');
+        return null;
+      }
+
+      const record = {
+        id: Date.now(),
+        date: today,
+        redTeam: redPlayers,
+        blueTeam: bluePlayers,
+        scoreRecorded: scoreMode === 'score',
+        redScore: null,
+        blueScore: null
+      };
+
+      if (scoreMode === 'score') {
+        const redScoreValue = document.getElementById('redScore').value;
+        const blueScoreValue = document.getElementById('blueScore').value;
+
+        if (redScoreValue === '' || blueScoreValue === '') {
+          alert('Enter both scores or use No Score Recorded.');
+          return null;
+        }
+
+        record.redScore = Number(redScoreValue);
+        record.blueScore = Number(blueScoreValue);
+      }
+
+      return record;
+    }
+
+    function recordGame(scoreMode) {
+      const record = buildGameRecord(scoreMode);
+      if (!record) return;
+
+      gameRecords.unshift(record);
+      saveGameRecords();
+      renderGameLog();
+
+      document.getElementById('redScore').value = '';
+      document.getElementById('blueScore').value = '';
+
+      alert('Game recorded in mock storage.');
+    }
+
+    function renderGameLog() {
+      if (gameRecords.length === 0) {
+        gameLog.textContent = 'No games recorded in this mock yet.';
         return;
       }
 
-      entries.push({
-        id: Date.now(),
-        date,
-        name,
-        value
-      });
+      const latest = gameRecords[0];
+      const scoreText = latest.scoreRecorded
+        ? `Score: Red ${latest.redScore} - Blue ${latest.blueScore}`
+        : 'Score: no score recorded';
 
-      saveEntries();
-
-      document.getElementById('dateInput').value = '';
-      document.getElementById('nameInput').value = '';
-      document.getElementById('valueInput').value = '';
+      gameLog.textContent = [
+        `Latest record: ${latest.date}`,
+        `Red: ${latest.redTeam.join(', ') || '(none)'}`,
+        `Blue: ${latest.blueTeam.join(', ') || '(none)'}`,
+        scoreText
+      ].join('\n');
     }
 
-    function deleteEntry(index) {
-      entries.splice(index, 1);
-      saveEntries();
-    }
+    document.getElementById('assignTeamsButton').addEventListener('click', assignTeams);
+    document.getElementById('clearTeamsButton').addEventListener('click', clearTeams);
+    document.getElementById('selectAllButton').addEventListener('click', markAllPresent);
+    document.getElementById('clearPresentButton').addEventListener('click', clearPresent);
+    document.getElementById('recordNoScoreButton').addEventListener('click', () => recordGame('no-score'));
+    document.getElementById('recordScoreButton').addEventListener('click', () => recordGame('score'));
 
-    function exportCSV() {
-      let csv = 'id,date,name,value\n';
-
-      entries.forEach(entry => {
-        csv += `${entry.id},${entry.date},"${entry.name}","${entry.value}"\n`;
-      });
-
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'entries.csv';
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-
-    function exportJSON() {
-      const blob = new Blob([
-        JSON.stringify(entries, null, 2)
-      ], { type: 'application/json' });
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'entries.json';
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-
-    function importFile(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-
-      reader.onload = function(e) {
-        const text = e.target.result;
-
-        if (file.name.endsWith('.json')) {
-          entries = JSON.parse(text);
-          saveEntries();
-          return;
-        }
-
-        if (file.name.endsWith('.csv')) {
-          const lines = text.split('\n').slice(1);
-          const imported = [];
-
-          lines.forEach(line => {
-            if (!line.trim()) return;
-
-            const parts = line.split(',');
-
-            imported.push({
-              id: Number(parts[0]),
-              date: parts[1],
-              name: parts[2]?.replaceAll('"', ''),
-              value: parts[3]?.replaceAll('"', '')
-            });
-          });
-
-          entries = imported;
-          saveEntries();
-        }
-      };
-
-      reader.readAsText(file);
-    }
-
-    renderTable();
+    renderPlayers();
   </script>
 </body>
 </html>
-```

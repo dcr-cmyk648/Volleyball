@@ -126,7 +126,7 @@
       border: 1px solid var(--border);
       border-radius: 999px;
       padding: 4px 8px;
-      min-width: 56px;
+      min-width: 64px;
       text-align: center;
       background: white;
     }
@@ -192,6 +192,20 @@
       color: var(--muted);
       margin-top: 8px;
     }
+
+    .empty-state {
+      color: var(--muted);
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      background: #f9fafb;
+    }
+
+    @media (max-width: 640px) {
+      .score-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -224,7 +238,7 @@
       </div>
 
       <div class="small">
-        Tap a checkbox to mark a player present. Tap a player's name to cycle team assignment: none → red → blue.
+        Check the players who are present. Tap a present player's name to cycle team assignment: none → red → blue.
       </div>
     </div>
 
@@ -247,31 +261,19 @@
       </div>
 
       <div class="small">
-        Pressing either button creates a game record using today's date and the current team assignments for players marked present.
+        Either button saves a new game record using the current team assignments and today's date.
       </div>
 
-      <div id="gameLog" class="log">No games recorded in this mock yet.</div>
+      <div id="gameLog" class="log">No games recorded yet.</div>
     </div>
   </div>
 
   <script>
-    const STORAGE_KEY = 'gameDayPlayers';
-    const GAME_LOG_KEY = 'gameDayMockGames';
-
-    const defaultPlayers = [
-      { id: 1, name: 'Alex', present: false, team: '' },
-      { id: 2, name: 'Ben', present: false, team: '' },
-      { id: 3, name: 'Chris', present: false, team: '' },
-      { id: 4, name: 'David', present: false, team: '' },
-      { id: 5, name: 'Eli', present: false, team: '' },
-      { id: 6, name: 'Frank', present: false, team: '' },
-      { id: 7, name: 'Gabe', present: false, team: '' },
-      { id: 8, name: 'Henry', present: false, team: '' },
-      { id: 9, name: 'Ivan', present: false, team: '' },
-      { id: 10, name: 'Jake', present: false, team: '' }
-    ];
+    const PLAYER_STORAGE_KEY = 'gameDayPlayers';
+    const GAME_STORAGE_KEY = 'gameDayGames';
 
     let players = loadPlayers();
+    let presenceState = buildPresenceState(players);
     let gameRecords = loadGameRecords();
 
     const playerList = document.getElementById('playerList');
@@ -280,57 +282,144 @@
     const gameLog = document.getElementById('gameLog');
 
     function loadPlayers() {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
+      const saved = localStorage.getItem(PLAYER_STORAGE_KEY);
+      if (!saved) {
+        return [];
       }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultPlayers));
-      return [...defaultPlayers];
-    }
 
-    function savePlayers() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(players));
+      try {
+        const parsed = JSON.parse(saved);
+        if (!Array.isArray(parsed)) {
+          return [];
+        }
+
+        return parsed
+          .filter(player => player && typeof player.name === 'string')
+          .map(player => ({
+            id: player.id,
+            name: player.name.trim()
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+      } catch (error) {
+        return [];
+      }
     }
 
     function loadGameRecords() {
-      const saved = localStorage.getItem(GAME_LOG_KEY);
-      return saved ? JSON.parse(saved) : [];
+      const saved = localStorage.getItem(GAME_STORAGE_KEY);
+      if (!saved) {
+        return [];
+      }
+
+      try {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        return [];
+      }
     }
 
     function saveGameRecords() {
-      localStorage.setItem(GAME_LOG_KEY, JSON.stringify(gameRecords));
+      localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(gameRecords));
+    }
+
+    function buildPresenceState(playerListFromStorage) {
+      const state = {};
+
+      playerListFromStorage.forEach(player => {
+        state[player.id] = {
+          present: false,
+          team: ''
+        };
+      });
+
+      return state;
+    }
+
+    function syncPresenceStateToPlayers() {
+      const validIds = new Set(players.map(player => String(player.id)));
+
+      Object.keys(presenceState).forEach(playerId => {
+        if (!validIds.has(String(playerId))) {
+          delete presenceState[playerId];
+        }
+      });
+
+      players.forEach(player => {
+        if (!presenceState[player.id]) {
+          presenceState[player.id] = { present: false, team: '' };
+        }
+      });
+    }
+
+    function getPlayerState(playerId) {
+      if (!presenceState[playerId]) {
+        presenceState[playerId] = { present: false, team: '' };
+      }
+      return presenceState[playerId];
+    }
+
+    function nextTeam(currentTeam) {
+      if (currentTeam === '') return 'red';
+      if (currentTeam === 'red') return 'blue';
+      return '';
+    }
+
+    function getPresentPlayers() {
+      return players.filter(player => getPlayerState(player.id).present);
+    }
+
+    function getAssignedTeamPlayers(teamName) {
+      return players.filter(player => {
+        const state = getPlayerState(player.id);
+        return state.present && state.team === teamName;
+      });
     }
 
     function renderPlayers() {
+      players = loadPlayers();
+      syncPresenceStateToPlayers();
       playerList.innerHTML = '';
 
-      players.forEach((player) => {
+      if (players.length === 0) {
+        const emptyState = document.createElement('div');
+        emptyState.className = 'empty-state';
+        emptyState.textContent = 'No players found. Add players in Player Management first.';
+        playerList.appendChild(emptyState);
+        updateSummary();
+        renderGameLog();
+        return;
+      }
+
+      players.forEach(player => {
+        const state = getPlayerState(player.id);
+
         const row = document.createElement('div');
         row.className = 'player-row';
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
-        checkbox.checked = player.present;
+        checkbox.checked = state.present;
         checkbox.addEventListener('change', () => {
-          player.present = checkbox.checked;
-          if (!player.present) {
-            player.team = '';
+          state.present = checkbox.checked;
+          if (!state.present) {
+            state.team = '';
           }
-          persistAndRender();
+          renderPlayers();
         });
 
         const name = document.createElement('div');
-        name.className = `player-name ${player.team || 'none'}`;
+        name.className = `player-name ${state.team || 'none'}`;
         name.textContent = player.name;
         name.addEventListener('click', () => {
-          if (!player.present) return;
-          player.team = nextTeam(player.team);
-          persistAndRender();
+          if (!state.present) return;
+          state.team = nextTeam(state.team);
+          renderPlayers();
         });
 
         const tag = document.createElement('div');
         tag.className = 'tag';
-        tag.textContent = player.present ? (player.team || 'present') : 'away';
+        tag.textContent = state.present ? (state.team || 'present') : 'away';
 
         row.appendChild(checkbox);
         row.appendChild(name);
@@ -342,20 +431,9 @@
       renderGameLog();
     }
 
-    function nextTeam(currentTeam) {
-      if (currentTeam === '') return 'red';
-      if (currentTeam === 'red') return 'blue';
-      return '';
-    }
-
-    function persistAndRender() {
-      savePlayers();
-      renderPlayers();
-    }
-
     function updateSummary() {
-      const redPlayers = players.filter((p) => p.present && p.team === 'red').map((p) => p.name);
-      const bluePlayers = players.filter((p) => p.present && p.team === 'blue').map((p) => p.name);
+      const redPlayers = getAssignedTeamPlayers('red').map(player => player.name);
+      const bluePlayers = getAssignedTeamPlayers('blue').map(player => player.name);
 
       redSummary.textContent = redPlayers.length
         ? `${redPlayers.length} players: ${redPlayers.join(', ')}`
@@ -367,53 +445,66 @@
     }
 
     function assignTeams() {
-      const presentPlayers = players.filter((p) => p.present);
+      const presentPlayers = getPresentPlayers();
+
+      if (presentPlayers.length === 0) {
+        alert('No players are marked present.');
+        return;
+      }
+
       const shuffled = [...presentPlayers].sort(() => Math.random() - 0.5);
 
       shuffled.forEach((player, index) => {
-        player.team = index % 2 === 0 ? 'red' : 'blue';
+        presenceState[player.id].team = index % 2 === 0 ? 'red' : 'blue';
       });
 
-      persistAndRender();
+      renderPlayers();
     }
 
     function clearTeams() {
-      players.forEach((player) => {
-        if (player.present) player.team = '';
+      players.forEach(player => {
+        const state = getPlayerState(player.id);
+        if (state.present) {
+          state.team = '';
+        }
       });
-      persistAndRender();
+
+      renderPlayers();
     }
 
     function markAllPresent() {
-      players.forEach((player) => {
-        player.present = true;
+      players.forEach(player => {
+        const state = getPlayerState(player.id);
+        state.present = true;
       });
-      persistAndRender();
+
+      renderPlayers();
     }
 
     function clearPresent() {
-      players.forEach((player) => {
-        player.present = false;
-        player.team = '';
+      players.forEach(player => {
+        const state = getPlayerState(player.id);
+        state.present = false;
+        state.team = '';
       });
-      persistAndRender();
+
+      renderPlayers();
     }
 
     function buildGameRecord(scoreMode) {
-      const today = new Date().toISOString().slice(0, 10);
-      const redPlayers = players.filter((p) => p.present && p.team === 'red').map((p) => p.name);
-      const bluePlayers = players.filter((p) => p.present && p.team === 'blue').map((p) => p.name);
+      const redTeamPlayers = getAssignedTeamPlayers('red');
+      const blueTeamPlayers = getAssignedTeamPlayers('blue');
 
-      if (redPlayers.length === 0 && bluePlayers.length === 0) {
+      if (redTeamPlayers.length === 0 && blueTeamPlayers.length === 0) {
         alert('No assigned teams to record.');
         return null;
       }
 
       const record = {
         id: Date.now(),
-        date: today,
-        redTeam: redPlayers,
-        blueTeam: bluePlayers,
+        date: new Date().toISOString().slice(0, 10),
+        redTeam: redTeamPlayers.map(player => ({ id: player.id, name: player.name })),
+        blueTeam: blueTeamPlayers.map(player => ({ id: player.id, name: player.name })),
         scoreRecorded: scoreMode === 'score',
         redScore: null,
         blueScore: null
@@ -437,7 +528,9 @@
 
     function recordGame(scoreMode) {
       const record = buildGameRecord(scoreMode);
-      if (!record) return;
+      if (!record) {
+        return;
+      }
 
       gameRecords.unshift(record);
       saveGameRecords();
@@ -446,12 +539,12 @@
       document.getElementById('redScore').value = '';
       document.getElementById('blueScore').value = '';
 
-      alert('Game recorded in mock storage.');
+      alert('Game recorded.');
     }
 
     function renderGameLog() {
       if (gameRecords.length === 0) {
-        gameLog.textContent = 'No games recorded in this mock yet.';
+        gameLog.textContent = 'No games recorded yet.';
         return;
       }
 
@@ -462,8 +555,8 @@
 
       gameLog.textContent = [
         `Latest record: ${latest.date}`,
-        `Red: ${latest.redTeam.join(', ') || '(none)'}`,
-        `Blue: ${latest.blueTeam.join(', ') || '(none)'}`,
+        `Red: ${(latest.redTeam || []).map(player => player.name).join(', ') || '(none)'}`,
+        `Blue: ${(latest.blueTeam || []).map(player => player.name).join(', ') || '(none)'}`,
         scoreText
       ].join('\n');
     }

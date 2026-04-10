@@ -1,1 +1,234 @@
-//Index
+# index.html
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Personal Data Tracker</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+
+    h1 {
+      margin-bottom: 20px;
+    }
+
+    .card {
+      background: white;
+      padding: 16px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    input, button {
+      padding: 10px;
+      margin: 5px 0;
+      font-size: 16px;
+    }
+
+    input {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    button {
+      cursor: pointer;
+      margin-right: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: left;
+    }
+
+    th {
+      background: #eee;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+  </style>
+</head>
+<body>
+  <h1>Personal Data Tracker</h1>
+
+  <div class="card">
+    <h2>Add Entry</h2>
+    <input type="date" id="dateInput">
+    <input type="text" id="nameInput" placeholder="Name">
+    <input type="text" id="valueInput" placeholder="Value or Notes">
+    <button onclick="addEntry()">Add Entry</button>
+  </div>
+
+  <div class="card">
+    <h2>Actions</h2>
+    <div class="actions">
+      <button onclick="exportCSV()">Export CSV</button>
+      <button onclick="exportJSON()">Export JSON</button>
+      <input type="file" id="importFile" accept=".csv,.json" onchange="importFile(event)">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Entries</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Name</th>
+          <th>Value</th>
+          <th>Delete</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    let entries = JSON.parse(localStorage.getItem('entries')) || [];
+
+    function saveEntries() {
+      localStorage.setItem('entries', JSON.stringify(entries));
+      renderTable();
+    }
+
+    function renderTable() {
+      const tableBody = document.getElementById('tableBody');
+      tableBody.innerHTML = '';
+
+      entries.forEach((entry, index) => {
+        const row = document.createElement('tr');
+
+        row.innerHTML = `
+          <td>${entry.date}</td>
+          <td>${entry.name}</td>
+          <td>${entry.value}</td>
+          <td><button onclick="deleteEntry(${index})">Delete</button></td>
+        `;
+
+        tableBody.appendChild(row);
+      });
+    }
+
+    function addEntry() {
+      const date = document.getElementById('dateInput').value;
+      const name = document.getElementById('nameInput').value;
+      const value = document.getElementById('valueInput').value;
+
+      if (!date || !name || !value) {
+        alert('Fill out all fields.');
+        return;
+      }
+
+      entries.push({
+        id: Date.now(),
+        date,
+        name,
+        value
+      });
+
+      saveEntries();
+
+      document.getElementById('dateInput').value = '';
+      document.getElementById('nameInput').value = '';
+      document.getElementById('valueInput').value = '';
+    }
+
+    function deleteEntry(index) {
+      entries.splice(index, 1);
+      saveEntries();
+    }
+
+    function exportCSV() {
+      let csv = 'id,date,name,value\n';
+
+      entries.forEach(entry => {
+        csv += `${entry.id},${entry.date},"${entry.name}","${entry.value}"\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'entries.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function exportJSON() {
+      const blob = new Blob([
+        JSON.stringify(entries, null, 2)
+      ], { type: 'application/json' });
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'entries.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function importFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+
+      reader.onload = function(e) {
+        const text = e.target.result;
+
+        if (file.name.endsWith('.json')) {
+          entries = JSON.parse(text);
+          saveEntries();
+          return;
+        }
+
+        if (file.name.endsWith('.csv')) {
+          const lines = text.split('\n').slice(1);
+          const imported = [];
+
+          lines.forEach(line => {
+            if (!line.trim()) return;
+
+            const parts = line.split(',');
+
+            imported.push({
+              id: Number(parts[0]),
+              date: parts[1],
+              name: parts[2]?.replaceAll('"', ''),
+              value: parts[3]?.replaceAll('"', '')
+            });
+          });
+
+          entries = imported;
+          saveEntries();
+        }
+      };
+
+      reader.readAsText(file);
+    }
+
+    renderTable();
+  </script>
+</body>
+</html>
+```

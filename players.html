@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Player Management</title>
+  <style>
+    :root {
+      --bg: #f3f4f6;
+      --card: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: #d1d5db;
+      --button: #111827;
+      --button-text: #ffffff;
+      --danger: #dc2626;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 16px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    h1, h2 {
+      margin: 0 0 12px;
+    }
+
+    .link-button,
+    button {
+      border: none;
+      background: var(--button);
+      color: var(--button-text);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 15px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    button.secondary {
+      background: #4b5563;
+    }
+
+    button.danger {
+      background: var(--danger);
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      margin-bottom: 16px;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: end;
+    }
+
+    .field {
+      flex: 1 1 260px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+      color: var(--muted);
+    }
+
+    .field input {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    .player-list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .player-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fafafa;
+      padding: 12px;
+    }
+
+    .player-name {
+      font-size: 17px;
+      font-weight: 600;
+    }
+
+    .small {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    .empty-state {
+      color: var(--muted);
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      background: #f9fafb;
+    }
+
+    dialog {
+      border: none;
+      border-radius: 14px;
+      padding: 0;
+      width: min(92vw, 420px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    dialog::backdrop {
+      background: rgba(0, 0, 0, 0.35);
+    }
+
+    .dialog-content {
+      padding: 16px;
+      background: white;
+    }
+
+    .dialog-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <h1>Player Management</h1>
+      <a href="index.html" class="link-button">Back to Main Page</a>
+    </div>
+
+    <div class="card">
+      <h2>Players</h2>
+      <button id="openAddPlayerDialog">Add Player</button>
+      <div class="small">Players are stored locally in the browser and sorted alphabetically.</div>
+    </div>
+
+    <div class="card">
+      <h2>Current Player List</h2>
+      <div id="playerList" class="player-list"></div>
+    </div>
+  </div>
+
+  <dialog id="addPlayerDialog">
+    <div class="dialog-content">
+      <h2>Add Player</h2>
+      <div class="field">
+        <label for="playerNameInput">Player name</label>
+        <input type="text" id="playerNameInput" placeholder="Enter player name" maxlength="60" />
+      </div>
+      <div class="dialog-actions">
+        <button id="savePlayerButton">Save Player</button>
+        <button id="cancelPlayerButton" class="secondary">Cancel</button>
+      </div>
+      <div class="small">Duplicate names are blocked to keep the list clean.</div>
+    </div>
+  </dialog>
+
+  <script>
+    const STORAGE_KEY = 'gameDayPlayers';
+    const playerList = document.getElementById('playerList');
+    const addPlayerDialog = document.getElementById('addPlayerDialog');
+    const playerNameInput = document.getElementById('playerNameInput');
+
+    const defaultPlayers = [
+      { id: 1, name: 'Alex', present: false, team: '' },
+      { id: 2, name: 'Ben', present: false, team: '' },
+      { id: 3, name: 'Chris', present: false, team: '' },
+      { id: 4, name: 'David', present: false, team: '' },
+      { id: 5, name: 'Eli', present: false, team: '' },
+      { id: 6, name: 'Frank', present: false, team: '' },
+      { id: 7, name: 'Gabe', present: false, team: '' },
+      { id: 8, name: 'Henry', present: false, team: '' },
+      { id: 9, name: 'Ivan', present: false, team: '' },
+      { id: 10, name: 'Jake', present: false, team: '' }
+    ];
+
+    let players = loadPlayers();
+
+    function loadPlayers() {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultPlayers));
+      return [...defaultPlayers];
+    }
+
+    function savePlayers() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(players));
+    }
+
+    function getSortedPlayers() {
+      return [...players].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    }
+
+    function renderPlayers() {
+      const sortedPlayers = getSortedPlayers();
+      playerList.innerHTML = '';
+
+      if (sortedPlayers.length === 0) {
+        const emptyState = document.createElement('div');
+        emptyState.className = 'empty-state';
+        emptyState.textContent = 'No players in the database yet.';
+        playerList.appendChild(emptyState);
+        return;
+      }
+
+      sortedPlayers.forEach((player) => {
+        const row = document.createElement('div');
+        row.className = 'player-row';
+
+        const name = document.createElement('div');
+        name.className = 'player-name';
+        name.textContent = player.name;
+
+        const deleteButton = document.createElement('button');
+        deleteButton.className = 'danger';
+        deleteButton.textContent = 'Delete';
+        deleteButton.addEventListener('click', () => deletePlayer(player.id));
+
+        row.appendChild(name);
+        row.appendChild(deleteButton);
+        playerList.appendChild(row);
+      });
+    }
+
+    function addPlayer() {
+      const rawName = playerNameInput.value.trim();
+      if (!rawName) {
+        alert('Enter a player name.');
+        return;
+      }
+
+      const alreadyExists = players.some(
+        (player) => player.name.trim().toLowerCase() === rawName.toLowerCase()
+      );
+
+      if (alreadyExists) {
+        alert('That player already exists.');
+        return;
+      }
+
+      players.push({
+        id: Date.now(),
+        name: rawName,
+        present: false,
+        team: ''
+      });
+
+      savePlayers();
+      renderPlayers();
+      playerNameInput.value = '';
+      addPlayerDialog.close();
+    }
+
+    function deletePlayer(playerId) {
+      const confirmation = prompt('Type DELETE to remove this player permanently.');
+
+      if (confirmation !== 'DELETE') {
+        return;
+      }
+
+      players = players.filter((player) => player.id !== playerId);
+      savePlayers();
+      renderPlayers();
+    }
+
+    document.getElementById('openAddPlayerDialog').addEventListener('click', () => {
+      addPlayerDialog.showModal();
+      setTimeout(() => playerNameInput.focus(), 0);
+    });
+
+    document.getElementById('cancelPlayerButton').addEventListener('click', () => {
+      playerNameInput.value = '';
+      addPlayerDialog.close();
+    });
+
+    document.getElementById('savePlayerButton').addEventListener('click', addPlayer);
+
+    playerNameInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        addPlayer();
+      }
+    });
+
+    renderPlayers();
+  </script>
+</body>
+</html>

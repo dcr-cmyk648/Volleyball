@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Game Day Tracker</title>
+  <title>Volleyball Game Tracker</title>
   <style>
     :root {
       --bg: #f3f4f6;
@@ -15,6 +15,9 @@
       --blue: #2563eb;
       --button: #111827;
       --button-text: #ffffff;
+      --secondary: #4b5563;
+      --ghost: #e5e7eb;
+      --danger: #b91c1c;
     }
 
     * {
@@ -30,7 +33,7 @@
     }
 
     .container {
-      max-width: 900px;
+      max-width: 950px;
       margin: 0 auto;
     }
 
@@ -39,16 +42,31 @@
       justify-content: space-between;
       align-items: center;
       gap: 12px;
+      flex-wrap: wrap;
       margin-bottom: 16px;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 10px;
       flex-wrap: wrap;
     }
 
-    h1, h2 {
+    h1, h2, h3 {
       margin: 0 0 12px;
     }
 
-    .link-button,
-    button {
+    .card {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      margin-bottom: 16px;
+    }
+
+    .button,
+    button,
+    a.button-link {
       border: none;
       background: var(--button);
       color: var(--button-text);
@@ -61,27 +79,65 @@
     }
 
     button.secondary {
-      background: #4b5563;
+      background: var(--secondary);
     }
 
     button.ghost {
-      background: #e5e7eb;
+      background: var(--ghost);
       color: var(--text);
     }
 
-    .card {
-      background: var(--card);
-      border-radius: 14px;
-      padding: 16px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-      margin-bottom: 16px;
+    button.red-button {
+      background: var(--red);
+    }
+
+    button.blue-button {
+      background: var(--blue);
     }
 
     .controls {
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
-      margin-bottom: 12px;
+      margin-bottom: 14px;
+    }
+
+    .slider-row {
+      margin: 10px 0 4px;
+    }
+
+    .slider-row label {
+      display: block;
+      font-size: 14px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .slider-row input[type="range"] {
+      width: 100%;
+    }
+
+    .small {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    .status {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #f9fafb;
+      white-space: pre-wrap;
+      font-size: 14px;
+    }
+
+    .error {
+      color: var(--danger);
+      font-weight: 600;
+      margin-top: 10px;
+      min-height: 20px;
     }
 
     .player-list {
@@ -126,24 +182,23 @@
       border: 1px solid var(--border);
       border-radius: 999px;
       padding: 4px 8px;
-      min-width: 64px;
+      min-width: 72px;
       text-align: center;
       background: white;
     }
 
-    .summary {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-top: 12px;
+    .summary-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 14px;
     }
 
     .summary-box {
-      flex: 1 1 180px;
       padding: 12px;
       border-radius: 10px;
-      background: #f9fafb;
       border: 1px solid var(--border);
+      background: #f9fafb;
     }
 
     .summary-box.red-box {
@@ -176,23 +231,6 @@
       border-radius: 10px;
     }
 
-    .log {
-      margin-top: 12px;
-      font-size: 14px;
-      color: var(--muted);
-      white-space: pre-wrap;
-      background: #f9fafb;
-      border: 1px dashed var(--border);
-      border-radius: 10px;
-      padding: 12px;
-    }
-
-    .small {
-      font-size: 13px;
-      color: var(--muted);
-      margin-top: 8px;
-    }
-
     .empty-state {
       color: var(--muted);
       border: 1px dashed var(--border);
@@ -201,7 +239,8 @@
       background: #f9fafb;
     }
 
-    @media (max-width: 640px) {
+    @media (max-width: 700px) {
+      .summary-grid,
       .score-grid {
         grid-template-columns: 1fr;
       }
@@ -212,11 +251,15 @@
   <div class="container">
     <div class="topbar">
       <h1>Who's Here Today?</h1>
-      <a href="players.html" class="link-button">Player Management</a>
+      <div class="nav-links">
+        <a href="players.html" class="button-link">Player Management</a>
+        <a href="stats.html" class="button-link">Stats</a>
+      </div>
     </div>
 
     <div class="card">
       <h2>Available Players</h2>
+
       <div class="controls">
         <button id="assignTeamsButton">Assign Teams</button>
         <button id="clearTeamsButton" class="secondary">Clear Teams</button>
@@ -224,9 +267,19 @@
         <button id="clearPresentButton" class="ghost">Clear Present</button>
       </div>
 
-      <div id="playerList" class="player-list"></div>
+      <div class="slider-row">
+        <label for="balanceSlider">
+          Balance strength: <span id="balanceValue">10</span> candidate team splits
+        </label>
+        <input type="range" id="balanceSlider" min="1" max="50" value="10" />
+      </div>
 
-      <div class="summary">
+      <div id="balanceStatus" class="status">No team assignment yet.</div>
+      <div id="errorMessage" class="error"></div>
+
+      <div id="playerList" class="player-list" style="margin-top: 14px;"></div>
+
+      <div class="summary-grid">
         <div class="summary-box red-box">
           <strong>Red Team</strong>
           <div id="redSummary">0 players</div>
@@ -238,33 +291,34 @@
       </div>
 
       <div class="small">
-        Check the players who are present. Tap a present player's name to cycle team assignment: none → red → blue.
+        Check the players who are present. Tap a present player's name to cycle: none → red → blue.
       </div>
     </div>
 
     <div class="card">
       <h2>Record Game</h2>
+
       <div class="score-grid">
         <div class="field">
-          <label for="redScore">Red score</label>
+          <label for="redScore">Red score (optional)</label>
           <input type="number" id="redScore" min="0" inputmode="numeric" />
         </div>
         <div class="field">
-          <label for="blueScore">Blue score</label>
+          <label for="blueScore">Blue score (optional)</label>
           <input type="number" id="blueScore" min="0" inputmode="numeric" />
         </div>
       </div>
 
       <div class="controls">
-        <button id="recordNoScoreButton" class="secondary">No Score Recorded</button>
-        <button id="recordScoreButton">Input Score</button>
+        <button id="recordRedWinButton" class="red-button">Red Team Win</button>
+        <button id="recordBlueWinButton" class="blue-button">Blue Team Win</button>
       </div>
 
       <div class="small">
-        Either button saves a new game record using the current team assignments and today's date.
+        If scores are blank, they are saved as none. If scores are entered, they must match the winner button pressed.
       </div>
 
-      <div id="gameLog" class="log">No games recorded yet.</div>
+      <div id="latestGame" class="status">No games recorded yet.</div>
     </div>
   </div>
 
@@ -272,26 +326,26 @@
     const PLAYER_STORAGE_KEY = 'gameDayPlayers';
     const GAME_STORAGE_KEY = 'gameDayGames';
 
-    let players = loadPlayers();
-    let presenceState = buildPresenceState(players);
-    let gameRecords = loadGameRecords();
+    const playerListEl = document.getElementById('playerList');
+    const redSummaryEl = document.getElementById('redSummary');
+    const blueSummaryEl = document.getElementById('blueSummary');
+    const balanceStatusEl = document.getElementById('balanceStatus');
+    const latestGameEl = document.getElementById('latestGame');
+    const errorMessageEl = document.getElementById('errorMessage');
+    const balanceSliderEl = document.getElementById('balanceSlider');
+    const balanceValueEl = document.getElementById('balanceValue');
 
-    const playerList = document.getElementById('playerList');
-    const redSummary = document.getElementById('redSummary');
-    const blueSummary = document.getElementById('blueSummary');
-    const gameLog = document.getElementById('gameLog');
+    let players = loadPlayers();
+    let games = loadGames();
+    let presenceState = buildPresenceState(players);
 
     function loadPlayers() {
       const saved = localStorage.getItem(PLAYER_STORAGE_KEY);
-      if (!saved) {
-        return [];
-      }
+      if (!saved) return [];
 
       try {
         const parsed = JSON.parse(saved);
-        if (!Array.isArray(parsed)) {
-          return [];
-        }
+        if (!Array.isArray(parsed)) return [];
 
         return parsed
           .filter(player => player && typeof player.name === 'string')
@@ -299,49 +353,46 @@
             id: player.id,
             name: player.name.trim()
           }))
+          .filter(player => player.name.length > 0)
           .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-      } catch (error) {
+      } catch {
         return [];
       }
     }
 
-    function loadGameRecords() {
+    function loadGames() {
       const saved = localStorage.getItem(GAME_STORAGE_KEY);
-      if (!saved) {
-        return [];
-      }
+      if (!saved) return [];
 
       try {
         const parsed = JSON.parse(saved);
         return Array.isArray(parsed) ? parsed : [];
-      } catch (error) {
+      } catch {
         return [];
       }
     }
 
-    function saveGameRecords() {
-      localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(gameRecords));
+    function saveGames() {
+      localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(games));
     }
 
-    function buildPresenceState(playerListFromStorage) {
+    function buildPresenceState(playerList) {
       const state = {};
-
-      playerListFromStorage.forEach(player => {
+      playerList.forEach(player => {
         state[player.id] = {
           present: false,
           team: ''
         };
       });
-
       return state;
     }
 
-    function syncPresenceStateToPlayers() {
+    function syncPresenceState() {
       const validIds = new Set(players.map(player => String(player.id)));
 
-      Object.keys(presenceState).forEach(playerId => {
-        if (!validIds.has(String(playerId))) {
-          delete presenceState[playerId];
+      Object.keys(presenceState).forEach(id => {
+        if (!validIds.has(String(id))) {
+          delete presenceState[id];
         }
       });
 
@@ -359,6 +410,62 @@
       return presenceState[playerId];
     }
 
+    function clearError() {
+      errorMessageEl.textContent = '';
+    }
+
+    function setError(message) {
+      errorMessageEl.textContent = message;
+    }
+
+    function computePlayerStats() {
+      const stats = {};
+
+      players.forEach(player => {
+        stats[player.id] = {
+          wins: 0,
+          games: 0,
+          winrate: 0.5
+        };
+      });
+
+      games.forEach(game => {
+        const redTeam = Array.isArray(game.redTeam) ? game.redTeam : [];
+        const blueTeam = Array.isArray(game.blueTeam) ? game.blueTeam : [];
+
+        redTeam.forEach(player => {
+          if (stats[player.id]) {
+            stats[player.id].games += 1;
+            if (game.winner === 'red') {
+              stats[player.id].wins += 1;
+            }
+          }
+        });
+
+        blueTeam.forEach(player => {
+          if (stats[player.id]) {
+            stats[player.id].games += 1;
+            if (game.winner === 'blue') {
+              stats[player.id].wins += 1;
+            }
+          }
+        });
+      });
+
+      Object.keys(stats).forEach(id => {
+        const stat = stats[id];
+        stat.winrate = stat.games === 0 ? 0.5 : stat.wins / stat.games;
+      });
+
+      return stats;
+    }
+
+    function getPlayerWinrate(playerId, statsMap) {
+      const stat = statsMap[playerId];
+      if (!stat) return 0.5;
+      return stat.games === 0 ? 0.5 : stat.winrate;
+    }
+
     function nextTeam(currentTeam) {
       if (currentTeam === '') return 'red';
       if (currentTeam === 'red') return 'blue';
@@ -369,30 +476,290 @@
       return players.filter(player => getPlayerState(player.id).present);
     }
 
-    function getAssignedTeamPlayers(teamName) {
+    function getTeamPlayers(teamName) {
       return players.filter(player => {
         const state = getPlayerState(player.id);
         return state.present && state.team === teamName;
       });
     }
 
+    function averageWinrate(teamPlayers, statsMap) {
+      if (teamPlayers.length === 0) return 0;
+      const total = teamPlayers.reduce((sum, player) => {
+        return sum + getPlayerWinrate(player.id, statsMap);
+      }, 0);
+      return total / teamPlayers.length;
+    }
+
+    function formatPercent(value) {
+      return `${(value * 100).toFixed(1)}%`;
+    }
+
+    function shuffleArray(input) {
+      const arr = [...input];
+      for (let i = arr.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    function buildCandidateTeams(presentPlayers, statsMap) {
+      const shuffled = shuffleArray(presentPlayers);
+      const redSize = Math.ceil(shuffled.length / 2);
+      const redTeam = shuffled.slice(0, redSize);
+      const blueTeam = shuffled.slice(redSize);
+
+      const redAvg = averageWinrate(redTeam, statsMap);
+      const blueAvg = averageWinrate(blueTeam, statsMap);
+
+      return {
+        redTeam,
+        blueTeam,
+        redAvg,
+        blueAvg,
+        difference: Math.abs(redAvg - blueAvg)
+      };
+    }
+
+    function assignBalancedTeams() {
+      clearError();
+
+      const presentPlayers = getPresentPlayers();
+      if (presentPlayers.length < 2) {
+        setError('At least 2 players must be marked present.');
+        return;
+      }
+
+      const attempts = Number(balanceSliderEl.value);
+      const statsMap = computePlayerStats();
+
+      let bestCandidate = null;
+
+      for (let i = 0; i < attempts; i += 1) {
+        const candidate = buildCandidateTeams(presentPlayers, statsMap);
+        if (!bestCandidate || candidate.difference < bestCandidate.difference) {
+          bestCandidate = candidate;
+        }
+      }
+
+      players.forEach(player => {
+        const state = getPlayerState(player.id);
+        if (state.present) state.team = '';
+      });
+
+      bestCandidate.redTeam.forEach(player => {
+        presenceState[player.id].team = 'red';
+      });
+
+      bestCandidate.blueTeam.forEach(player => {
+        presenceState[player.id].team = 'blue';
+      });
+
+      renderPlayers();
+      updateBalanceStatus(bestCandidate, attempts);
+    }
+
+    function updateBalanceStatus(candidate = null, attempts = null) {
+      const statsMap = computePlayerStats();
+      const redTeam = candidate ? candidate.redTeam : getTeamPlayers('red');
+      const blueTeam = candidate ? candidate.blueTeam : getTeamPlayers('blue');
+
+      if (redTeam.length === 0 && blueTeam.length === 0) {
+        balanceStatusEl.textContent = 'No team assignment yet.';
+        return;
+      }
+
+      const redAvg = candidate ? candidate.redAvg : averageWinrate(redTeam, statsMap);
+      const blueAvg = candidate ? candidate.blueAvg : averageWinrate(blueTeam, statsMap);
+      const difference = Math.abs(redAvg - blueAvg);
+
+      const lines = [
+        `Red average winrate: ${formatPercent(redAvg)}`,
+        `Blue average winrate: ${formatPercent(blueAvg)}`,
+        `Absolute difference: ${formatPercent(difference)}`
+      ];
+
+      if (attempts !== null) {
+        lines.unshift(`Selected best split from ${attempts} candidate team assignments.`);
+      }
+
+      balanceStatusEl.textContent = lines.join('\n');
+    }
+
+    function validateTeamSetup() {
+      const redTeam = getTeamPlayers('red');
+      const blueTeam = getTeamPlayers('blue');
+
+      if (redTeam.length === 0 || blueTeam.length === 0) {
+        return 'Both teams must have at least 1 player.';
+      }
+
+      if (Math.abs(redTeam.length - blueTeam.length) > 1) {
+        return 'Team sizes cannot differ by more than 1 player.';
+      }
+
+      return null;
+    }
+
+    function parseOptionalScore(value) {
+      return value === '' ? null : Number(value);
+    }
+
+    function validateScoreAgainstWinner(scoreRed, scoreBlue, winner) {
+      if (scoreRed === null && scoreBlue === null) {
+        return null;
+      }
+
+      if (scoreRed === null || scoreBlue === null) {
+        return 'Enter both scores or leave both blank.';
+      }
+
+      if (Number.isNaN(scoreRed) || Number.isNaN(scoreBlue)) {
+        return 'Scores must be valid numbers.';
+      }
+
+      if (scoreRed === scoreBlue) {
+        return 'Scores cannot be tied.';
+      }
+
+      if (winner === 'red' && scoreRed <= scoreBlue) {
+        return 'Scores contradict the selected winner.';
+      }
+
+      if (winner === 'blue' && scoreBlue <= scoreRed) {
+        return 'Scores contradict the selected winner.';
+      }
+
+      return null;
+    }
+
+    function buildGameRecord(winner) {
+      const teamError = validateTeamSetup();
+      if (teamError) return { error: teamError };
+
+      const redTeam = getTeamPlayers('red');
+      const blueTeam = getTeamPlayers('blue');
+
+      const scoreRed = parseOptionalScore(document.getElementById('redScore').value);
+      const scoreBlue = parseOptionalScore(document.getElementById('blueScore').value);
+
+      const scoreError = validateScoreAgainstWinner(scoreRed, scoreBlue, winner);
+      if (scoreError) return { error: scoreError };
+
+      return {
+        id: Date.now(),
+        date: new Date().toISOString().slice(0, 10),
+        redTeam: redTeam.map(player => ({ id: player.id, name: player.name })),
+        blueTeam: blueTeam.map(player => ({ id: player.id, name: player.name })),
+        scoreRed,
+        scoreBlue,
+        winner
+      };
+    }
+
+    function recordGame(winner) {
+      clearError();
+
+      const record = buildGameRecord(winner);
+      if (record.error) {
+        setError(record.error);
+        return;
+      }
+
+      games.unshift(record);
+      saveGames();
+      renderLatestGame();
+
+      document.getElementById('redScore').value = '';
+      document.getElementById('blueScore').value = '';
+
+      clearPresentSelections();
+      clearError();
+      alert('Game recorded.');
+    }
+
+    function clearPresentSelections() {
+      players.forEach(player => {
+        presenceState[player.id] = {
+          present: false,
+          team: ''
+        };
+      });
+      renderPlayers();
+      updateBalanceStatus();
+    }
+
+    function clearTeams() {
+      clearError();
+      players.forEach(player => {
+        const state = getPlayerState(player.id);
+        if (state.present) state.team = '';
+      });
+      renderPlayers();
+      updateBalanceStatus();
+    }
+
+    function markAllPresent() {
+      clearError();
+      players.forEach(player => {
+        getPlayerState(player.id).present = true;
+      });
+      renderPlayers();
+      updateBalanceStatus();
+    }
+
+    function clearPresent() {
+      clearError();
+      clearPresentSelections();
+    }
+
+    function renderLatestGame() {
+      games = loadGames();
+
+      if (games.length === 0) {
+        latestGameEl.textContent = 'No games recorded yet.';
+        return;
+      }
+
+      const latest = games[0];
+      const scoreText =
+        latest.scoreRed === null || latest.scoreBlue === null
+          ? 'Score: none'
+          : `Score: Red ${latest.scoreRed} - Blue ${latest.scoreBlue}`;
+
+      latestGameEl.textContent = [
+        `Latest record: ${latest.date}`,
+        `Winner: ${latest.winner === 'red' ? 'Red' : 'Blue'}`,
+        `Red: ${(latest.redTeam || []).map(player => player.name).join(', ') || '(none)'}`,
+        `Blue: ${(latest.blueTeam || []).map(player => player.name).join(', ') || '(none)'}`,
+        scoreText
+      ].join('\n');
+    }
+
     function renderPlayers() {
       players = loadPlayers();
-      syncPresenceStateToPlayers();
-      playerList.innerHTML = '';
+      games = loadGames();
+      syncPresenceState();
+
+      playerListEl.innerHTML = '';
 
       if (players.length === 0) {
         const emptyState = document.createElement('div');
         emptyState.className = 'empty-state';
         emptyState.textContent = 'No players found. Add players in Player Management first.';
-        playerList.appendChild(emptyState);
-        updateSummary();
-        renderGameLog();
+        playerListEl.appendChild(emptyState);
+        redSummaryEl.textContent = '0 players';
+        blueSummaryEl.textContent = '0 players';
+        renderLatestGame();
         return;
       }
 
+      const statsMap = computePlayerStats();
+
       players.forEach(player => {
         const state = getPlayerState(player.id);
+        const stat = statsMap[player.id] || { wins: 0, games: 0, winrate: 0.5 };
 
         const row = document.createElement('div');
         row.className = 'player-row';
@@ -401,20 +768,22 @@
         checkbox.type = 'checkbox';
         checkbox.checked = state.present;
         checkbox.addEventListener('change', () => {
+          clearError();
           state.present = checkbox.checked;
-          if (!state.present) {
-            state.team = '';
-          }
+          if (!state.present) state.team = '';
           renderPlayers();
+          updateBalanceStatus();
         });
 
         const name = document.createElement('div');
         name.className = `player-name ${state.team || 'none'}`;
-        name.textContent = player.name;
+        name.textContent = `${player.name} (${stat.wins}/${stat.games}, ${formatPercent(stat.winrate)})`;
         name.addEventListener('click', () => {
+          clearError();
           if (!state.present) return;
           state.team = nextTeam(state.team);
           renderPlayers();
+          updateBalanceStatus();
         });
 
         const tag = document.createElement('div');
@@ -424,151 +793,37 @@
         row.appendChild(checkbox);
         row.appendChild(name);
         row.appendChild(tag);
-        playerList.appendChild(row);
+        playerListEl.appendChild(row);
       });
 
-      updateSummary();
-      renderGameLog();
-    }
+      const redPlayers = getTeamPlayers('red').map(player => player.name);
+      const bluePlayers = getTeamPlayers('blue').map(player => player.name);
 
-    function updateSummary() {
-      const redPlayers = getAssignedTeamPlayers('red').map(player => player.name);
-      const bluePlayers = getAssignedTeamPlayers('blue').map(player => player.name);
-
-      redSummary.textContent = redPlayers.length
+      redSummaryEl.textContent = redPlayers.length
         ? `${redPlayers.length} players: ${redPlayers.join(', ')}`
         : '0 players';
 
-      blueSummary.textContent = bluePlayers.length
+      blueSummaryEl.textContent = bluePlayers.length
         ? `${bluePlayers.length} players: ${bluePlayers.join(', ')}`
         : '0 players';
+
+      renderLatestGame();
     }
 
-    function assignTeams() {
-      const presentPlayers = getPresentPlayers();
+    balanceSliderEl.addEventListener('input', () => {
+      balanceValueEl.textContent = balanceSliderEl.value;
+    });
 
-      if (presentPlayers.length === 0) {
-        alert('No players are marked present.');
-        return;
-      }
-
-      const shuffled = [...presentPlayers].sort(() => Math.random() - 0.5);
-
-      shuffled.forEach((player, index) => {
-        presenceState[player.id].team = index % 2 === 0 ? 'red' : 'blue';
-      });
-
-      renderPlayers();
-    }
-
-    function clearTeams() {
-      players.forEach(player => {
-        const state = getPlayerState(player.id);
-        if (state.present) {
-          state.team = '';
-        }
-      });
-
-      renderPlayers();
-    }
-
-    function markAllPresent() {
-      players.forEach(player => {
-        const state = getPlayerState(player.id);
-        state.present = true;
-      });
-
-      renderPlayers();
-    }
-
-    function clearPresent() {
-      players.forEach(player => {
-        const state = getPlayerState(player.id);
-        state.present = false;
-        state.team = '';
-      });
-
-      renderPlayers();
-    }
-
-    function buildGameRecord(scoreMode) {
-      const redTeamPlayers = getAssignedTeamPlayers('red');
-      const blueTeamPlayers = getAssignedTeamPlayers('blue');
-
-      if (redTeamPlayers.length === 0 && blueTeamPlayers.length === 0) {
-        alert('No assigned teams to record.');
-        return null;
-      }
-
-      const record = {
-        id: Date.now(),
-        date: new Date().toISOString().slice(0, 10),
-        redTeam: redTeamPlayers.map(player => ({ id: player.id, name: player.name })),
-        blueTeam: blueTeamPlayers.map(player => ({ id: player.id, name: player.name })),
-        scoreRecorded: scoreMode === 'score',
-        redScore: null,
-        blueScore: null
-      };
-
-      if (scoreMode === 'score') {
-        const redScoreValue = document.getElementById('redScore').value;
-        const blueScoreValue = document.getElementById('blueScore').value;
-
-        if (redScoreValue === '' || blueScoreValue === '') {
-          alert('Enter both scores or use No Score Recorded.');
-          return null;
-        }
-
-        record.redScore = Number(redScoreValue);
-        record.blueScore = Number(blueScoreValue);
-      }
-
-      return record;
-    }
-
-    function recordGame(scoreMode) {
-      const record = buildGameRecord(scoreMode);
-      if (!record) {
-        return;
-      }
-
-      gameRecords.unshift(record);
-      saveGameRecords();
-      renderGameLog();
-
-      document.getElementById('redScore').value = '';
-      document.getElementById('blueScore').value = '';
-
-      alert('Game recorded.');
-    }
-
-    function renderGameLog() {
-      if (gameRecords.length === 0) {
-        gameLog.textContent = 'No games recorded yet.';
-        return;
-      }
-
-      const latest = gameRecords[0];
-      const scoreText = latest.scoreRecorded
-        ? `Score: Red ${latest.redScore} - Blue ${latest.blueScore}`
-        : 'Score: no score recorded';
-
-      gameLog.textContent = [
-        `Latest record: ${latest.date}`,
-        `Red: ${(latest.redTeam || []).map(player => player.name).join(', ') || '(none)'}`,
-        `Blue: ${(latest.blueTeam || []).map(player => player.name).join(', ') || '(none)'}`,
-        scoreText
-      ].join('\n');
-    }
-
-    document.getElementById('assignTeamsButton').addEventListener('click', assignTeams);
+    document.getElementById('assignTeamsButton').addEventListener('click', assignBalancedTeams);
     document.getElementById('clearTeamsButton').addEventListener('click', clearTeams);
     document.getElementById('selectAllButton').addEventListener('click', markAllPresent);
     document.getElementById('clearPresentButton').addEventListener('click', clearPresent);
-    document.getElementById('recordNoScoreButton').addEventListener('click', () => recordGame('no-score'));
-    document.getElementById('recordScoreButton').addEventListener('click', () => recordGame('score'));
+    document.getElementById('recordRedWinButton').addEventListener('click', () => recordGame('red'));
+    document.getElementById('recordBlueWinButton').addEventListener('click', () => recordGame('blue'));
 
+    balanceValueEl.textContent = balanceSliderEl.value;
     renderPlayers();
+    updateBalanceStatus();
   </script>
 </body>
 </html>

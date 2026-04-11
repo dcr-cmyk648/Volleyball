@@ -674,7 +674,6 @@
       document.getElementById('redScore').value = '';
       document.getElementById('blueScore').value = '';
 
-      clearPresentSelections();
       clearError();
       alert('Game recorded.');
     }
@@ -755,11 +754,8 @@
         return;
       }
 
-      const statsMap = computePlayerStats();
-
       players.forEach(player => {
         const state = getPlayerState(player.id);
-        const stat = statsMap[player.id] || { wins: 0, games: 0, winrate: 0.5 };
 
         const row = document.createElement('div');
         row.className = 'player-row';
@@ -777,7 +773,7 @@
 
         const name = document.createElement('div');
         name.className = `player-name ${state.team || 'none'}`;
-        name.textContent = `${player.name} (${stat.wins}/${stat.games}, ${formatPercent(stat.winrate)})`;
+        name.textContent = player.name;
         name.addEventListener('click', () => {
           clearError();
           if (!state.present) return;

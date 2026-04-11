@@ -15,10 +15,10 @@
       --border: #243041;
       --red: #f87171;
       --blue: #60a5fa;
---button: #334155;
---button-text: #f3f4f6;
---secondary: #475569;
---ghost: #1e293b;
+      --button: #334155;
+      --button-text: #f3f4f6;
+      --secondary: #475569;
+      --ghost: #1e293b;
       --danger: #ef4444;
       --success: #22c55e;
       --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
@@ -393,6 +393,7 @@
   <script>
     const PLAYER_STORAGE_KEY = 'gameDayPlayers';
     const GAME_STORAGE_KEY = 'gameDayGames';
+    const PAGE_STATE_KEY = 'gameDayMainPageState';
 
     const playerListEl = document.getElementById('playerList');
     const redSummaryEl = document.getElementById('redSummary');
@@ -404,6 +405,8 @@
     const balanceValueEl = document.getElementById('balanceValue');
     const handicapSliderEl = document.getElementById('handicapSlider');
     const handicapValueEl = document.getElementById('handicapValue');
+    const redScoreEl = document.getElementById('redScore');
+    const blueScoreEl = document.getElementById('blueScore');
 
     let players = loadPlayers();
     let games = loadGames();
@@ -457,20 +460,62 @@
       return state;
     }
 
+    function loadPageState() {
+      const saved = localStorage.getItem(PAGE_STATE_KEY);
+      if (!saved) return null;
+
+      try {
+        const parsed = JSON.parse(saved);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function savePageState() {
+      const payload = {
+        presenceState,
+        redScore: redScoreEl.value,
+        blueScore: blueScoreEl.value
+      };
+
+      localStorage.setItem(PAGE_STATE_KEY, JSON.stringify(payload));
+    }
+
+    function restorePageState() {
+      const saved = loadPageState();
+      if (!saved) return;
+
+      if (saved.presenceState && typeof saved.presenceState === 'object') {
+        presenceState = saved.presenceState;
+      }
+
+      redScoreEl.value = typeof saved.redScore === 'string' ? saved.redScore : '';
+      blueScoreEl.value = typeof saved.blueScore === 'string' ? saved.blueScore : '';
+    }
+
     function syncPresenceState() {
       const validIds = new Set(players.map(player => String(player.id)));
+      const nextState = {};
 
       Object.keys(presenceState).forEach(id => {
-        if (!validIds.has(String(id))) {
-          delete presenceState[id];
+        if (validIds.has(String(id))) {
+          nextState[id] = {
+            present: Boolean(presenceState[id]?.present),
+            team: presenceState[id]?.team === 'red' || presenceState[id]?.team === 'blue'
+              ? presenceState[id].team
+              : ''
+          };
         }
       });
 
       players.forEach(player => {
-        if (!presenceState[player.id]) {
-          presenceState[player.id] = { present: false, team: '' };
+        if (!nextState[player.id]) {
+          nextState[player.id] = { present: false, team: '' };
         }
       });
+
+      presenceState = nextState;
     }
 
     function getPlayerState(playerId) {
@@ -643,6 +688,7 @@
         presenceState[player.id].team = 'blue';
       });
 
+      savePageState();
       renderPlayers();
       updateBalanceStatus(bestCandidate, attempts);
     }
@@ -679,7 +725,7 @@
         lines.push('Small team handicap: none (teams are even)');
       } else {
         lines.push(
-          `Small team handicap: ${handicapPercent}% / ${smallerTeamSize} = ${formatPercent(handicapPenalty)}`
+          `Small team handicap: ${Number(handicapPercent).toFixed(0)}% / ${smallerTeamSize} = ${formatPercent(handicapPenalty)}`
         );
       }
 
@@ -746,8 +792,8 @@
       const redTeam = getTeamPlayers('red');
       const blueTeam = getTeamPlayers('blue');
 
-      const scoreRed = parseOptionalScore(document.getElementById('redScore').value);
-      const scoreBlue = parseOptionalScore(document.getElementById('blueScore').value);
+      const scoreRed = parseOptionalScore(redScoreEl.value);
+      const scoreBlue = parseOptionalScore(blueScoreEl.value);
 
       const scoreError = validateScoreAgainstWinner(scoreRed, scoreBlue, winner);
       if (scoreError) return { error: scoreError };
@@ -776,8 +822,9 @@
       saveGames();
       renderLatestGame();
 
-      document.getElementById('redScore').value = '';
-      document.getElementById('blueScore').value = '';
+      redScoreEl.value = '';
+      blueScoreEl.value = '';
+      savePageState();
 
       clearError();
       alert('Game recorded.');
@@ -790,6 +837,7 @@
           team: ''
         };
       });
+      savePageState();
       renderPlayers();
       updateBalanceStatus();
     }
@@ -800,6 +848,7 @@
         const state = getPlayerState(player.id);
         if (state.present) state.team = '';
       });
+      savePageState();
       renderPlayers();
       updateBalanceStatus();
     }
@@ -809,6 +858,7 @@
       players.forEach(player => {
         getPlayerState(player.id).present = true;
       });
+      savePageState();
       renderPlayers();
       updateBalanceStatus();
     }
@@ -872,6 +922,7 @@
           clearError();
           state.present = checkbox.checked;
           if (!state.present) state.team = '';
+          savePageState();
           renderPlayers();
           updateBalanceStatus();
         });
@@ -883,6 +934,7 @@
           clearError();
           if (!state.present) return;
           state.team = nextTeam(state.team);
+          savePageState();
           renderPlayers();
           updateBalanceStatus();
         });
@@ -920,12 +972,18 @@
       updateBalanceStatus();
     });
 
+    redScoreEl.addEventListener('input', savePageState);
+    blueScoreEl.addEventListener('input', savePageState);
+
     document.getElementById('assignTeamsButton').addEventListener('click', assignBalancedTeams);
     document.getElementById('clearTeamsButton').addEventListener('click', clearTeams);
     document.getElementById('selectAllButton').addEventListener('click', markAllPresent);
     document.getElementById('clearPresentButton').addEventListener('click', clearPresent);
     document.getElementById('recordRedWinButton').addEventListener('click', () => recordGame('red'));
     document.getElementById('recordBlueWinButton').addEventListener('click', () => recordGame('blue'));
+
+    restorePageState();
+    syncPresenceState();
 
     balanceValueEl.textContent = balanceSliderEl.value;
     handicapValueEl.textContent = handicapSliderEl.value;

@@ -5,29 +5,38 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Volleyball Stats</title>
   <style>
-:root {
-  --bg: #111827;
-  --card: #1f2937;
-  --text: #f9fafb;
-  --muted: #9ca3af;
-  --border: #374151;
-  --red: #f87171;
-  --blue: #60a5fa;
-  --button: #f9fafb;
-  --button-text: #111827;
-  --secondary: #6b7280;
-  --ghost: #374151;
-  --danger: #ef4444;
-}
+    :root {
+      --bg: #0b1220;
+      --bg-accent: #111827;
+      --card: #111827;
+      --card-2: #172033;
+      --text: #f3f4f6;
+      --muted: #94a3b8;
+      --border: #243041;
+      --red: #f87171;
+      --blue: #60a5fa;
+      --button: #e5e7eb;
+      --button-text: #111827;
+      --secondary: #334155;
+      --ghost: #1e293b;
+      --danger: #ef4444;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+    }
 
     * {
       box-sizing: border-box;
     }
 
+    html {
+      color-scheme: dark;
+    }
+
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      background: var(--bg);
+      background:
+        radial-gradient(circle at top, #172033 0%, var(--bg) 45%),
+        var(--bg);
       color: var(--text);
       padding: 16px;
     }
@@ -54,40 +63,63 @@
 
     h1, h2, h3 {
       margin: 0 0 12px;
+      letter-spacing: 0.01em;
+    }
+
+    h1 {
+      font-size: 2rem;
+    }
+
+    h2 {
+      font-size: 1.2rem;
     }
 
     .card {
-      background: var(--card);
-      border-radius: 14px;
-      padding: 16px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)),
+        var(--card);
+      border-radius: 18px;
+      padding: 18px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
       margin-bottom: 16px;
     }
 
     button,
     a.button-link {
-      border: none;
+      border: 1px solid transparent;
       background: var(--button);
       color: var(--button-text);
       padding: 10px 14px;
-      border-radius: 10px;
+      border-radius: 12px;
       font-size: 15px;
+      font-weight: 600;
       cursor: pointer;
       text-decoration: none;
       display: inline-block;
+      transition: transform 0.12s ease, opacity 0.12s ease, background 0.12s ease;
+    }
+
+    button:hover,
+    a.button-link:hover {
+      transform: translateY(-1px);
+      opacity: 0.96;
     }
 
     button.secondary {
       background: var(--secondary);
+      color: var(--text);
     }
 
     button.ghost {
       background: var(--ghost);
       color: var(--text);
+      border-color: var(--border);
     }
 
     button.danger {
-      background: var(--danger);
+      background: rgba(239, 68, 68, 0.16);
+      color: #fecaca;
+      border-color: rgba(239, 68, 68, 0.35);
     }
 
     .controls {
@@ -102,21 +134,26 @@
       font-size: 13px;
       color: var(--muted);
       margin-top: 8px;
+      line-height: 1.45;
     }
 
     .status {
       margin-top: 12px;
-      padding: 12px;
-      border-radius: 10px;
+      padding: 14px;
+      border-radius: 14px;
       border: 1px solid var(--border);
-      background: #f9fafb;
+      background: var(--card-2);
       white-space: pre-wrap;
       font-size: 14px;
       color: var(--muted);
+      line-height: 1.5;
     }
 
     .table-wrap {
       overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.02);
     }
 
     table {
@@ -127,7 +164,7 @@
     th,
     td {
       text-align: left;
-      padding: 10px;
+      padding: 12px 10px;
       border-bottom: 1px solid var(--border);
       vertical-align: top;
     }
@@ -135,11 +172,18 @@
     th {
       font-size: 14px;
       color: var(--muted);
-      background: #f9fafb;
+      background: rgba(255,255,255,0.04);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    tbody tr:hover {
+      background: rgba(255,255,255,0.03);
     }
 
     .history-list {
-      max-height: 500px;
+      max-height: 520px;
       overflow-y: auto;
       display: grid;
       gap: 12px;
@@ -148,9 +192,10 @@
 
     .game-card {
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 16px;
       padding: 14px;
-      background: #fafafa;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)),
+        var(--card-2);
     }
 
     .game-header {
@@ -158,7 +203,7 @@
       justify-content: space-between;
       gap: 10px;
       flex-wrap: wrap;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
       align-items: center;
     }
 
@@ -171,9 +216,9 @@
 
     .team-box {
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 10px;
-      background: white;
+      border-radius: 12px;
+      padding: 12px;
+      background: rgba(255,255,255,0.03);
     }
 
     .team-box.red-team {
@@ -188,42 +233,49 @@
       display: inline-block;
       font-size: 12px;
       font-weight: 700;
-      padding: 4px 8px;
+      padding: 5px 9px;
       border-radius: 999px;
-      background: #e5e7eb;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
     }
 
     .winner-badge.red {
-      color: var(--red);
+      color: #fecaca;
+      border-color: rgba(248, 113, 113, 0.35);
+      background: rgba(248, 113, 113, 0.12);
     }
 
     .winner-badge.blue {
-      color: var(--blue);
+      color: #bfdbfe;
+      border-color: rgba(96, 165, 250, 0.35);
+      background: rgba(96, 165, 250, 0.12);
     }
 
     .empty-state {
       color: var(--muted);
       border: 1px dashed var(--border);
-      border-radius: 10px;
+      border-radius: 14px;
       padding: 14px;
-      background: #f9fafb;
+      background: rgba(255,255,255,0.03);
     }
 
     dialog {
-      border: none;
-      border-radius: 14px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
       padding: 0;
       width: min(92vw, 420px);
-      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+      background: var(--card);
+      color: var(--text);
     }
 
     dialog::backdrop {
-      background: rgba(0, 0, 0, 0.35);
+      background: rgba(0, 0, 0, 0.55);
     }
 
     .dialog-content {
-      padding: 16px;
-      background: white;
+      padding: 18px;
+      background: var(--card);
     }
 
     .field label {
@@ -235,10 +287,18 @@
 
     .field input {
       width: 100%;
-      padding: 10px;
+      padding: 12px;
       font-size: 16px;
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: 12px;
+      background: #0f172a;
+      color: var(--text);
+      outline: none;
+    }
+
+    .field input:focus {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
     }
 
     .dialog-actions {
@@ -251,6 +311,10 @@
     @media (max-width: 750px) {
       .teams-grid {
         grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 1.7rem;
       }
     }
   </style>

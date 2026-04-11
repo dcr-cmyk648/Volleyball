@@ -5,35 +5,45 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Volleyball Game Tracker</title>
   <style>
-:root {
-  --bg: #111827;
-  --card: #1f2937;
-  --text: #f9fafb;
-  --muted: #9ca3af;
-  --border: #374151;
-  --red: #f87171;
-  --blue: #60a5fa;
-  --button: #f9fafb;
-  --button-text: #111827;
-  --secondary: #6b7280;
-  --ghost: #374151;
-  --danger: #ef4444;
-}
+    :root {
+      --bg: #0b1220;
+      --bg-accent: #111827;
+      --card: #111827;
+      --card-2: #172033;
+      --text: #f3f4f6;
+      --muted: #94a3b8;
+      --border: #243041;
+      --red: #f87171;
+      --blue: #60a5fa;
+      --button: #e5e7eb;
+      --button-text: #111827;
+      --secondary: #334155;
+      --ghost: #1e293b;
+      --danger: #ef4444;
+      --success: #22c55e;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+    }
 
     * {
       box-sizing: border-box;
     }
 
+    html {
+      color-scheme: dark;
+    }
+
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      background: var(--bg);
+      background:
+        radial-gradient(circle at top, #172033 0%, var(--bg) 45%),
+        var(--bg);
       color: var(--text);
       padding: 16px;
     }
 
     .container {
-      max-width: 950px;
+      max-width: 960px;
       margin: 0 auto;
     }
 
@@ -54,45 +64,70 @@
 
     h1, h2, h3 {
       margin: 0 0 12px;
+      letter-spacing: 0.01em;
+    }
+
+    h1 {
+      font-size: 2rem;
+    }
+
+    h2 {
+      font-size: 1.2rem;
     }
 
     .card {
-      background: var(--card);
-      border-radius: 14px;
-      padding: 16px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)),
+        var(--card);
+      border-radius: 18px;
+      padding: 18px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
       margin-bottom: 16px;
     }
 
     .button,
     button,
     a.button-link {
-      border: none;
+      border: 1px solid transparent;
       background: var(--button);
       color: var(--button-text);
       padding: 10px 14px;
-      border-radius: 10px;
+      border-radius: 12px;
       font-size: 15px;
+      font-weight: 600;
       cursor: pointer;
       text-decoration: none;
       display: inline-block;
+      transition: transform 0.12s ease, opacity 0.12s ease, background 0.12s ease;
+    }
+
+    button:hover,
+    a.button-link:hover {
+      transform: translateY(-1px);
+      opacity: 0.96;
     }
 
     button.secondary {
       background: var(--secondary);
+      color: var(--text);
     }
 
     button.ghost {
       background: var(--ghost);
       color: var(--text);
+      border-color: var(--border);
     }
 
     button.red-button {
-      background: var(--red);
+      background: rgba(248, 113, 113, 0.16);
+      color: #fecaca;
+      border-color: rgba(248, 113, 113, 0.35);
     }
 
     button.blue-button {
-      background: var(--blue);
+      background: rgba(96, 165, 250, 0.16);
+      color: #bfdbfe;
+      border-color: rgba(96, 165, 250, 0.35);
     }
 
     .controls {
@@ -103,38 +138,41 @@
     }
 
     .slider-row {
-      margin: 10px 0 4px;
+      margin: 12px 0 6px;
     }
 
     .slider-row label {
       display: block;
       font-size: 14px;
       color: var(--muted);
-      margin-bottom: 6px;
+      margin-bottom: 8px;
     }
 
     .slider-row input[type="range"] {
       width: 100%;
+      accent-color: #93c5fd;
     }
 
     .small {
       font-size: 13px;
       color: var(--muted);
       margin-top: 8px;
+      line-height: 1.45;
     }
 
     .status {
       margin-top: 12px;
-      padding: 12px;
-      border-radius: 10px;
+      padding: 14px;
+      border-radius: 14px;
       border: 1px solid var(--border);
-      background: #f9fafb;
+      background: var(--card-2);
       white-space: pre-wrap;
       font-size: 14px;
+      line-height: 1.5;
     }
 
     .error {
-      color: var(--danger);
+      color: #fca5a5;
       font-weight: 600;
       margin-top: 10px;
       min-height: 20px;
@@ -150,11 +188,17 @@
       display: grid;
       grid-template-columns: 28px 1fr auto;
       align-items: center;
-      gap: 10px;
-      padding: 10px;
+      gap: 12px;
+      padding: 12px;
       border: 1px solid var(--border);
-      border-radius: 10px;
-      background: #fafafa;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .player-row input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #93c5fd;
     }
 
     .player-name {
@@ -162,6 +206,11 @@
       font-weight: 600;
       cursor: pointer;
       user-select: none;
+      transition: opacity 0.12s ease;
+    }
+
+    .player-name:hover {
+      opacity: 0.88;
     }
 
     .player-name.none {
@@ -181,10 +230,10 @@
       color: var(--muted);
       border: 1px solid var(--border);
       border-radius: 999px;
-      padding: 4px 8px;
+      padding: 5px 9px;
       min-width: 72px;
       text-align: center;
-      background: white;
+      background: rgba(255,255,255,0.03);
     }
 
     .summary-grid {
@@ -195,10 +244,10 @@
     }
 
     .summary-box {
-      padding: 12px;
-      border-radius: 10px;
+      padding: 14px;
+      border-radius: 16px;
       border: 1px solid var(--border);
-      background: #f9fafb;
+      background: var(--card-2);
     }
 
     .summary-box.red-box {
@@ -225,24 +274,36 @@
 
     .field input {
       width: 100%;
-      padding: 10px;
+      padding: 12px;
       font-size: 16px;
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: 12px;
+      background: #0f172a;
+      color: var(--text);
+      outline: none;
+    }
+
+    .field input:focus {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
     }
 
     .empty-state {
       color: var(--muted);
       border: 1px dashed var(--border);
-      border-radius: 10px;
+      border-radius: 14px;
       padding: 14px;
-      background: #f9fafb;
+      background: rgba(255,255,255,0.03);
     }
 
     @media (max-width: 700px) {
       .summary-grid,
       .score-grid {
         grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 1.7rem;
       }
     }
   </style>
@@ -278,7 +339,7 @@
         <label for="handicapSlider">
           Small team handicap: <span id="handicapValue">5</span>% winrate correction
         </label>
-        <input type="range" id="handicapSlider" min="0" max="25" value="5" />
+        <input type="range" id="handicapSlider" min="0" max="10" value="5" />
       </div>
 
       <div id="balanceStatus" class="status">No team assignment yet.</div>
@@ -512,10 +573,6 @@
 
     function formatPercent(value) {
       return `${(value * 100).toFixed(1)}%`;
-    }
-
-    function formatDecimal(value) {
-      return value.toFixed(4);
     }
 
     function shuffleArray(input) {

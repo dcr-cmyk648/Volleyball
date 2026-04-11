@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Volleyball Stats</title>
+  <style>
+    :root {
+      --bg: #f3f4f6;
+      --card: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: #d1d5db;
+      --red: #dc2626;
+      --blue: #2563eb;
+      --button: #111827;
+      --button-text: #ffffff;
+      --secondary: #4b5563;
+      --ghost: #e5e7eb;
+      --danger: #b91c1c;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 16px;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    h1, h2, h3 {
+      margin: 0 0 12px;
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      margin-bottom: 16px;
+    }
+
+    button,
+    a.button-link {
+      border: none;
+      background: var(--button);
+      color: var(--button-text);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 15px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    button.secondary {
+      background: var(--secondary);
+    }
+
+    button.ghost {
+      background: var(--ghost);
+      color: var(--text);
+    }
+
+    button.danger {
+      background: var(--danger);
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+      align-items: center;
+    }
+
+    .small {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    .status {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #f9fafb;
+      white-space: pre-wrap;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    th {
+      font-size: 14px;
+      color: var(--muted);
+      background: #f9fafb;
+    }
+
+    .history-list {
+      max-height: 500px;
+      overflow-y: auto;
+      display: grid;
+      gap: 12px;
+      padding-right: 4px;
+    }
+
+    .game-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      background: #fafafa;
+    }
+
+    .game-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+      align-items: center;
+    }
+
+    .teams-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .team-box {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: white;
+    }
+
+    .team-box.red-team {
+      border-left: 5px solid var(--red);
+    }
+
+    .team-box.blue-team {
+      border-left: 5px solid var(--blue);
+    }
+
+    .winner-badge {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #e5e7eb;
+    }
+
+    .winner-badge.red {
+      color: var(--red);
+    }
+
+    .winner-badge.blue {
+      color: var(--blue);
+    }
+
+    .empty-state {
+      color: var(--muted);
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      background: #f9fafb;
+    }
+
+    dialog {
+      border: none;
+      border-radius: 14px;
+      padding: 0;
+      width: min(92vw, 420px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    dialog::backdrop {
+      background: rgba(0, 0, 0, 0.35);
+    }
+
+    .dialog-content {
+      padding: 16px;
+      background: white;
+    }
+
+    .field label {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+      color: var(--muted);
+    }
+
+    .field input {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    .dialog-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    @media (max-width: 750px) {
+      .teams-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <h1>Stats and History</h1>
+      <div class="nav-links">
+        <a href="index.html" class="button-link">Main Page</a>
+        <a href="players.html" class="button-link">Player Management</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Database</h2>
+      <div class="controls">
+        <button id="exportDatabaseButton">Export Database</button>
+        <button id="importDatabaseButton" class="secondary">Import Database</button>
+        <input type="file" id="importFileInput" accept=".json" hidden />
+      </div>
+      <div class="small">
+        Export saves the full database as JSON: all players and all games. Import replaces the current database with the file you choose.
+      </div>
+      <div id="databaseStatus" class="status">Ready.</div>
+    </div>
+
+    <div class="card">
+      <h2>Player Standings</h2>
+      <div class="small">
+        Sorted by winrate, then total games, then alphabetically. Players with 0 games are treated as 50.0%.
+      </div>
+      <div class="table-wrap" style="margin-top: 12px;">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Player</th>
+              <th>Wins</th>
+              <th>Games</th>
+              <th>Winrate</th>
+            </tr>
+          </thead>
+          <tbody id="statsTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Game History</h2>
+      <div class="small">
+        Newest games at the top. Delete removes the game from history and updates all derived stats automatically.
+      </div>
+      <div id="historyList" class="history-list" style="margin-top: 12px;"></div>
+    </div>
+  </div>
+
+  <dialog id="deleteGameDialog">
+    <div class="dialog-content">
+      <h2>Delete Game</h2>
+      <div class="small" id="deleteGameText">Type delete to remove this game.</div>
+      <div class="field" style="margin-top: 12px;">
+        <label for="deleteGameInput">Confirmation</label>
+        <input type="text" id="deleteGameInput" placeholder="Type delete" />
+      </div>
+      <div class="dialog-actions">
+        <button id="confirmDeleteGameButton" class="danger">Delete Game</button>
+        <button id="cancelDeleteGameButton" class="secondary">Cancel</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    const PLAYER_STORAGE_KEY = 'gameDayPlayers';
+    const GAME_STORAGE_KEY = 'gameDayGames';
+
+    const statsTableBody = document.getElementById('statsTableBody');
+    const historyList = document.getElementById('historyList');
+    const databaseStatus = document.getElementById('databaseStatus');
+    const importFileInput = document.getElementById('importFileInput');
+    const deleteGameDialog = document.getElementById('deleteGameDialog');
+    const deleteGameInput = document.getElementById('deleteGameInput');
+    const deleteGameText = document.getElementById('deleteGameText');
+
+    let pendingDeleteGameId = null;
+
+    function loadPlayers() {
+      const saved = localStorage.getItem(PLAYER_STORAGE_KEY);
+      if (!saved) return [];
+
+      try {
+        const parsed = JSON.parse(saved);
+        if (!Array.isArray(parsed)) return [];
+
+        return parsed
+          .filter(player => player && typeof player.name === 'string')
+          .map(player => ({
+            id: player.id,
+            name: player.name.trim()
+          }))
+          .filter(player => player.name.length > 0);
+      } catch {
+        return [];
+      }
+    }
+
+    function loadGames() {
+      const saved = localStorage.getItem(GAME_STORAGE_KEY);
+      if (!saved) return [];
+
+      try {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function savePlayers(players) {
+      localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(players));
+    }
+
+    function saveGames(games) {
+      localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(games));
+    }
+
+    function computeStats(players, games) {
+      const statsMap = {};
+
+      players.forEach(player => {
+        statsMap[player.id] = {
+          id: player.id,
+          name: player.name,
+          wins: 0,
+          games: 0,
+          winrate: 0.5
+        };
+      });
+
+      games.forEach(game => {
+        const redTeam = Array.isArray(game.redTeam) ? game.redTeam : [];
+        const blueTeam = Array.isArray(game.blueTeam) ? game.blueTeam : [];
+
+        redTeam.forEach(player => {
+          if (statsMap[player.id]) {
+            statsMap[player.id].games += 1;
+            if (game.winner === 'red') {
+              statsMap[player.id].wins += 1;
+            }
+          }
+        });
+
+        blueTeam.forEach(player => {
+          if (statsMap[player.id]) {
+            statsMap[player.id].games += 1;
+            if (game.winner === 'blue') {
+              statsMap[player.id].wins += 1;
+            }
+          }
+        });
+      });
+
+      const rows = Object.values(statsMap).map(player => {
+        player.winrate = player.games === 0 ? 0.5 : player.wins / player.games;
+        return player;
+      });
+
+      rows.sort((a, b) => {
+        if (b.winrate !== a.winrate) return b.winrate - a.winrate;
+        if (b.games !== a.games) return b.games - a.games;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      });
+
+      return rows;
+    }
+
+    function formatPercent(value) {
+      return `${(value * 100).toFixed(1)}%`;
+    }
+
+    function formatScore(game) {
+      if (
+        game.scoreRed === null ||
+        game.scoreBlue === null ||
+        typeof game.scoreRed === 'undefined' ||
+        typeof game.scoreBlue === 'undefined'
+      ) {
+        return 'Score: none';
+      }
+      return `Score: Red ${game.scoreRed} - Blue ${game.scoreBlue}`;
+    }
+
+    function renderStats() {
+      const players = loadPlayers();
+      const games = loadGames();
+      const rows = computeStats(players, games);
+
+      statsTableBody.innerHTML = '';
+
+      if (rows.length === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 5;
+        td.innerHTML = '<div class="empty-state">No players found.</div>';
+        tr.appendChild(td);
+        statsTableBody.appendChild(tr);
+        return;
+      }
+
+      rows.forEach((player, index) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${index + 1}</td>
+          <td>${player.name}</td>
+          <td>${player.wins}</td>
+          <td>${player.games}</td>
+          <td>${formatPercent(player.winrate)}</td>
+        `;
+        statsTableBody.appendChild(tr);
+      });
+    }
+
+    function renderHistory() {
+      const games = loadGames();
+      historyList.innerHTML = '';
+
+      if (games.length === 0) {
+        const emptyState = document.createElement('div');
+        emptyState.className = 'empty-state';
+        emptyState.textContent = 'No games recorded yet.';
+        historyList.appendChild(emptyState);
+        return;
+      }
+
+      games.forEach(game => {
+        const card = document.createElement('div');
+        card.className = 'game-card';
+
+        const winnerClass = game.winner === 'red' ? 'red' : 'blue';
+        const winnerText = game.winner === 'red' ? 'Red Team' : 'Blue Team';
+        const redNames = (game.redTeam || []).map(player => player.name).join(', ') || '(none)';
+        const blueNames = (game.blueTeam || []).map(player => player.name).join(', ') || '(none)';
+
+        card.innerHTML = `
+          <div class="game-header">
+            <div>
+              <strong>${game.date || 'Unknown date'}</strong><br>
+              <span class="winner-badge ${winnerClass}">${winnerText} win</span>
+            </div>
+            <div>
+              <button class="danger" data-game-id="${game.id}">Delete</button>
+            </div>
+          </div>
+          <div class="teams-grid">
+            <div class="team-box red-team">
+              <strong>Red Team</strong>
+              <div>${redNames}</div>
+            </div>
+            <div class="team-box blue-team">
+              <strong>Blue Team</strong>
+              <div>${blueNames}</div>
+            </div>
+          </div>
+          <div class="small">${formatScore(game)}</div>
+        `;
+
+        const deleteButton = card.querySelector('button[data-game-id]');
+        deleteButton.addEventListener('click', () => openDeleteGameDialog(game.id, game.date));
+
+        historyList.appendChild(card);
+      });
+    }
+
+    function renderAll() {
+      renderStats();
+      renderHistory();
+    }
+
+    function exportDatabase() {
+      const payload = {
+        players: loadPlayers(),
+        games: loadGames()
+      };
+
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'volleyball-database.json';
+      a.click();
+      URL.revokeObjectURL(url);
+
+      databaseStatus.textContent = `Exported ${payload.players.length} players and ${payload.games.length} games.`;
+    }
+
+    function importDatabaseFromFile(file) {
+      const reader = new FileReader();
+
+      reader.onload = function(event) {
+        try {
+          const parsed = JSON.parse(event.target.result);
+
+          if (!parsed || typeof parsed !== 'object') {
+            throw new Error('Invalid database file.');
+          }
+
+          const players = Array.isArray(parsed.players) ? parsed.players : [];
+          const games = Array.isArray(parsed.games) ? parsed.games : [];
+
+          const normalizedPlayers = players
+            .filter(player => player && typeof player.name === 'string')
+            .map(player => ({ id: player.id, name: player.name.trim() }))
+            .filter(player => player.name.length > 0);
+
+          const normalizedGames = games
+            .filter(game => game && typeof game === 'object')
+            .map(game => ({
+              id: game.id ?? Date.now() + Math.random(),
+              date: game.date ?? '',
+              redTeam: Array.isArray(game.redTeam) ? game.redTeam : [],
+              blueTeam: Array.isArray(game.blueTeam) ? game.blueTeam : [],
+              scoreRed: typeof game.scoreRed === 'undefined' ? null : game.scoreRed,
+              scoreBlue: typeof game.scoreBlue === 'undefined' ? null : game.scoreBlue,
+              winner: game.winner === 'blue' ? 'blue' : 'red'
+            }));
+
+          savePlayers(normalizedPlayers);
+          saveGames(normalizedGames);
+          renderAll();
+
+          databaseStatus.textContent = `Imported ${normalizedPlayers.length} players and ${normalizedGames.length} games.`;
+        } catch (error) {
+          databaseStatus.textContent = 'Import failed. File must be valid JSON with players and games.';
+        }
+      };
+
+      reader.readAsText(file);
+    }
+
+    function openDeleteGameDialog(gameId, gameDate) {
+      pendingDeleteGameId = gameId;
+      deleteGameInput.value = '';
+      deleteGameText.textContent = `Type delete to remove the game from ${gameDate || 'this date'}.`;
+      deleteGameDialog.showModal();
+      setTimeout(() => deleteGameInput.focus(), 0);
+    }
+
+    function closeDeleteGameDialog() {
+      pendingDeleteGameId = null;
+      deleteGameInput.value = '';
+      deleteGameDialog.close();
+    }
+
+    function confirmDeleteGame() {
+      if (deleteGameInput.value !== 'delete') {
+        databaseStatus.textContent = 'Delete cancelled. You must type delete exactly.';
+        return;
+      }
+
+      let games = loadGames();
+      games = games.filter(game => game.id !== pendingDeleteGameId);
+      saveGames(games);
+      closeDeleteGameDialog();
+      renderAll();
+      databaseStatus.textContent = 'Game deleted.';
+    }
+
+    document.getElementById('exportDatabaseButton').addEventListener('click', exportDatabase);
+    document.getElementById('importDatabaseButton').addEventListener('click', () => importFileInput.click());
+
+    importFileInput.addEventListener('change', (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      importDatabaseFromFile(file);
+      event.target.value = '';
+    });
+
+    document.getElementById('confirmDeleteGameButton').addEventListener('click', confirmDeleteGame);
+    document.getElementById('cancelDeleteGameButton').addEventListener('click', closeDeleteGameDialog);
+
+    renderAll();
+  </script>
+</body>
+</html>

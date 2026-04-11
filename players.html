@@ -13,7 +13,8 @@
       --border: #d1d5db;
       --button: #111827;
       --button-text: #ffffff;
-      --danger: #dc2626;
+      --secondary: #4b5563;
+      --danger: #b91c1c;
     }
 
     * {
@@ -29,7 +30,7 @@
     }
 
     .container {
-      max-width: 900px;
+      max-width: 950px;
       margin: 0 auto;
     }
 
@@ -38,7 +39,13 @@
       justify-content: space-between;
       align-items: center;
       gap: 12px;
+      flex-wrap: wrap;
       margin-bottom: 16px;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 10px;
       flex-wrap: wrap;
     }
 
@@ -46,8 +53,16 @@
       margin: 0 0 12px;
     }
 
-    .link-button,
-    button {
+    .card {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      margin-bottom: 16px;
+    }
+
+    button,
+    a.button-link {
       border: none;
       background: var(--button);
       color: var(--button-text);
@@ -60,19 +75,35 @@
     }
 
     button.secondary {
-      background: #4b5563;
+      background: var(--secondary);
     }
 
     button.danger {
       background: var(--danger);
     }
 
-    .card {
-      background: var(--card);
-      border-radius: 14px;
-      padding: 16px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-      margin-bottom: 16px;
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .small {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    .status {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #f9fafb;
+      white-space: pre-wrap;
+      font-size: 14px;
+      color: var(--muted);
     }
 
     .player-list {
@@ -95,12 +126,7 @@
     .player-name {
       font-size: 17px;
       font-weight: 600;
-    }
-
-    .small {
-      font-size: 13px;
-      color: var(--muted);
-      margin-top: 8px;
+      word-break: break-word;
     }
 
     .empty-state {
@@ -155,13 +181,21 @@
   <div class="container">
     <div class="topbar">
       <h1>Player Management</h1>
-      <a href="index.html" class="link-button">Back to Main Page</a>
+      <div class="nav-links">
+        <a href="index.html" class="button-link">Main Page</a>
+        <a href="stats.html" class="button-link">Stats</a>
+      </div>
     </div>
 
     <div class="card">
       <h2>Players</h2>
-      <button id="openAddPlayerDialog">Add Player</button>
-      <div class="small">This page is the source of truth for the player database. Players are sorted alphabetically.</div>
+      <div class="controls">
+        <button id="openAddPlayerDialog">Add Player</button>
+      </div>
+      <div class="small">
+        This page is the source of truth for the player database. Players are sorted alphabetically. Deleting a player does not change old game history.
+      </div>
+      <div id="statusMessage" class="status">Ready.</div>
     </div>
 
     <div class="card">
@@ -175,7 +209,13 @@
       <h2>Add Player</h2>
       <div class="field">
         <label for="playerNameInput">Player name</label>
-        <input type="text" id="playerNameInput" placeholder="Enter player name" maxlength="60" />
+        <input
+          type="text"
+          id="playerNameInput"
+          placeholder="Enter player name"
+          maxlength="60"
+          autocomplete="off"
+        />
       </div>
       <div class="dialog-actions">
         <button id="savePlayerButton">Save Player</button>
@@ -185,17 +225,48 @@
     </div>
   </dialog>
 
+  <dialog id="deletePlayerDialog">
+    <div class="dialog-content">
+      <h2>Delete Player</h2>
+      <div class="small" id="deletePlayerText">
+        Type delete to remove this player.
+      </div>
+      <div class="field" style="margin-top: 12px;">
+        <label for="deletePlayerInput">Confirmation</label>
+        <input
+          type="text"
+          id="deletePlayerInput"
+          placeholder="Type delete"
+          autocomplete="off"
+        />
+      </div>
+      <div class="dialog-actions">
+        <button id="confirmDeletePlayerButton" class="danger">Delete Player</button>
+        <button id="cancelDeletePlayerButton" class="secondary">Cancel</button>
+      </div>
+    </div>
+  </dialog>
+
   <script>
     const PLAYER_STORAGE_KEY = 'gameDayPlayers';
     const DEFAULT_PLAYERS = [
       { id: 1, name: 'DustinR' }
     ];
 
-    const playerList = document.getElementById('playerList');
+    const playerListEl = document.getElementById('playerList');
+    const statusMessageEl = document.getElementById('statusMessage');
     const addPlayerDialog = document.getElementById('addPlayerDialog');
     const playerNameInput = document.getElementById('playerNameInput');
+    const deletePlayerDialog = document.getElementById('deletePlayerDialog');
+    const deletePlayerInput = document.getElementById('deletePlayerInput');
+    const deletePlayerText = document.getElementById('deletePlayerText');
 
-    let players = loadPlayers();
+    let pendingDeletePlayerId = null;
+    let pendingDeletePlayerName = '';
+
+    function setStatus(message) {
+      statusMessageEl.textContent = message;
+    }
 
     function normalizePlayers(rawPlayers) {
       if (!Array.isArray(rawPlayers)) {
@@ -221,36 +292,43 @@
 
       try {
         const parsed = JSON.parse(saved);
-        return normalizePlayers(parsed);
-      } catch (error) {
+        const normalized = normalizePlayers(parsed);
+
+        if (normalized.length === 0) {
+          localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(DEFAULT_PLAYERS));
+          return [...DEFAULT_PLAYERS];
+        }
+
+        return normalized;
+      } catch {
         localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(DEFAULT_PLAYERS));
         return [...DEFAULT_PLAYERS];
       }
     }
 
-    function savePlayers() {
+    function savePlayers(players) {
       localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(players));
     }
 
-    function getSortedPlayers() {
+    function getSortedPlayers(players) {
       return [...players].sort((a, b) =>
         a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
       );
     }
 
     function renderPlayers() {
-      const sortedPlayers = getSortedPlayers();
-      playerList.innerHTML = '';
+      const players = getSortedPlayers(loadPlayers());
+      playerListEl.innerHTML = '';
 
-      if (sortedPlayers.length === 0) {
+      if (players.length === 0) {
         const emptyState = document.createElement('div');
         emptyState.className = 'empty-state';
         emptyState.textContent = 'No players in the database yet.';
-        playerList.appendChild(emptyState);
+        playerListEl.appendChild(emptyState);
         return;
       }
 
-      sortedPlayers.forEach((player) => {
+      players.forEach((player) => {
         const row = document.createElement('div');
         row.className = 'player-row';
 
@@ -261,19 +339,22 @@
         const deleteButton = document.createElement('button');
         deleteButton.className = 'danger';
         deleteButton.textContent = 'Delete';
-        deleteButton.addEventListener('click', () => deletePlayer(player.id, player.name));
+        deleteButton.addEventListener('click', () => {
+          openDeletePlayerDialog(player.id, player.name);
+        });
 
         row.appendChild(name);
         row.appendChild(deleteButton);
-        playerList.appendChild(row);
+        playerListEl.appendChild(row);
       });
     }
 
     function addPlayer() {
       const rawName = playerNameInput.value.trim();
+      const players = loadPlayers();
 
       if (!rawName) {
-        alert('Enter a player name.');
+        setStatus('Enter a player name.');
         return;
       }
 
@@ -282,7 +363,7 @@
       );
 
       if (alreadyExists) {
-        alert('That player already exists.');
+        setStatus('That player already exists.');
         return;
       }
 
@@ -291,25 +372,52 @@
         name: rawName
       });
 
-      savePlayers();
+      savePlayers(players);
       renderPlayers();
       playerNameInput.value = '';
       addPlayerDialog.close();
+      setStatus(`Added player: ${rawName}`);
     }
 
-    function deletePlayer(playerId, playerName) {
-      const confirmation = prompt(`Type delete to remove ${playerName}.`);
+    function openDeletePlayerDialog(playerId, playerName) {
+      pendingDeletePlayerId = playerId;
+      pendingDeletePlayerName = playerName;
+      deletePlayerInput.value = '';
+      deletePlayerText.textContent = `Type delete to remove ${playerName}.`;
+      deletePlayerDialog.showModal();
+      setTimeout(() => deletePlayerInput.focus(), 0);
+    }
 
-      if (confirmation !== 'delete') {
+    function closeDeletePlayerDialog() {
+      pendingDeletePlayerId = null;
+      pendingDeletePlayerName = '';
+      deletePlayerInput.value = '';
+      deletePlayerDialog.close();
+    }
+
+    function confirmDeletePlayer() {
+      if (deletePlayerInput.value !== 'delete') {
+        setStatus('Delete cancelled. You must type delete exactly.');
         return;
       }
 
-      players = players.filter((player) => player.id !== playerId);
-      savePlayers();
+      let players = loadPlayers();
+      players = players.filter((player) => player.id !== pendingDeletePlayerId);
+
+      if (players.length === 0) {
+        players = [...DEFAULT_PLAYERS];
+        setStatus('You deleted the last player, so DustinR was restored as the default player.');
+      } else {
+        setStatus(`Deleted player: ${pendingDeletePlayerName}`);
+      }
+
+      savePlayers(players);
+      closeDeletePlayerDialog();
       renderPlayers();
     }
 
     document.getElementById('openAddPlayerDialog').addEventListener('click', () => {
+      playerNameInput.value = '';
       addPlayerDialog.showModal();
       setTimeout(() => playerNameInput.focus(), 0);
     });
@@ -326,6 +434,9 @@
         addPlayer();
       }
     });
+
+    document.getElementById('confirmDeletePlayerButton').addEventListener('click', confirmDeletePlayer);
+    document.getElementById('cancelDeletePlayerButton').addEventListener('click', closeDeletePlayerDialog);
 
     renderPlayers();
   </script>

@@ -585,6 +585,71 @@
       return rows;
     }
 
+    function buildHistoryData(players, games) {
+      const ratings = {};
+
+      players.forEach(player => {
+        ratings[player.id] = ELO_BASE;
+      });
+
+      const sortedGames = getGamesSortedOldestFirst(games);
+      const historyData = [];
+
+      sortedGames.forEach(game => {
+        const redTeam = Array.isArray(game.redTeam) ? game.redTeam : [];
+        const blueTeam = Array.isArray(game.blueTeam) ? game.blueTeam : [];
+
+        const redAvg = getAverageElo(redTeam, ratings);
+        const blueAvg = getAverageElo(blueTeam, ratings);
+
+        const { redBonus, blueBonus } = getTeamEloBonuses(
+          redTeam.length,
+          blueTeam.length,
+          DEFAULT_HANDICAP_ELO
+        );
+
+        const effectiveRed = redAvg + redBonus;
+        const effectiveBlue = blueAvg + blueBonus;
+
+        const expectedRed = expectedScore(effectiveRed, effectiveBlue);
+        const expectedBlue = 1 - expectedRed;
+
+        const actualRed = game.winner === 'red' ? 1 : 0;
+        const actualBlue = game.winner === 'blue' ? 1 : 0;
+
+        const marginMultiplier = getMarginMultiplier(game.scoreRed, game.scoreBlue);
+        const redDelta = ELO_K * marginMultiplier * (actualRed - expectedRed);
+        const blueDelta = ELO_K * marginMultiplier * (actualBlue - expectedBlue);
+
+        historyData.push({
+          ...game,
+          redAvgBefore: redAvg,
+          blueAvgBefore: blueAvg,
+          redBonus,
+          blueBonus,
+          effectiveRedBefore: effectiveRed,
+          effectiveBlueBefore: effectiveBlue,
+          marginMultiplier
+        });
+
+        redTeam.forEach(player => {
+          if (ratings[player.id] === undefined) {
+            ratings[player.id] = ELO_BASE;
+          }
+          ratings[player.id] += redDelta;
+        });
+
+        blueTeam.forEach(player => {
+          if (ratings[player.id] === undefined) {
+            ratings[player.id] = ELO_BASE;
+          }
+          ratings[player.id] += blueDelta;
+        });
+      });
+
+      return historyData.reverse();
+    }
+
     function formatPercent(value) {
       return `${(value * 100).toFixed(1)}%`;
     }
@@ -633,10 +698,13 @@
     }
 
     function renderHistory() {
+      const players = loadPlayers();
       const games = loadGames();
+      const historyData = buildHistoryData(players, games);
+
       historyList.innerHTML = '';
 
-      if (games.length === 0) {
+      if (historyData.length === 0) {
         const emptyState = document.createElement('div');
         emptyState.className = 'empty-state';
         emptyState.textContent = 'No games recorded yet.';
@@ -644,7 +712,7 @@
         return;
       }
 
-      games.forEach(game => {
+      historyData.forEach(game => {
         const card = document.createElement('div');
         card.className = 'game-card';
 
@@ -652,7 +720,14 @@
         const winnerText = game.winner === 'red' ? 'Red Team' : 'Blue Team';
         const redNames = (game.redTeam || []).map(player => player.name).join(', ') || '(none)';
         const blueNames = (game.blueTeam || []).map(player => player.name).join(', ') || '(none)';
-        const marginMultiplier = getMarginMultiplier(game.scoreRed, game.scoreBlue);
+
+        const redEloLine = game.redBonus > 0
+          ? `Team Elo: ${Math.round(game.redAvgBefore)} (+${Math.round(game.redBonus)} handicap) = ${Math.round(game.effectiveRedBefore)}`
+          : `Team Elo: ${Math.round(game.redAvgBefore)}`;
+
+        const blueEloLine = game.blueBonus > 0
+          ? `Team Elo: ${Math.round(game.blueAvgBefore)} (+${Math.round(game.blueBonus)} handicap) = ${Math.round(game.effectiveBlueBefore)}`
+          : `Team Elo: ${Math.round(game.blueAvgBefore)}`;
 
         card.innerHTML = `
           <div class="game-header">
@@ -668,14 +743,16 @@
             <div class="team-box red-team">
               <strong>Red Team</strong>
               <div>${redNames}</div>
+              <div class="small">${redEloLine}</div>
             </div>
             <div class="team-box blue-team">
               <strong>Blue Team</strong>
               <div>${blueNames}</div>
+              <div class="small">${blueEloLine}</div>
             </div>
           </div>
           <div class="small">${formatScore(game)}</div>
-          <div class="small">Elo margin multiplier: ${marginMultiplier.toFixed(2)}x</div>
+          <div class="small">Elo margin multiplier: ${game.marginMultiplier.toFixed(2)}x</div>
         `;
 
         const deleteButton = card.querySelector('button[data-game-id]');

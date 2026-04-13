@@ -326,6 +326,7 @@
         <button id="clearTeamsButton" class="secondary">Clear Teams</button>
         <button id="selectAllButton" class="ghost">Mark All Present</button>
         <button id="clearPresentButton" class="ghost">Clear Present</button>
+        <button id="toggleUnselectedButton" class="ghost">Hide Unselected Players</button>
       </div>
 
       <div class="slider-row">
@@ -337,9 +338,9 @@
 
       <div class="slider-row">
         <label for="handicapSlider">
-          Small team handicap: <span id="handicapValue">5</span>% winrate correction
+          Small team handicap: <span id="handicapValue">40</span> Elo to larger team
         </label>
-        <input type="range" id="handicapSlider" min="0" max="10" value="5" />
+        <input type="range" id="handicapSlider" min="25" max="60" value="40" />
       </div>
 
       <div id="balanceStatus" class="status">No team assignment yet.</div>
@@ -395,6 +396,9 @@
     const GAME_STORAGE_KEY = 'gameDayGames';
     const PAGE_STATE_KEY = 'gameDayMainPageState';
 
+    const ELO_BASE = 1500;
+    const ELO_K = 20;
+
     const playerListEl = document.getElementById('playerList');
     const redSummaryEl = document.getElementById('redSummary');
     const blueSummaryEl = document.getElementById('blueSummary');
@@ -407,10 +411,12 @@
     const handicapValueEl = document.getElementById('handicapValue');
     const redScoreEl = document.getElementById('redScore');
     const blueScoreEl = document.getElementById('blueScore');
+    const toggleUnselectedButtonEl = document.getElementById('toggleUnselectedButton');
 
     let players = loadPlayers();
     let games = loadGames();
     let presenceState = buildPresenceState(players);
+    let hideUnselectedPlayers = false;
 
     function loadPlayers() {
       const saved = localStorage.getItem(PLAYER_STORAGE_KEY);
@@ -476,7 +482,8 @@
       const payload = {
         presenceState,
         redScore: redScoreEl.value,
-        blueScore: blueScoreEl.value
+        blueScore: blueScoreEl.value,
+        hideUnselectedPlayers
       };
 
       localStorage.setItem(PAGE_STATE_KEY, JSON.stringify(payload));
@@ -492,6 +499,7 @@
 
       redScoreEl.value = typeof saved.redScore === 'string' ? saved.redScore : '';
       blueScoreEl.value = typeof saved.blueScore === 'string' ? saved.blueScore : '';
+      hideUnselectedPlayers = Boolean(saved.hideUnselectedPlayers);
     }
 
     function syncPresenceState() {
@@ -533,22 +541,104 @@
       errorMessageEl.textContent = message;
     }
 
-    function computePlayerStats() {
+    function expectedScore(ratingA, ratingB) {
+      return 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400));
+    }
+
+    function getMarginMultiplier(scoreRed, scoreBlue) {
+      if (scoreRed === null || scoreBlue === null) {
+        return 1.0;
+      }
+
+      const pointDiff = Math.abs(scoreRed - scoreBlue);
+      return 1 + Math.min(pointDiff / 30, 0.5);
+    }
+
+    function getGamesSortedOldestFirst(gamesList) {
+      return [...gamesList].sort((a, b) => {
+        const dateA = a.date || '';
+        const dateB = b.date || '';
+        if (dateA !== dateB) {
+          return dateA.localeCompare(dateB);
+        }
+        const idA = typeof a.id === 'number' ? a.id : 0;
+        const idB = typeof b.id === 'number' ? b.id : 0;
+        return idA - idB;
+      });
+    }
+
+    function getAverageElo(team, ratingsMap) {
+      if (!team.length) {
+        return ELO_BASE;
+      }
+
+      const total = team.reduce((sum, player) => {
+        return sum + (ratingsMap[player.id] ?? ELO_BASE);
+      }, 0);
+
+      return total / team.length;
+    }
+
+    function getTeamEloBonuses(redCount, blueCount, handicapValue) {
+      if (redCount === blueCount) {
+        return { redBonus: 0, blueBonus: 0 };
+      }
+
+      if (redCount > blueCount) {
+        return { redBonus: handicapValue, blueBonus: 0 };
+      }
+
+      return { redBonus: 0, blueBonus: handicapValue };
+    }
+
+    function computeEloData() {
+      const ratings = {};
       const stats = {};
 
       players.forEach(player => {
+        ratings[player.id] = ELO_BASE;
         stats[player.id] = {
           wins: 0,
           games: 0,
-          winrate: 0.5
+          elo: ELO_BASE
         };
       });
 
-      games.forEach(game => {
+      const sortedGames = getGamesSortedOldestFirst(games);
+      const handicapValue = Number(handicapSliderEl.value);
+
+      sortedGames.forEach(game => {
         const redTeam = Array.isArray(game.redTeam) ? game.redTeam : [];
         const blueTeam = Array.isArray(game.blueTeam) ? game.blueTeam : [];
 
+        const redAvg = getAverageElo(redTeam, ratings);
+        const blueAvg = getAverageElo(blueTeam, ratings);
+
+        const { redBonus, blueBonus } = getTeamEloBonuses(
+          redTeam.length,
+          blueTeam.length,
+          handicapValue
+        );
+
+        const effectiveRed = redAvg + redBonus;
+        const effectiveBlue = blueAvg + blueBonus;
+
+        const expectedRed = expectedScore(effectiveRed, effectiveBlue);
+        const expectedBlue = 1 - expectedRed;
+
+        const actualRed = game.winner === 'red' ? 1 : 0;
+        const actualBlue = game.winner === 'blue' ? 1 : 0;
+
+        const marginMultiplier = getMarginMultiplier(game.scoreRed, game.scoreBlue);
+        const redDelta = ELO_K * marginMultiplier * (actualRed - expectedRed);
+        const blueDelta = ELO_K * marginMultiplier * (actualBlue - expectedBlue);
+
         redTeam.forEach(player => {
+          if (ratings[player.id] === undefined) {
+            ratings[player.id] = ELO_BASE;
+          }
+          ratings[player.id] += redDelta;
+
           if (stats[player.id]) {
             stats[player.id].games += 1;
             if (game.winner === 'red') {
@@ -558,6 +648,11 @@
         });
 
         blueTeam.forEach(player => {
+          if (ratings[player.id] === undefined) {
+            ratings[player.id] = ELO_BASE;
+          }
+          ratings[player.id] += blueDelta;
+
           if (stats[player.id]) {
             stats[player.id].games += 1;
             if (game.winner === 'blue') {
@@ -568,17 +663,13 @@
       });
 
       Object.keys(stats).forEach(id => {
-        const stat = stats[id];
-        stat.winrate = stat.games === 0 ? 0.5 : stat.wins / stat.games;
+        stats[id].elo = ratings[id] ?? ELO_BASE;
       });
 
-      return stats;
-    }
-
-    function getPlayerWinrate(playerId, statsMap) {
-      const stat = statsMap[playerId];
-      if (!stat) return 0.5;
-      return stat.games === 0 ? 0.5 : stat.winrate;
+      return {
+        ratings,
+        stats
+      };
     }
 
     function nextTeam(currentTeam) {
@@ -598,26 +689,12 @@
       });
     }
 
-    function averageWinrate(teamPlayers, statsMap) {
-      if (teamPlayers.length === 0) return 0;
-      const total = teamPlayers.reduce((sum, player) => {
-        return sum + getPlayerWinrate(player.id, statsMap);
-      }, 0);
-      return total / teamPlayers.length;
-    }
-
-    function getUnevenTeamPenalty(redCount, blueCount, handicapPercent) {
-      const diff = Math.abs(redCount - blueCount);
-      if (diff === 0) return 0;
-
-      const smallerTeamSize = Math.min(redCount, blueCount);
-      if (smallerTeamSize <= 0) return 0;
-
-      return (handicapPercent / 100) / smallerTeamSize;
-    }
-
     function formatPercent(value) {
       return `${(value * 100).toFixed(1)}%`;
+    }
+
+    function formatElo(value) {
+      return `${Math.round(value)}`;
     }
 
     function shuffleArray(input) {
@@ -629,27 +706,35 @@
       return arr;
     }
 
-    function buildCandidateTeams(presentPlayers, statsMap, handicapPercent) {
+    function buildCandidateTeams(presentPlayers, ratingsMap, handicapValue) {
       const shuffled = shuffleArray(presentPlayers);
       const redSize = Math.ceil(shuffled.length / 2);
       const redTeam = shuffled.slice(0, redSize);
       const blueTeam = shuffled.slice(redSize);
 
-      const redAvg = averageWinrate(redTeam, statsMap);
-      const blueAvg = averageWinrate(blueTeam, statsMap);
-      const rawDifference = Math.abs(redAvg - blueAvg);
-      const handicapPenalty = getUnevenTeamPenalty(redTeam.length, blueTeam.length, handicapPercent);
-      const finalScore = rawDifference + handicapPenalty;
+      const redAvg = getAverageElo(redTeam, ratingsMap);
+      const blueAvg = getAverageElo(blueTeam, ratingsMap);
+
+      const { redBonus, blueBonus } = getTeamEloBonuses(
+        redTeam.length,
+        blueTeam.length,
+        handicapValue
+      );
+
+      const effectiveRed = redAvg + redBonus;
+      const effectiveBlue = blueAvg + blueBonus;
+      const finalScore = Math.abs(effectiveRed - effectiveBlue);
 
       return {
         redTeam,
         blueTeam,
         redAvg,
         blueAvg,
-        rawDifference,
-        handicapPenalty,
-        finalScore,
-        handicapPercent
+        redBonus,
+        blueBonus,
+        effectiveRed,
+        effectiveBlue,
+        finalScore
       };
     }
 
@@ -663,13 +748,13 @@
       }
 
       const attempts = Number(balanceSliderEl.value);
-      const handicapPercent = Number(handicapSliderEl.value);
-      const statsMap = computePlayerStats();
+      const handicapValue = Number(handicapSliderEl.value);
+      const eloData = computeEloData();
 
       let bestCandidate = null;
 
       for (let i = 0; i < attempts; i += 1) {
-        const candidate = buildCandidateTeams(presentPlayers, statsMap, handicapPercent);
+        const candidate = buildCandidateTeams(presentPlayers, eloData.ratings, handicapValue);
         if (!bestCandidate || candidate.finalScore < bestCandidate.finalScore) {
           bestCandidate = candidate;
         }
@@ -694,8 +779,8 @@
     }
 
     function updateBalanceStatus(candidate = null, attempts = null) {
-      const statsMap = computePlayerStats();
-      const handicapPercent = Number(handicapSliderEl.value);
+      const eloData = computeEloData();
+      const handicapValue = Number(handicapSliderEl.value);
       const redTeam = candidate ? candidate.redTeam : getTeamPlayers('red');
       const blueTeam = candidate ? candidate.blueTeam : getTeamPlayers('blue');
 
@@ -704,32 +789,33 @@
         return;
       }
 
-      const redAvg = candidate ? candidate.redAvg : averageWinrate(redTeam, statsMap);
-      const blueAvg = candidate ? candidate.blueAvg : averageWinrate(blueTeam, statsMap);
-      const rawDifference = candidate ? candidate.rawDifference : Math.abs(redAvg - blueAvg);
-      const handicapPenalty = candidate
-        ? candidate.handicapPenalty
-        : getUnevenTeamPenalty(redTeam.length, blueTeam.length, handicapPercent);
-      const finalScore = candidate ? candidate.finalScore : rawDifference + handicapPenalty;
+      const redAvg = candidate ? candidate.redAvg : getAverageElo(redTeam, eloData.ratings);
+      const blueAvg = candidate ? candidate.blueAvg : getAverageElo(blueTeam, eloData.ratings);
 
-      const smallerTeamSize = Math.min(redTeam.length, blueTeam.length);
-      const sameSize = redTeam.length === blueTeam.length;
+      const { redBonus, blueBonus } = candidate
+        ? { redBonus: candidate.redBonus, blueBonus: candidate.blueBonus }
+        : getTeamEloBonuses(redTeam.length, blueTeam.length, handicapValue);
+
+      const effectiveRed = candidate ? candidate.effectiveRed : redAvg + redBonus;
+      const effectiveBlue = candidate ? candidate.effectiveBlue : blueAvg + blueBonus;
+      const finalScore = candidate ? candidate.finalScore : Math.abs(effectiveRed - effectiveBlue);
 
       const lines = [
-        `Red average winrate: ${formatPercent(redAvg)}`,
-        `Blue average winrate: ${formatPercent(blueAvg)}`,
-        `Raw difference: ${formatPercent(rawDifference)}`
+        `Red average Elo: ${formatElo(redAvg)}`,
+        `Blue average Elo: ${formatElo(blueAvg)}`
       ];
 
-      if (sameSize) {
+      if (redBonus === 0 && blueBonus === 0) {
         lines.push('Small team handicap: none (teams are even)');
+      } else if (redBonus > 0) {
+        lines.push(`Small team handicap: +${formatElo(redBonus)} Elo to Red for player-count advantage`);
       } else {
-        lines.push(
-          `Small team handicap: ${Number(handicapPercent).toFixed(0)}% / ${smallerTeamSize} = ${formatPercent(handicapPenalty)}`
-        );
+        lines.push(`Small team handicap: +${formatElo(blueBonus)} Elo to Blue for player-count advantage`);
       }
 
-      lines.push(`Final balance score: ${formatPercent(finalScore)}`);
+      lines.push(`Effective Red Elo: ${formatElo(effectiveRed)}`);
+      lines.push(`Effective Blue Elo: ${formatElo(effectiveBlue)}`);
+      lines.push(`Final balance score: ${formatElo(finalScore)} Elo`);
 
       if (attempts !== null) {
         lines.unshift(`Selected best split from ${attempts} candidate team assignments.`);
@@ -868,6 +954,19 @@
       clearPresentSelections();
     }
 
+    function updateToggleButton() {
+      toggleUnselectedButtonEl.textContent = hideUnselectedPlayers
+        ? 'Show All Players'
+        : 'Hide Unselected Players';
+    }
+
+    function toggleUnselectedPlayers() {
+      hideUnselectedPlayers = !hideUnselectedPlayers;
+      savePageState();
+      updateToggleButton();
+      renderPlayers();
+    }
+
     function renderLatestGame() {
       games = loadGames();
 
@@ -882,12 +981,15 @@
           ? 'Score: none'
           : `Score: Red ${latest.scoreRed} - Blue ${latest.scoreBlue}`;
 
+      const marginMultiplier = getMarginMultiplier(latest.scoreRed, latest.scoreBlue);
+
       latestGameEl.textContent = [
         `Latest record: ${latest.date}`,
         `Winner: ${latest.winner === 'red' ? 'Red' : 'Blue'}`,
         `Red: ${(latest.redTeam || []).map(player => player.name).join(', ') || '(none)'}`,
         `Blue: ${(latest.blueTeam || []).map(player => player.name).join(', ') || '(none)'}`,
-        scoreText
+        scoreText,
+        `Elo margin multiplier: ${marginMultiplier.toFixed(2)}x`
       ].join('\n');
     }
 
@@ -909,45 +1011,58 @@
         return;
       }
 
-      players.forEach(player => {
-        const state = getPlayerState(player.id);
+      const visiblePlayers = hideUnselectedPlayers
+        ? players.filter(player => getPlayerState(player.id).present)
+        : players;
 
-        const row = document.createElement('div');
-        row.className = 'player-row';
+      if (visiblePlayers.length === 0) {
+        const emptyState = document.createElement('div');
+        emptyState.className = 'empty-state';
+        emptyState.textContent = hideUnselectedPlayers
+          ? 'No players are currently selected.'
+          : 'No players found. Add players in Player Management first.';
+        playerListEl.appendChild(emptyState);
+      } else {
+        visiblePlayers.forEach(player => {
+          const state = getPlayerState(player.id);
 
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = state.present;
-        checkbox.addEventListener('change', () => {
-          clearError();
-          state.present = checkbox.checked;
-          if (!state.present) state.team = '';
-          savePageState();
-          renderPlayers();
-          updateBalanceStatus();
+          const row = document.createElement('div');
+          row.className = 'player-row';
+
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = state.present;
+          checkbox.addEventListener('change', () => {
+            clearError();
+            state.present = checkbox.checked;
+            if (!state.present) state.team = '';
+            savePageState();
+            renderPlayers();
+            updateBalanceStatus();
+          });
+
+          const name = document.createElement('div');
+          name.className = `player-name ${state.team || 'none'}`;
+          name.textContent = player.name;
+          name.addEventListener('click', () => {
+            clearError();
+            if (!state.present) return;
+            state.team = nextTeam(state.team);
+            savePageState();
+            renderPlayers();
+            updateBalanceStatus();
+          });
+
+          const tag = document.createElement('div');
+          tag.className = 'tag';
+          tag.textContent = state.present ? (state.team || 'present') : 'away';
+
+          row.appendChild(checkbox);
+          row.appendChild(name);
+          row.appendChild(tag);
+          playerListEl.appendChild(row);
         });
-
-        const name = document.createElement('div');
-        name.className = `player-name ${state.team || 'none'}`;
-        name.textContent = player.name;
-        name.addEventListener('click', () => {
-          clearError();
-          if (!state.present) return;
-          state.team = nextTeam(state.team);
-          savePageState();
-          renderPlayers();
-          updateBalanceStatus();
-        });
-
-        const tag = document.createElement('div');
-        tag.className = 'tag';
-        tag.textContent = state.present ? (state.team || 'present') : 'away';
-
-        row.appendChild(checkbox);
-        row.appendChild(name);
-        row.appendChild(tag);
-        playerListEl.appendChild(row);
-      });
+      }
 
       const redPlayers = getTeamPlayers('red').map(player => player.name);
       const bluePlayers = getTeamPlayers('blue').map(player => player.name);
@@ -961,6 +1076,7 @@
         : '0 players';
 
       renderLatestGame();
+      updateToggleButton();
     }
 
     balanceSliderEl.addEventListener('input', () => {
@@ -981,12 +1097,14 @@
     document.getElementById('clearPresentButton').addEventListener('click', clearPresent);
     document.getElementById('recordRedWinButton').addEventListener('click', () => recordGame('red'));
     document.getElementById('recordBlueWinButton').addEventListener('click', () => recordGame('blue'));
+    toggleUnselectedButtonEl.addEventListener('click', toggleUnselectedPlayers);
 
     restorePageState();
     syncPresenceState();
 
     balanceValueEl.textContent = balanceSliderEl.value;
     handicapValueEl.textContent = handicapSliderEl.value;
+    updateToggleButton();
     renderPlayers();
     updateBalanceStatus();
   </script>

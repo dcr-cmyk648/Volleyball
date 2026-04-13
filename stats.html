@@ -345,7 +345,7 @@
     <div class="card">
       <h2>Player Standings</h2>
       <div class="small">
-        Sorted by winrate, then total games, then alphabetically. Players with 0 games are treated as 50.0%.
+        Sorted by Elo, then winrate, then total games, then alphabetically. Elo starts at 1500 and is recalculated from oldest game to newest game.
       </div>
       <div class="table-wrap" style="margin-top: 12px;">
         <table>
@@ -353,6 +353,7 @@
             <tr>
               <th>#</th>
               <th>Player</th>
+              <th>Elo</th>
               <th>Wins</th>
               <th>Games</th>
               <th>Winrate</th>
@@ -390,6 +391,10 @@
   <script>
     const PLAYER_STORAGE_KEY = 'gameDayPlayers';
     const GAME_STORAGE_KEY = 'gameDayGames';
+
+    const ELO_BASE = 1500;
+    const ELO_K = 20;
+    const DEFAULT_HANDICAP_ELO = 40;
 
     const statsTableBody = document.getElementById('statsTableBody');
     const historyList = document.getElementById('historyList');
@@ -441,24 +446,106 @@
       localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(games));
     }
 
+    function expectedScore(ratingA, ratingB) {
+      return 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400));
+    }
+
+    function getMarginMultiplier(scoreRed, scoreBlue) {
+      if (scoreRed === null || scoreBlue === null) {
+        return 1.0;
+      }
+
+      const pointDiff = Math.abs(scoreRed - scoreBlue);
+      return 1 + Math.min(pointDiff / 30, 0.5);
+    }
+
+    function getGamesSortedOldestFirst(gamesList) {
+      return [...gamesList].sort((a, b) => {
+        const dateA = a.date || '';
+        const dateB = b.date || '';
+        if (dateA !== dateB) {
+          return dateA.localeCompare(dateB);
+        }
+        const idA = typeof a.id === 'number' ? a.id : 0;
+        const idB = typeof b.id === 'number' ? b.id : 0;
+        return idA - idB;
+      });
+    }
+
+    function getAverageElo(team, ratingsMap) {
+      if (!team.length) {
+        return ELO_BASE;
+      }
+
+      const total = team.reduce((sum, player) => {
+        return sum + (ratingsMap[player.id] ?? ELO_BASE);
+      }, 0);
+
+      return total / team.length;
+    }
+
+    function getTeamEloBonuses(redCount, blueCount, handicapValue) {
+      if (redCount === blueCount) {
+        return { redBonus: 0, blueBonus: 0 };
+      }
+
+      if (redCount > blueCount) {
+        return { redBonus: handicapValue, blueBonus: 0 };
+      }
+
+      return { redBonus: 0, blueBonus: handicapValue };
+    }
+
     function computeStats(players, games) {
+      const ratings = {};
       const statsMap = {};
 
       players.forEach(player => {
+        ratings[player.id] = ELO_BASE;
         statsMap[player.id] = {
           id: player.id,
           name: player.name,
+          elo: ELO_BASE,
           wins: 0,
           games: 0,
           winrate: 0.5
         };
       });
 
-      games.forEach(game => {
+      const sortedGames = getGamesSortedOldestFirst(games);
+
+      sortedGames.forEach(game => {
         const redTeam = Array.isArray(game.redTeam) ? game.redTeam : [];
         const blueTeam = Array.isArray(game.blueTeam) ? game.blueTeam : [];
 
+        const redAvg = getAverageElo(redTeam, ratings);
+        const blueAvg = getAverageElo(blueTeam, ratings);
+
+        const { redBonus, blueBonus } = getTeamEloBonuses(
+          redTeam.length,
+          blueTeam.length,
+          DEFAULT_HANDICAP_ELO
+        );
+
+        const effectiveRed = redAvg + redBonus;
+        const effectiveBlue = blueAvg + blueBonus;
+
+        const expectedRed = expectedScore(effectiveRed, effectiveBlue);
+        const expectedBlue = 1 - expectedRed;
+
+        const actualRed = game.winner === 'red' ? 1 : 0;
+        const actualBlue = game.winner === 'blue' ? 1 : 0;
+
+        const marginMultiplier = getMarginMultiplier(game.scoreRed, game.scoreBlue);
+        const redDelta = ELO_K * marginMultiplier * (actualRed - expectedRed);
+        const blueDelta = ELO_K * marginMultiplier * (actualBlue - expectedBlue);
+
         redTeam.forEach(player => {
+          if (ratings[player.id] === undefined) {
+            ratings[player.id] = ELO_BASE;
+          }
+          ratings[player.id] += redDelta;
+
           if (statsMap[player.id]) {
             statsMap[player.id].games += 1;
             if (game.winner === 'red') {
@@ -468,6 +555,11 @@
         });
 
         blueTeam.forEach(player => {
+          if (ratings[player.id] === undefined) {
+            ratings[player.id] = ELO_BASE;
+          }
+          ratings[player.id] += blueDelta;
+
           if (statsMap[player.id]) {
             statsMap[player.id].games += 1;
             if (game.winner === 'blue') {
@@ -478,11 +570,13 @@
       });
 
       const rows = Object.values(statsMap).map(player => {
+        player.elo = ratings[player.id] ?? ELO_BASE;
         player.winrate = player.games === 0 ? 0.5 : player.wins / player.games;
         return player;
       });
 
       rows.sort((a, b) => {
+        if (b.elo !== a.elo) return b.elo - a.elo;
         if (b.winrate !== a.winrate) return b.winrate - a.winrate;
         if (b.games !== a.games) return b.games - a.games;
         return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
@@ -517,7 +611,7 @@
       if (rows.length === 0) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 5;
+        td.colSpan = 6;
         td.innerHTML = '<div class="empty-state">No players found.</div>';
         tr.appendChild(td);
         statsTableBody.appendChild(tr);
@@ -529,6 +623,7 @@
         tr.innerHTML = `
           <td>${index + 1}</td>
           <td>${player.name}</td>
+          <td>${Math.round(player.elo)}</td>
           <td>${player.wins}</td>
           <td>${player.games}</td>
           <td>${formatPercent(player.winrate)}</td>
@@ -557,6 +652,7 @@
         const winnerText = game.winner === 'red' ? 'Red Team' : 'Blue Team';
         const redNames = (game.redTeam || []).map(player => player.name).join(', ') || '(none)';
         const blueNames = (game.blueTeam || []).map(player => player.name).join(', ') || '(none)';
+        const marginMultiplier = getMarginMultiplier(game.scoreRed, game.scoreBlue);
 
         card.innerHTML = `
           <div class="game-header">
@@ -579,6 +675,7 @@
             </div>
           </div>
           <div class="small">${formatScore(game)}</div>
+          <div class="small">Elo margin multiplier: ${marginMultiplier.toFixed(2)}x</div>
         `;
 
         const deleteButton = card.querySelector('button[data-game-id]');

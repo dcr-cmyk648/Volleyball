@@ -130,6 +130,12 @@
       border-color: rgba(96, 165, 250, 0.35);
     }
 
+    button.success {
+      background: rgba(34, 197, 94, 0.16);
+      color: #bbf7d0;
+      border-color: rgba(34, 197, 94, 0.35);
+    }
+
     .controls {
       display: flex;
       gap: 10px;
@@ -296,6 +302,32 @@
       background: rgba(255,255,255,0.03);
     }
 
+    dialog {
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 0;
+      width: min(92vw, 460px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+      background: var(--card);
+      color: var(--text);
+    }
+
+    dialog::backdrop {
+      background: rgba(0, 0, 0, 0.55);
+    }
+
+    .dialog-content {
+      padding: 18px;
+      background: var(--card);
+    }
+
+    .dialog-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
     @media (max-width: 700px) {
       .summary-grid,
       .score-grid {
@@ -334,6 +366,13 @@
           Balance strength: <span id="balanceValue">10</span> candidate team splits
         </label>
         <input type="range" id="balanceSlider" min="1" max="50" value="10" />
+      </div>
+
+      <div class="slider-row">
+        <label for="kSlider">
+          Elo K-factor: <span id="kValue">28</span>
+        </label>
+        <input type="range" id="kSlider" min="8" max="60" value="28" />
       </div>
 
       <div class="slider-row">
@@ -391,13 +430,32 @@
     </div>
   </div>
 
+  <dialog id="defaultDatabaseDialog">
+    <div class="dialog-content">
+      <h2>Load Default Database?</h2>
+      <div id="defaultDatabaseText" class="small">
+        A bundled default database is available.
+      </div>
+      <div id="defaultDatabaseStatus" class="status">Checking default database...</div>
+      <div class="dialog-actions">
+        <button id="confirmLoadDefaultDatabaseButton" class="success">Yes, Load Default Database</button>
+        <button id="declineLoadDefaultDatabaseButton" class="secondary">No</button>
+      </div>
+    </div>
+  </dialog>
+
   <script>
     const PLAYER_STORAGE_KEY = 'gameDayPlayers';
     const GAME_STORAGE_KEY = 'gameDayGames';
     const PAGE_STATE_KEY = 'gameDayMainPageState';
 
+    const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
+    const DEFAULT_DB_SOURCE_PATH = './default_database';
+
     const ELO_BASE = 1500;
-    const ELO_K = 28;
+    const DEFAULT_ELO_K = 28;
+    const DEFAULT_BALANCE_ATTEMPTS = 10;
+    const DEFAULT_HANDICAP_ELO = 40;
 
     const playerListEl = document.getElementById('playerList');
     const redSummaryEl = document.getElementById('redSummary');
@@ -407,16 +465,25 @@
     const errorMessageEl = document.getElementById('errorMessage');
     const balanceSliderEl = document.getElementById('balanceSlider');
     const balanceValueEl = document.getElementById('balanceValue');
+    const kSliderEl = document.getElementById('kSlider');
+    const kValueEl = document.getElementById('kValue');
     const handicapSliderEl = document.getElementById('handicapSlider');
     const handicapValueEl = document.getElementById('handicapValue');
     const redScoreEl = document.getElementById('redScore');
     const blueScoreEl = document.getElementById('blueScore');
     const toggleUnselectedButtonEl = document.getElementById('toggleUnselectedButton');
 
+    const defaultDatabaseDialog = document.getElementById('defaultDatabaseDialog');
+    const defaultDatabaseTextEl = document.getElementById('defaultDatabaseText');
+    const defaultDatabaseStatusEl = document.getElementById('defaultDatabaseStatus');
+    const confirmLoadDefaultDatabaseButtonEl = document.getElementById('confirmLoadDefaultDatabaseButton');
+    const declineLoadDefaultDatabaseButtonEl = document.getElementById('declineLoadDefaultDatabaseButton');
+
     let players = loadPlayers();
     let games = loadGames();
     let presenceState = buildPresenceState(players);
     let hideUnselectedPlayers = false;
+    let defaultDatabaseMeta = null;
 
     function loadPlayers() {
       const saved = localStorage.getItem(PLAYER_STORAGE_KEY);
@@ -483,7 +550,10 @@
         presenceState,
         redScore: redScoreEl.value,
         blueScore: blueScoreEl.value,
-        hideUnselectedPlayers
+        hideUnselectedPlayers,
+        balanceAttempts: Number(balanceSliderEl.value),
+        handicapElo: Number(handicapSliderEl.value),
+        eloK: Number(kSliderEl.value)
       };
 
       localStorage.setItem(PAGE_STATE_KEY, JSON.stringify(payload));
@@ -500,6 +570,18 @@
       redScoreEl.value = typeof saved.redScore === 'string' ? saved.redScore : '';
       blueScoreEl.value = typeof saved.blueScore === 'string' ? saved.blueScore : '';
       hideUnselectedPlayers = Boolean(saved.hideUnselectedPlayers);
+
+      if (typeof saved.balanceAttempts === 'number' && !Number.isNaN(saved.balanceAttempts)) {
+        balanceSliderEl.value = String(saved.balanceAttempts);
+      }
+
+      if (typeof saved.handicapElo === 'number' && !Number.isNaN(saved.handicapElo)) {
+        handicapSliderEl.value = String(saved.handicapElo);
+      }
+
+      if (typeof saved.eloK === 'number' && !Number.isNaN(saved.eloK)) {
+        kSliderEl.value = String(saved.eloK);
+      }
     }
 
     function syncPresenceState() {
@@ -539,6 +621,11 @@
 
     function setError(message) {
       errorMessageEl.textContent = message;
+    }
+
+    function getCurrentEloK() {
+      const value = Number(kSliderEl.value);
+      return Number.isNaN(value) ? DEFAULT_ELO_K : value;
     }
 
     function expectedScore(ratingA, ratingB) {
@@ -594,6 +681,7 @@
     function computeEloData() {
       const ratings = {};
       const stats = {};
+      const eloK = getCurrentEloK();
 
       players.forEach(player => {
         ratings[player.id] = ELO_BASE;
@@ -630,8 +718,8 @@
         const actualBlue = game.winner === 'blue' ? 1 : 0;
 
         const marginMultiplier = getMarginMultiplier(game.scoreRed, game.scoreBlue);
-        const redDelta = ELO_K * marginMultiplier * (actualRed - expectedRed);
-        const blueDelta = ELO_K * marginMultiplier * (actualBlue - expectedBlue);
+        const redDelta = eloK * marginMultiplier * (actualRed - expectedRed);
+        const blueDelta = eloK * marginMultiplier * (actualBlue - expectedBlue);
 
         redTeam.forEach(player => {
           if (ratings[player.id] === undefined) {
@@ -687,10 +775,6 @@
         const state = getPlayerState(player.id);
         return state.present && state.team === teamName;
       });
-    }
-
-    function formatPercent(value) {
-      return `${(value * 100).toFixed(1)}%`;
     }
 
     function formatElo(value) {
@@ -781,6 +865,7 @@
     function updateBalanceStatus(candidate = null, attempts = null) {
       const eloData = computeEloData();
       const handicapValue = Number(handicapSliderEl.value);
+      const eloK = getCurrentEloK();
       const redTeam = candidate ? candidate.redTeam : getTeamPlayers('red');
       const blueTeam = candidate ? candidate.blueTeam : getTeamPlayers('blue');
 
@@ -801,6 +886,7 @@
       const finalScore = candidate ? candidate.finalScore : Math.abs(effectiveRed - effectiveBlue);
 
       const lines = [
+        `Current Elo K-factor: ${eloK}`,
         `Red average Elo: ${formatElo(redAvg)}`,
         `Blue average Elo: ${formatElo(blueAvg)}`
       ];
@@ -1079,12 +1165,186 @@
       updateToggleButton();
     }
 
+    function getPromptChoice() {
+      return localStorage.getItem(DEFAULT_DB_PROMPT_KEY) || '';
+    }
+
+    function setPromptChoice(value) {
+      localStorage.setItem(DEFAULT_DB_PROMPT_KEY, value);
+    }
+
+    function hasNoRealData() {
+      const currentPlayers = loadPlayers();
+      const currentGames = loadGames();
+
+      if (currentGames.length > 0) return false;
+      if (currentPlayers.length === 0) return true;
+
+      if (
+        currentPlayers.length === 1 &&
+        currentPlayers[0].name === 'DustinR' &&
+        Number(currentPlayers[0].id) === 1
+      ) {
+        return true;
+      }
+
+      return false;
+    }
+
+    function normalizeImportedPlayers(playersList) {
+      return playersList
+        .filter(player => player && typeof player.name === 'string')
+        .map(player => ({
+          id: player.id,
+          name: player.name.trim()
+        }))
+        .filter(player => player.name.length > 0);
+    }
+
+    function normalizeImportedGames(gamesList) {
+      return gamesList
+        .filter(game => game && typeof game === 'object')
+        .map((game, index) => ({
+          id: game.id ?? (Date.now() + index),
+          date: game.date ?? '',
+          redTeam: Array.isArray(game.redTeam) ? game.redTeam : [],
+          blueTeam: Array.isArray(game.blueTeam) ? game.blueTeam : [],
+          scoreRed: typeof game.scoreRed === 'undefined' ? null : game.scoreRed,
+          scoreBlue: typeof game.scoreBlue === 'undefined' ? null : game.scoreBlue,
+          winner: game.winner === 'blue' ? 'blue' : 'red'
+        }));
+    }
+
+    function getLatestGameDate(gamesList) {
+      if (!gamesList.length) return 'unknown date';
+
+      const latest = [...gamesList]
+        .map(game => game.date || '')
+        .filter(Boolean)
+        .sort()
+        .at(-1);
+
+      return latest || 'unknown date';
+    }
+
+    async function fetchDefaultDatabase() {
+      const response = await fetch(DEFAULT_DB_SOURCE_PATH, { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error('Could not load the default database file.');
+      }
+
+      const parsed = await response.json();
+
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Default database file is invalid.');
+      }
+
+      const normalizedPlayers = normalizeImportedPlayers(
+        Array.isArray(parsed.players) ? parsed.players : []
+      );
+
+      const normalizedGames = normalizeImportedGames(
+        Array.isArray(parsed.games) ? parsed.games : []
+      );
+
+      return {
+        players: normalizedPlayers,
+        games: normalizedGames,
+        latestGameDate: getLatestGameDate(normalizedGames)
+      };
+    }
+
+    async function prepareDefaultDatabaseMeta() {
+      if (defaultDatabaseMeta) {
+        return defaultDatabaseMeta;
+      }
+
+      defaultDatabaseMeta = await fetchDefaultDatabase();
+      return defaultDatabaseMeta;
+    }
+
+    function openDefaultDatabaseDialog(meta) {
+      defaultDatabaseTextEl.textContent =
+        `The bundled default database includes games through ${meta.latestGameDate}.`;
+
+      defaultDatabaseStatusEl.textContent =
+        `Default database has ${meta.players.length} players and ${meta.games.length} games.`;
+
+      confirmLoadDefaultDatabaseButtonEl.disabled = false;
+      defaultDatabaseDialog.showModal();
+    }
+
+    async function maybeOfferDefaultDatabase() {
+      if (!hasNoRealData()) {
+        return;
+      }
+
+      if (getPromptChoice() !== '') {
+        return;
+      }
+
+      try {
+        defaultDatabaseStatusEl.textContent = 'Checking default database...';
+        confirmLoadDefaultDatabaseButtonEl.disabled = true;
+        const meta = await prepareDefaultDatabaseMeta();
+        openDefaultDatabaseDialog(meta);
+      } catch (error) {
+        defaultDatabaseTextEl.textContent = 'A bundled default database is available.';
+        defaultDatabaseStatusEl.textContent = 'Could not read the default database file.';
+        confirmLoadDefaultDatabaseButtonEl.disabled = true;
+        defaultDatabaseDialog.showModal();
+      }
+    }
+
+    async function loadDefaultDatabaseIntoStorage() {
+      const meta = await prepareDefaultDatabaseMeta();
+
+      localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(meta.players));
+      localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(meta.games));
+
+      presenceState = buildPresenceState(meta.players);
+      players = loadPlayers();
+      games = loadGames();
+      hideUnselectedPlayers = false;
+
+      redScoreEl.value = '';
+      blueScoreEl.value = '';
+      balanceSliderEl.value = String(DEFAULT_BALANCE_ATTEMPTS);
+      handicapSliderEl.value = String(DEFAULT_HANDICAP_ELO);
+
+      const savedState = loadPageState();
+      const preservedK =
+        typeof savedState?.eloK === 'number' && !Number.isNaN(savedState.eloK)
+          ? savedState.eloK
+          : getCurrentEloK();
+
+      kSliderEl.value = String(preservedK);
+
+      savePageState();
+      setPromptChoice('loaded');
+
+      balanceValueEl.textContent = balanceSliderEl.value;
+      handicapValueEl.textContent = handicapSliderEl.value;
+      kValueEl.textContent = kSliderEl.value;
+
+      renderPlayers();
+      updateBalanceStatus();
+    }
+
     balanceSliderEl.addEventListener('input', () => {
       balanceValueEl.textContent = balanceSliderEl.value;
+      savePageState();
+    });
+
+    kSliderEl.addEventListener('input', () => {
+      kValueEl.textContent = kSliderEl.value;
+      savePageState();
+      updateBalanceStatus();
     });
 
     handicapSliderEl.addEventListener('input', () => {
       handicapValueEl.textContent = handicapSliderEl.value;
+      savePageState();
       updateBalanceStatus();
     });
 
@@ -1099,14 +1359,34 @@
     document.getElementById('recordBlueWinButton').addEventListener('click', () => recordGame('blue'));
     toggleUnselectedButtonEl.addEventListener('click', toggleUnselectedPlayers);
 
+    confirmLoadDefaultDatabaseButtonEl.addEventListener('click', async () => {
+      try {
+        confirmLoadDefaultDatabaseButtonEl.disabled = true;
+        defaultDatabaseStatusEl.textContent = 'Loading default database...';
+        await loadDefaultDatabaseIntoStorage();
+        defaultDatabaseDialog.close();
+        alert('Default database loaded.');
+      } catch (error) {
+        defaultDatabaseStatusEl.textContent = 'Failed to load the default database.';
+        confirmLoadDefaultDatabaseButtonEl.disabled = false;
+      }
+    });
+
+    declineLoadDefaultDatabaseButtonEl.addEventListener('click', () => {
+      setPromptChoice('declined');
+      defaultDatabaseDialog.close();
+    });
+
     restorePageState();
     syncPresenceState();
 
     balanceValueEl.textContent = balanceSliderEl.value;
     handicapValueEl.textContent = handicapSliderEl.value;
+    kValueEl.textContent = kSliderEl.value;
     updateToggleButton();
     renderPlayers();
     updateBalanceStatus();
+    maybeOfferDefaultDatabase();
   </script>
 </body>
 </html>

@@ -577,29 +577,23 @@
       return total / team.length;
     }
 
-    function getTeamEloBonuses(redCount, blueCount, handicapValue) {
-      if (redCount === blueCount) {
-        return { redBonus: 0, blueBonus: 0 };
-      }
+function getTeamEloBonuses(redCount, blueCount, handicapValue) {
+  if (redCount === blueCount) {
+    return { redBonus: 0, blueBonus: 0 };
+  }
 
-      const smallerTeamSize = Math.min(redCount, blueCount);
+  const smallerTeamSize = Math.min(redCount, blueCount);
 
-      if (smallerTeamSize >= 6) {
-        return { redBonus: 0, blueBonus: 0 };
-      }
+  if (smallerTeamSize >= 6) {
+    return { redBonus: 0, blueBonus: 0 };
+  }
 
-      if (redCount > blueCount) {
-        return { redBonus: handicapValue, blueBonus: 0 };
-      }
+  if (redCount > blueCount) {
+    return { redBonus: handicapValue, blueBonus: 0 };
+  }
 
-      return { redBonus: 0, blueBonus: handicapValue };
-    }
-
-    function formatPlayerEloPair(player, ratingsBefore, ratingsAfter) {
-      const before = Math.round(ratingsBefore[player.id] ?? ELO_BASE);
-      const after = Math.round(ratingsAfter[player.id] ?? ELO_BASE);
-      return `${player.name} (${before}, ${after})`;
-    }
+  return { redBonus: 0, blueBonus: handicapValue };
+}
 
     function computeStats(players, games) {
       const ratings = {};
@@ -706,8 +700,6 @@
         const redTeam = Array.isArray(game.redTeam) ? game.redTeam : [];
         const blueTeam = Array.isArray(game.blueTeam) ? game.blueTeam : [];
 
-        const ratingsBefore = { ...ratings };
-
         const redAvg = getAverageElo(redTeam, ratings);
         const blueAvg = getAverageElo(blueTeam, ratings);
 
@@ -730,6 +722,17 @@
         const redDelta = eloK * marginMultiplier * (actualRed - expectedRed);
         const blueDelta = eloK * marginMultiplier * (actualBlue - expectedBlue);
 
+        historyData.push({
+          ...game,
+          redAvgBefore: redAvg,
+          blueAvgBefore: blueAvg,
+          redBonus,
+          blueBonus,
+          effectiveRedBefore: effectiveRed,
+          effectiveBlueBefore: effectiveBlue,
+          marginMultiplier
+        });
+
         redTeam.forEach(player => {
           if (ratings[player.id] === undefined) {
             ratings[player.id] = ELO_BASE;
@@ -742,25 +745,6 @@
             ratings[player.id] = ELO_BASE;
           }
           ratings[player.id] += blueDelta;
-        });
-
-        const ratingsAfter = { ...ratings };
-
-        historyData.push({
-          ...game,
-          redAvgBefore: redAvg,
-          blueAvgBefore: blueAvg,
-          redBonus,
-          blueBonus,
-          effectiveRedBefore: effectiveRed,
-          effectiveBlueBefore: effectiveBlue,
-          marginMultiplier,
-          redPlayersWithElo: redTeam.map(player =>
-            formatPlayerEloPair(player, ratingsBefore, ratingsAfter)
-          ),
-          bluePlayersWithElo: blueTeam.map(player =>
-            formatPlayerEloPair(player, ratingsBefore, ratingsAfter)
-          )
         });
       });
 
@@ -835,8 +819,8 @@
 
         const winnerClass = game.winner === 'red' ? 'red' : 'blue';
         const winnerText = game.winner === 'red' ? 'Red Team' : 'Blue Team';
-        const redNames = (game.redPlayersWithElo || []).join(', ') || '(none)';
-        const blueNames = (game.bluePlayersWithElo || []).join(', ') || '(none)';
+        const redNames = (game.redTeam || []).map(player => player.name).join(', ') || '(none)';
+        const blueNames = (game.blueTeam || []).map(player => player.name).join(', ') || '(none)';
 
         const redEloLine = game.redBonus > 0
           ? `Team Elo: ${Math.round(game.redAvgBefore)} (+${Math.round(game.redBonus)} handicap) = ${Math.round(game.effectiveRedBefore)}`
@@ -1084,4 +1068,86 @@
         confirmLoadDefaultDatabaseButtonEl.disabled = true;
         const meta = await prepareDefaultDatabaseMeta();
         openDefaultDatabaseDialog(meta, 'prompt');
-      } catch (
+      } catch (error) {
+        defaultDatabaseDialogMode = 'prompt';
+        defaultDatabaseTextEl.textContent = 'A bundled default database is available.';
+        defaultDatabaseStatusEl.textContent = 'Could not read the default database file.';
+        confirmLoadDefaultDatabaseButtonEl.disabled = true;
+        defaultDatabaseDialog.showModal();
+      }
+    }
+
+    async function openManualDefaultDatabaseDialog() {
+      try {
+        defaultDatabaseStatusEl.textContent = 'Checking default database...';
+        confirmLoadDefaultDatabaseButtonEl.disabled = true;
+        const meta = await prepareDefaultDatabaseMeta();
+        openDefaultDatabaseDialog(meta, 'manual');
+      } catch (error) {
+        defaultDatabaseDialogMode = 'manual';
+        defaultDatabaseTextEl.textContent = 'A bundled default database is available.';
+        defaultDatabaseStatusEl.textContent = 'Could not read the default database file.';
+        confirmLoadDefaultDatabaseButtonEl.disabled = true;
+        defaultDatabaseDialog.showModal();
+      }
+    }
+
+    async function loadDefaultDatabaseIntoStorage() {
+      const meta = await prepareDefaultDatabaseMeta();
+
+      savePlayers(meta.players);
+      saveGames(meta.games);
+      renderAll();
+
+      databaseStatus.textContent =
+        `Loaded default database with ${meta.players.length} players and ${meta.games.length} games.`;
+    }
+
+    document.getElementById('exportDatabaseButton').addEventListener('click', exportDatabase);
+    document.getElementById('importDatabaseButton').addEventListener('click', () => importFileInput.click());
+    loadDefaultDatabaseButtonEl.addEventListener('click', openManualDefaultDatabaseDialog);
+
+    importFileInput.addEventListener('change', (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      importDatabaseFromFile(file);
+      event.target.value = '';
+    });
+
+    document.getElementById('confirmDeleteGameButton').addEventListener('click', confirmDeleteGame);
+    document.getElementById('cancelDeleteGameButton').addEventListener('click', closeDeleteGameDialog);
+
+    kSliderEl.addEventListener('input', () => {
+      kValueEl.textContent = kSliderEl.value;
+      savePageStatePatch({ eloK: Number(kSliderEl.value) });
+      renderAll();
+      databaseStatus.textContent = `Updated Elo K-factor to ${kSliderEl.value}.`;
+    });
+
+    confirmLoadDefaultDatabaseButtonEl.addEventListener('click', async () => {
+      try {
+        confirmLoadDefaultDatabaseButtonEl.disabled = true;
+        defaultDatabaseStatusEl.textContent = 'Loading default database...';
+        await loadDefaultDatabaseIntoStorage();
+        setPromptChoice('loaded');
+        defaultDatabaseDialog.close();
+      } catch (error) {
+        defaultDatabaseStatusEl.textContent = 'Failed to load the default database.';
+        confirmLoadDefaultDatabaseButtonEl.disabled = false;
+      }
+    });
+
+    declineLoadDefaultDatabaseButtonEl.addEventListener('click', () => {
+      if (defaultDatabaseDialogMode === 'prompt') {
+        setPromptChoice('declined');
+      }
+      defaultDatabaseDialog.close();
+    });
+
+    restoreSharedSettings();
+    kValueEl.textContent = kSliderEl.value;
+    renderAll();
+    maybeOfferDefaultDatabase();
+  </script>
+</body>
+</html>

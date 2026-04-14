@@ -577,17 +577,23 @@
       return total / team.length;
     }
 
-    function getTeamEloBonuses(redCount, blueCount, handicapValue) {
-      if (redCount === blueCount) {
-        return { redBonus: 0, blueBonus: 0 };
-      }
+function getTeamEloBonuses(redCount, blueCount, handicapValue) {
+  if (redCount === blueCount) {
+    return { redBonus: 0, blueBonus: 0 };
+  }
 
-      if (redCount > blueCount) {
-        return { redBonus: handicapValue, blueBonus: 0 };
-      }
+  const smallerTeamSize = Math.min(redCount, blueCount);
 
-      return { redBonus: 0, blueBonus: handicapValue };
-    }
+  if (smallerTeamSize >= 6) {
+    return { redBonus: 0, blueBonus: 0 };
+  }
+
+  if (redCount > blueCount) {
+    return { redBonus: handicapValue, blueBonus: 0 };
+  }
+
+  return { redBonus: 0, blueBonus: handicapValue };
+}
 
     function computeStats(players, games) {
       const ratings = {};

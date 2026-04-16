@@ -147,7 +147,8 @@
       margin: 12px 0 6px;
     }
 
-    .slider-row label {
+    .slider-row label,
+    .checkbox-row label {
       display: block;
       font-size: 14px;
       color: var(--muted);
@@ -156,6 +157,25 @@
 
     .slider-row input[type="range"] {
       width: 100%;
+      accent-color: #93c5fd;
+    }
+
+    .checkbox-row {
+      margin-bottom: 12px;
+    }
+
+    .checkbox-row label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 0;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .checkbox-row input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
       accent-color: #93c5fd;
     }
 
@@ -406,6 +426,13 @@
     <div class="card">
       <h2>Record Game</h2>
 
+      <div class="checkbox-row">
+        <label for="leagueGameCheckbox">
+          <input type="checkbox" id="leagueGameCheckbox" />
+          This is a league game
+        </label>
+      </div>
+
       <div class="score-grid">
         <div class="field">
           <label for="redScore">Red score (optional)</label>
@@ -452,6 +479,10 @@
     const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
     const DEFAULT_DB_SOURCE_PATH = './default_database';
 
+    const LEAGUE_TEAM_ID = 'league_team';
+    const LEAGUE_TEAM_NAME = 'League Team';
+    const LEAGUE_TEAM_SIZE = 6;
+
     const ELO_BASE = 1500;
     const DEFAULT_ELO_K = 28;
     const DEFAULT_BALANCE_ATTEMPTS = 10;
@@ -471,7 +502,9 @@
     const handicapValueEl = document.getElementById('handicapValue');
     const redScoreEl = document.getElementById('redScore');
     const blueScoreEl = document.getElementById('blueScore');
+    const leagueGameCheckboxEl = document.getElementById('leagueGameCheckbox');
     const toggleUnselectedButtonEl = document.getElementById('toggleUnselectedButton');
+    const assignTeamsButtonEl = document.getElementById('assignTeamsButton');
 
     const defaultDatabaseDialog = document.getElementById('defaultDatabaseDialog');
     const defaultDatabaseTextEl = document.getElementById('defaultDatabaseText');
@@ -553,7 +586,8 @@
         hideUnselectedPlayers,
         balanceAttempts: Number(balanceSliderEl.value),
         handicapElo: Number(handicapSliderEl.value),
-        eloK: Number(kSliderEl.value)
+        eloK: Number(kSliderEl.value),
+        leagueGame: leagueGameCheckboxEl.checked
       };
 
       localStorage.setItem(PAGE_STATE_KEY, JSON.stringify(payload));
@@ -570,6 +604,7 @@
       redScoreEl.value = typeof saved.redScore === 'string' ? saved.redScore : '';
       blueScoreEl.value = typeof saved.blueScore === 'string' ? saved.blueScore : '';
       hideUnselectedPlayers = Boolean(saved.hideUnselectedPlayers);
+      leagueGameCheckboxEl.checked = Boolean(saved.leagueGame);
 
       if (typeof saved.balanceAttempts === 'number' && !Number.isNaN(saved.balanceAttempts)) {
         balanceSliderEl.value = String(saved.balanceAttempts);
@@ -623,6 +658,10 @@
       errorMessageEl.textContent = message;
     }
 
+    function isLeagueGameMode() {
+      return leagueGameCheckboxEl.checked;
+    }
+
     function getCurrentEloK() {
       const value = Number(kSliderEl.value);
       return Number.isNaN(value) ? DEFAULT_ELO_K : value;
@@ -666,23 +705,27 @@
       return total / team.length;
     }
 
-function getTeamEloBonuses(redCount, blueCount, handicapValue) {
-  if (redCount === blueCount) {
-    return { redBonus: 0, blueBonus: 0 };
-  }
+    function getLeagueTeamRating(ratingsMap) {
+      return ratingsMap[LEAGUE_TEAM_ID] ?? ELO_BASE;
+    }
 
-  const smallerTeamSize = Math.min(redCount, blueCount);
+    function getTeamEloBonuses(redCount, blueCount, handicapValue) {
+      if (redCount === blueCount) {
+        return { redBonus: 0, blueBonus: 0 };
+      }
 
-  if (smallerTeamSize >= 6) {
-    return { redBonus: 0, blueBonus: 0 };
-  }
+      const smallerTeamSize = Math.min(redCount, blueCount);
 
-  if (redCount > blueCount) {
-    return { redBonus: handicapValue, blueBonus: 0 };
-  }
+      if (smallerTeamSize >= 6) {
+        return { redBonus: 0, blueBonus: 0 };
+      }
 
-  return { redBonus: 0, blueBonus: handicapValue };
-}
+      if (redCount > blueCount) {
+        return { redBonus: handicapValue, blueBonus: 0 };
+      }
+
+      return { redBonus: 0, blueBonus: handicapValue };
+    }
 
     function computeEloData() {
       const ratings = {};
@@ -698,19 +741,25 @@ function getTeamEloBonuses(redCount, blueCount, handicapValue) {
         };
       });
 
+      ratings[LEAGUE_TEAM_ID] = ELO_BASE;
+
       const sortedGames = getGamesSortedOldestFirst(games);
       const handicapValue = Number(handicapSliderEl.value);
 
       sortedGames.forEach(game => {
         const redTeam = Array.isArray(game.redTeam) ? game.redTeam : [];
-        const blueTeam = Array.isArray(game.blueTeam) ? game.blueTeam : [];
+        const isLeagueGame = Boolean(game.isLeagueGame);
+        const blueTeam = isLeagueGame ? [] : (Array.isArray(game.blueTeam) ? game.blueTeam : []);
+        const blueCount = isLeagueGame ? LEAGUE_TEAM_SIZE : blueTeam.length;
 
         const redAvg = getAverageElo(redTeam, ratings);
-        const blueAvg = getAverageElo(blueTeam, ratings);
+        const blueAvg = isLeagueGame
+          ? getLeagueTeamRating(ratings)
+          : getAverageElo(blueTeam, ratings);
 
         const { redBonus, blueBonus } = getTeamEloBonuses(
           redTeam.length,
-          blueTeam.length,
+          blueCount,
           handicapValue
         );
 
@@ -741,19 +790,23 @@ function getTeamEloBonuses(redCount, blueCount, handicapValue) {
           }
         });
 
-        blueTeam.forEach(player => {
-          if (ratings[player.id] === undefined) {
-            ratings[player.id] = ELO_BASE;
-          }
-          ratings[player.id] += blueDelta;
-
-          if (stats[player.id]) {
-            stats[player.id].games += 1;
-            if (game.winner === 'blue') {
-              stats[player.id].wins += 1;
+        if (isLeagueGame) {
+          ratings[LEAGUE_TEAM_ID] += blueDelta;
+        } else {
+          blueTeam.forEach(player => {
+            if (ratings[player.id] === undefined) {
+              ratings[player.id] = ELO_BASE;
             }
-          }
-        });
+            ratings[player.id] += blueDelta;
+
+            if (stats[player.id]) {
+              stats[player.id].games += 1;
+              if (game.winner === 'blue') {
+                stats[player.id].wins += 1;
+              }
+            }
+          });
+        }
       });
 
       Object.keys(stats).forEach(id => {
@@ -831,6 +884,11 @@ function getTeamEloBonuses(redCount, blueCount, handicapValue) {
     function assignBalancedTeams() {
       clearError();
 
+      if (isLeagueGameMode()) {
+        setError('Assign Teams is unavailable for league games.');
+        return;
+      }
+
       const presentPlayers = getPresentPlayers();
       if (presentPlayers.length < 2) {
         setError('At least 2 players must be marked present.');
@@ -872,6 +930,52 @@ function getTeamEloBonuses(redCount, blueCount, handicapValue) {
       const eloData = computeEloData();
       const handicapValue = Number(handicapSliderEl.value);
       const eloK = getCurrentEloK();
+
+      if (isLeagueGameMode()) {
+        const redTeam = getTeamPlayers('red');
+        const blueCount = LEAGUE_TEAM_SIZE;
+
+        if (redTeam.length === 0) {
+          balanceStatusEl.textContent = 'League game mode: select at least 1 red-team player.';
+          return;
+        }
+
+        const redAvg = getAverageElo(redTeam, eloData.ratings);
+        const blueAvg = getLeagueTeamRating(eloData.ratings);
+
+        const { redBonus, blueBonus } = getTeamEloBonuses(
+          redTeam.length,
+          blueCount,
+          handicapValue
+        );
+
+        const effectiveRed = redAvg + redBonus;
+        const effectiveBlue = blueAvg + blueBonus;
+        const finalScore = Math.abs(effectiveRed - effectiveBlue);
+
+        const lines = [
+          `Current Elo K-factor: ${eloK}`,
+          `League game mode is on.`,
+          `Red average Elo: ${formatElo(redAvg)}`,
+          `Blue average Elo: ${formatElo(blueAvg)} (${LEAGUE_TEAM_NAME})`
+        ];
+
+        if (redBonus === 0 && blueBonus === 0) {
+          lines.push('Small team handicap: none');
+        } else if (redBonus > 0) {
+          lines.push(`Small team handicap: +${formatElo(redBonus)} Elo to Red for player-count advantage`);
+        } else {
+          lines.push(`Small team handicap: +${formatElo(blueBonus)} Elo to Blue for player-count advantage`);
+        }
+
+        lines.push(`Effective Red Elo: ${formatElo(effectiveRed)}`);
+        lines.push(`Effective Blue Elo: ${formatElo(effectiveBlue)}`);
+        lines.push(`Final balance score: ${formatElo(finalScore)} Elo`);
+
+        balanceStatusEl.textContent = lines.join('\n');
+        return;
+      }
+
       const redTeam = candidate ? candidate.redTeam : getTeamPlayers('red');
       const blueTeam = candidate ? candidate.blueTeam : getTeamPlayers('blue');
 
@@ -919,6 +1023,13 @@ function getTeamEloBonuses(redCount, blueCount, handicapValue) {
     function validateTeamSetup() {
       const redTeam = getTeamPlayers('red');
       const blueTeam = getTeamPlayers('blue');
+
+      if (isLeagueGameMode()) {
+        if (redTeam.length === 0) {
+          return 'Red team must have at least 1 player for a league game.';
+        }
+        return null;
+      }
 
       if (redTeam.length === 0 || blueTeam.length === 0) {
         return 'Both teams must have at least 1 player.';
@@ -968,7 +1079,7 @@ function getTeamEloBonuses(redCount, blueCount, handicapValue) {
       if (teamError) return { error: teamError };
 
       const redTeam = getTeamPlayers('red');
-      const blueTeam = getTeamPlayers('blue');
+      const blueTeam = isLeagueGameMode() ? [] : getTeamPlayers('blue');
 
       const scoreRed = parseOptionalScore(redScoreEl.value);
       const scoreBlue = parseOptionalScore(blueScoreEl.value);
@@ -983,7 +1094,15 @@ function getTeamEloBonuses(redCount, blueCount, handicapValue) {
         blueTeam: blueTeam.map(player => ({ id: player.id, name: player.name })),
         scoreRed,
         scoreBlue,
-        winner
+        winner,
+        isLeagueGame: isLeagueGameMode(),
+        leagueOpponent: isLeagueGameMode()
+          ? {
+              id: LEAGUE_TEAM_ID,
+              name: LEAGUE_TEAM_NAME,
+              size: LEAGUE_TEAM_SIZE
+            }
+          : null
       };
     }
 
@@ -1052,6 +1171,10 @@ function getTeamEloBonuses(redCount, blueCount, handicapValue) {
         : 'Hide Unselected Players';
     }
 
+    function updateLeagueModeUI() {
+      assignTeamsButtonEl.disabled = isLeagueGameMode();
+    }
+
     function toggleUnselectedPlayers() {
       hideUnselectedPlayers = !hideUnselectedPlayers;
       savePageState();
@@ -1068,18 +1191,23 @@ function getTeamEloBonuses(redCount, blueCount, handicapValue) {
       }
 
       const latest = games[0];
+      const isLeagueGame = Boolean(latest.isLeagueGame);
       const scoreText =
         latest.scoreRed === null || latest.scoreBlue === null
           ? 'Score: none'
           : `Score: Red ${latest.scoreRed} - Blue ${latest.scoreBlue}`;
 
       const marginMultiplier = getMarginMultiplier(latest.scoreRed, latest.scoreBlue);
+      const blueLine = isLeagueGame
+        ? `Blue: ${LEAGUE_TEAM_NAME}`
+        : `Blue: ${(latest.blueTeam || []).map(player => player.name).join(', ') || '(none)'}`;
 
       latestGameEl.textContent = [
         `Latest record: ${latest.date}`,
         `Winner: ${latest.winner === 'red' ? 'Red' : 'Blue'}`,
+        isLeagueGame ? 'Game type: League game' : 'Game type: Standard game',
         `Red: ${(latest.redTeam || []).map(player => player.name).join(', ') || '(none)'}`,
-        `Blue: ${(latest.blueTeam || []).map(player => player.name).join(', ') || '(none)'}`,
+        blueLine,
         scoreText,
         `Elo margin multiplier: ${marginMultiplier.toFixed(2)}x`
       ].join('\n');
@@ -1098,7 +1226,7 @@ function getTeamEloBonuses(redCount, blueCount, handicapValue) {
         emptyState.textContent = 'No players found. Add players in Player Management first.';
         playerListEl.appendChild(emptyState);
         redSummaryEl.textContent = '0 players';
-        blueSummaryEl.textContent = '0 players';
+        blueSummaryEl.textContent = isLeagueGameMode() ? `${LEAGUE_TEAM_NAME} (${LEAGUE_TEAM_SIZE} players)` : '0 players';
         renderLatestGame();
         return;
       }
@@ -1139,7 +1267,13 @@ function getTeamEloBonuses(redCount, blueCount, handicapValue) {
           name.addEventListener('click', () => {
             clearError();
             if (!state.present) return;
-            state.team = nextTeam(state.team);
+
+            if (isLeagueGameMode()) {
+              state.team = state.team === 'red' ? '' : 'red';
+            } else {
+              state.team = nextTeam(state.team);
+            }
+
             savePageState();
             renderPlayers();
             updateBalanceStatus();
@@ -1163,10 +1297,15 @@ function getTeamEloBonuses(redCount, blueCount, handicapValue) {
         ? `${redPlayers.length} players: ${redPlayers.join(', ')}`
         : '0 players';
 
-      blueSummaryEl.textContent = bluePlayers.length
-        ? `${bluePlayers.length} players: ${bluePlayers.join(', ')}`
-        : '0 players';
+      if (isLeagueGameMode()) {
+        blueSummaryEl.textContent = `${LEAGUE_TEAM_NAME} (${LEAGUE_TEAM_SIZE} players)`;
+      } else {
+        blueSummaryEl.textContent = bluePlayers.length
+          ? `${bluePlayers.length} players: ${bluePlayers.join(', ')}`
+          : '0 players';
+      }
 
+      updateLeagueModeUI();
       renderLatestGame();
       updateToggleButton();
     }
@@ -1217,7 +1356,15 @@ function getTeamEloBonuses(redCount, blueCount, handicapValue) {
           blueTeam: Array.isArray(game.blueTeam) ? game.blueTeam : [],
           scoreRed: typeof game.scoreRed === 'undefined' ? null : game.scoreRed,
           scoreBlue: typeof game.scoreBlue === 'undefined' ? null : game.scoreBlue,
-          winner: game.winner === 'blue' ? 'blue' : 'red'
+          winner: game.winner === 'blue' ? 'blue' : 'red',
+          isLeagueGame: Boolean(game.isLeagueGame),
+          leagueOpponent: game.isLeagueGame
+            ? {
+                id: game.leagueOpponent?.id || LEAGUE_TEAM_ID,
+                name: game.leagueOpponent?.name || LEAGUE_TEAM_NAME,
+                size: Number(game.leagueOpponent?.size) || LEAGUE_TEAM_SIZE
+              }
+            : null
         }));
     }
 
@@ -1317,6 +1464,7 @@ function getTeamEloBonuses(redCount, blueCount, handicapValue) {
       blueScoreEl.value = '';
       balanceSliderEl.value = String(DEFAULT_BALANCE_ATTEMPTS);
       handicapSliderEl.value = String(DEFAULT_HANDICAP_ELO);
+      leagueGameCheckboxEl.checked = false;
 
       const savedState = loadPageState();
       const preservedK =
@@ -1356,6 +1504,23 @@ function getTeamEloBonuses(redCount, blueCount, handicapValue) {
 
     redScoreEl.addEventListener('input', savePageState);
     blueScoreEl.addEventListener('input', savePageState);
+
+    leagueGameCheckboxEl.addEventListener('change', () => {
+      clearError();
+
+      if (isLeagueGameMode()) {
+        players.forEach(player => {
+          const state = getPlayerState(player.id);
+          if (state.team === 'blue') {
+            state.team = '';
+          }
+        });
+      }
+
+      savePageState();
+      renderPlayers();
+      updateBalanceStatus();
+    });
 
     document.getElementById('assignTeamsButton').addEventListener('click', assignBalancedTeams);
     document.getElementById('clearTeamsButton').addEventListener('click', clearTeams);

@@ -114,15 +114,21 @@ export function getDisplayedRating(skill, options = {}) {
 }
 
 export function getGamesSortedOldestFirst(gamesList) {
-  return [...gamesList].sort((a, b) => {
-    const dateA = a?.date || '';
-    const dateB = b?.date || '';
-    if (dateA !== dateB) return dateA.localeCompare(dateB);
+  return [...gamesList]
+    .map((game, originalIndex) => ({ game, originalIndex }))
+    .sort((a, b) => {
+      const dateA = a.game?.date || '';
+      const dateB = b.game?.date || '';
 
-    const idA = typeof a?.id === 'number' ? a.id : 0;
-    const idB = typeof b?.id === 'number' ? b.id : 0;
-    return idA - idB;
-  });
+      if (dateA !== dateB) {
+        return dateA.localeCompare(dateB);
+      }
+
+      // Games are stored newest-first in localStorage.
+      // For games on the same date, chronological replay should reverse that order.
+      return b.originalIndex - a.originalIndex;
+    })
+    .map(entry => entry.game);
 }
 
 export function getScoreMarginFactor(scoreRed, scoreBlue, options = {}) {

@@ -387,8 +387,15 @@
         chart.destroy();
       }
 
-      const labels = timeline.map(row => row.date || 'Unknown');
-      const data = timeline.map(row => Math.round(row.displayRatingAfter));
+const labels = [
+  'Start',
+  ...timeline.map((row, index) => `${row.date || 'Unknown'} #${index + 1}`)
+];
+
+const data = [
+  Math.round(timeline[0].displayRatingBefore),
+  ...timeline.map(row => Math.round(row.displayRatingAfter))
+];
 
       chart = new Chart(chartCanvas, {
         type: 'line',

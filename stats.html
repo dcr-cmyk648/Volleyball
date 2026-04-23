@@ -572,12 +572,12 @@
     function updateModeDescriptions() {
       if (isSeasonalMode()) {
         rankingModeDescriptionEl.textContent =
-          'Sorted by Rating, an elo transform of (mu - 3 × sigma), using recency weighting. Older games taper toward minimal impact after about 3 months.';
+          'Sorted by Rating, an elo-like transform of (mu - 3 × sigma), using recency weighting. Older games taper toward minimal impact after about 3 months.';
         historyModeDescriptionEl.textContent =
           'Newest games at the top. Delete removes the game from history and updates all derived stats automatically. Seasonal ranking mode is currently on.';
       } else {
         rankingModeDescriptionEl.textContent =
-          'Sorted by Rating, an elo transform of (mu - 3 × sigma).';
+          'Sorted by Rating, an elo-like transform of (mu - 3 × sigma).';
         historyModeDescriptionEl.textContent =
           'Newest games at the top. Delete removes the game from history and updates all derived stats automatically.';
       }

@@ -32,6 +32,16 @@ export const DEFAULT_RATING_OPTIONS = {
   marginScale: 20,
 };
 
+export const DISPLAY_RATING_BASE = 1500;
+export const DISPLAY_RATING_SCALE = 50;
+
+// Seasonal ranking settings:
+// - 0 days old: full weight
+// - ~90+ days old: near-minimal impact
+export const SEASONAL_FULL_WEIGHT_DAYS = 7;
+export const SEASONAL_TAPER_DAYS = 90;
+export const SEASONAL_MIN_WEIGHT = 0.05;
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -43,6 +53,52 @@ function toFiniteNumber(value, fallback = null) {
 
 function cloneSimple(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function parseDateString(dateString) {
+  if (!dateString || typeof dateString !== 'string') return null;
+  const date = new Date(`${dateString}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function daysBetween(fromDate, toDate) {
+  const msPerDay = 1000 * 60 * 60 * 24;
+  return Math.max(0, Math.floor((toDate.getTime() - fromDate.getTime()) / msPerDay));
+}
+
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+export function getMostRecentGameDate(gamesList) {
+  const parsedDates = gamesList
+    .map(game => parseDateString(game?.date))
+    .filter(Boolean)
+    .sort((a, b) => a.getTime() - b.getTime());
+
+  return parsedDates.length ? parsedDates[parsedDates.length - 1] : null;
+}
+
+export function getSeasonalWeight(gameDateString, referenceDate = null) {
+  const gameDate = parseDateString(gameDateString);
+  if (!gameDate || !referenceDate) return 1;
+
+  const ageDays = daysBetween(gameDate, referenceDate);
+
+  if (ageDays <= SEASONAL_FULL_WEIGHT_DAYS) {
+    return 1;
+  }
+
+  if (ageDays >= SEASONAL_TAPER_DAYS) {
+    return SEASONAL_MIN_WEIGHT;
+  }
+
+  const progress =
+    (ageDays - SEASONAL_FULL_WEIGHT_DAYS) /
+    (SEASONAL_TAPER_DAYS - SEASONAL_FULL_WEIGHT_DAYS);
+
+  const eased = easeOutCubic(clamp(progress, 0, 1));
+  return 1 - eased * (1 - SEASONAL_MIN_WEIGHT);
 }
 
 export function mergeRatingOptions(overrides = {}) {
@@ -107,6 +163,15 @@ export function buildBoundedModelScores(scoreRed, scoreBlue, winner, options = {
     modelScores: [1, marginFactor],
     marginFactor,
   };
+}
+
+export function applySeasonalWeightToModelScores(modelScores, seasonalWeight) {
+  const safeWeight = clamp(seasonalWeight, SEASONAL_MIN_WEIGHT, 1);
+
+  return modelScores.map(score => {
+    // Keep loser score at 1 and pull winner score toward 1 as games get older.
+    return 1 + (Number(score) - 1) * safeWeight;
+  });
 }
 
 export function ensureRatingEntry(ratingMap, playerId, options = {}) {
@@ -181,10 +246,18 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     cfg
   );
 
+  const seasonalWeight =
+    typeof cfg.seasonalWeight === 'number' ? cfg.seasonalWeight : 1;
+
+  const weightedModelScores = applySeasonalWeightToModelScores(
+    modelScores,
+    seasonalWeight
+  );
+
   const [updatedRedTeam, updatedBlueTeam] = rate(
     [redTeam, blueTeam],
     {
-      score: modelScores,
+      score: weightedModelScores,
     }
   );
 
@@ -208,6 +281,7 @@ export function rateSingleGame(game, ratingMap, options = {}) {
   return {
     game: cloneSimple(game),
     marginFactor,
+    seasonalWeight,
     before: {
       red: redBefore,
       blue: blueBefore,
@@ -219,7 +293,12 @@ export function rateSingleGame(game, ratingMap, options = {}) {
   };
 }
 
-export function replayRatings({ players = [], games = [], options = {} } = {}) {
+export function replayRatings({
+  players = [],
+  games = [],
+  options = {},
+  seasonal = false,
+} = {}) {
   const cfg = mergeRatingOptions(options);
   const ratingMap = {};
   const statsMap = {};
@@ -236,9 +315,18 @@ export function replayRatings({ players = [], games = [], options = {} } = {}) {
   });
 
   const sortedGames = getGamesSortedOldestFirst(games);
+  const referenceDate = seasonal ? getMostRecentGameDate(sortedGames) : null;
 
   sortedGames.forEach(game => {
-    const historyEntry = rateSingleGame(game, ratingMap, cfg);
+    const seasonalWeight = seasonal
+      ? getSeasonalWeight(game?.date, referenceDate)
+      : 1;
+
+    const historyEntry = rateSingleGame(game, ratingMap, {
+      ...cfg,
+      seasonalWeight,
+    });
+
     history.push(historyEntry);
 
     const redTeam = Array.isArray(game.redTeam) ? game.redTeam : [];
@@ -287,9 +375,17 @@ export function replayRatings({ players = [], games = [], options = {} } = {}) {
       if (b.games !== a.games) return b.games - a.games;
       return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     });
-  const leagueMembers = LEAGUE_TEAM_MEMBER_IDS.map(id => ratingMap[id] ?? makeInitialRating(cfg));
-  const leagueMu = leagueMembers.reduce((sum, s) => sum + Number(s.mu), 0) / leagueMembers.length;
-  const leagueSigma = leagueMembers.reduce((sum, s) => sum + Number(s.sigma), 0) / leagueMembers.length;
+
+  const leagueMembers = LEAGUE_TEAM_MEMBER_IDS.map(
+    id => ratingMap[id] ?? makeInitialRating(cfg)
+  );
+
+  const leagueMu =
+    leagueMembers.reduce((sum, s) => sum + Number(s.mu), 0) / leagueMembers.length;
+
+  const leagueSigma =
+    leagueMembers.reduce((sum, s) => sum + Number(s.sigma), 0) / leagueMembers.length;
+
   const leagueSkill = { mu: leagueMu, sigma: leagueSigma };
 
   const leagueTeam = {
@@ -368,9 +464,6 @@ export function getPlayerRatingsForList(players, ratingMap, options = {}) {
     };
   });
 }
-
-export const DISPLAY_RATING_BASE = 1500;
-export const DISPLAY_RATING_SCALE = 50;
 
 export function toDisplayRating(value) {
   return DISPLAY_RATING_BASE + Number(value) * DISPLAY_RATING_SCALE;

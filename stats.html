@@ -361,35 +361,29 @@
         <input type="file" id="importFileInput" accept=".json" hidden />
       </div>
 
-      <div class="slider-row">
-        <label for="kSlider">
-          Elo K-factor: <span id="kValue">28</span>
-        </label>
-        <input type="range" id="kSlider" min="8" max="60" value="28" />
-      </div>
-
       <div class="small">
-        Export saves the full database as JSON: all players and all games. Import replaces the current database with the file you choose. The K-factor here is shared with the main page through saved page state.
+        Export saves the full database as JSON: all players and all games. Import replaces the current database with the file you choose. 
       </div>
       <div id="databaseStatus" class="status">Ready.</div>
     </div>
 
     <div class="card">
       <h2>Player Standings</h2>
-      <div class="small">
-        Sorted by Elo, then winrate, then total games, then alphabetically. Elo starts at 1500 and is recalculated from oldest game to newest game.
-      </div>
+<div class="small">
+  Sorted by Rating, where Rating = mu - 3 × sigma. Ratings are recalculated from oldest game to newest game.
+</div>
       <div class="table-wrap" style="margin-top: 12px;">
         <table>
           <thead>
             <tr>
-              <th>#</th>
-              <th>Player</th>
-              <th>Elo</th>
-              <th>Wins</th>
-              <th>Games</th>
-              <th>Winrate</th>
-            </tr>
+  <th>#</th>
+  <th>Player</th>
+  <th>Rating</th>
+  <th>Games</th>
+  <th>Wins</th>
+  <th>Mu</th>
+  <th>Sigma</th>
+</tr>
           </thead>
           <tbody id="statsTableBody"></tbody>
         </table>
@@ -435,6 +429,16 @@
   </dialog>
 
   <script>
+    import {
+  replayRatings,
+  getDisplayedRating,
+  formatDisplayedRating,
+  formatMu,
+  formatSigma,
+  LEAGUE_TEAM_ID,
+  LEAGUE_TEAM_NAME,
+} from './ratings.js';
+    
     const PLAYER_STORAGE_KEY = 'gameDayPlayers';
     const GAME_STORAGE_KEY = 'gameDayGames';
     const PAGE_STATE_KEY = 'gameDayMainPageState';
@@ -457,8 +461,6 @@
     const deleteGameDialog = document.getElementById('deleteGameDialog');
     const deleteGameInput = document.getElementById('deleteGameInput');
     const deleteGameText = document.getElementById('deleteGameText');
-    const kSliderEl = document.getElementById('kSlider');
-    const kValueEl = document.getElementById('kValue');
     const loadDefaultDatabaseButtonEl = document.getElementById('loadDefaultDatabaseButton');
 
     const defaultDatabaseDialog = document.getElementById('defaultDatabaseDialog');
@@ -503,18 +505,6 @@
       }
     }
 
-    function formatPlayerEloPair(player, ratingsBefore, ratingsAfter) {
-      const before = Math.round(ratingsBefore[player.id] ?? ELO_BASE);
-      const after = Math.round(ratingsAfter[player.id] ?? ELO_BASE);
-      return `${player.name} (${before} → ${after})`;
-    }
-
-    function formatLeagueTeamEloPair(ratingsBefore, ratingsAfter) {
-      const before = Math.round(ratingsBefore[LEAGUE_TEAM_ID] ?? ELO_BASE);
-      const after = Math.round(ratingsAfter[LEAGUE_TEAM_ID] ?? ELO_BASE);
-      return `${LEAGUE_TEAM_NAME} (${before} → ${after})`;
-    }
-
     function savePlayers(players) {
       localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(players));
     }
@@ -541,29 +531,6 @@
       localStorage.setItem(PAGE_STATE_KEY, JSON.stringify(next));
     }
 
-    function restoreSharedSettings() {
-      const saved = loadPageState();
-      if (!saved) return;
-
-      if (typeof saved.eloK === 'number' && !Number.isNaN(saved.eloK)) {
-        kSliderEl.value = String(saved.eloK);
-      }
-    }
-
-    function getCurrentEloK() {
-      const value = Number(kSliderEl.value);
-      return Number.isNaN(value) ? DEFAULT_ELO_K : value;
-    }
-
-    function expectedScore(ratingA, ratingB) {
-      return 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400));
-    }
-
-    function getMarginMultiplier(scoreRed, scoreBlue) {
-      if (scoreRed === null || scoreBlue === null) {
-        return 1.0;
-      }
-
       const pointDiff = Math.abs(scoreRed - scoreBlue);
       return 1 + Math.min(pointDiff / 30, 0.5);
     }
@@ -579,240 +546,6 @@
         const idB = typeof b.id === 'number' ? b.id : 0;
         return idA - idB;
       });
-    }
-
-    function getAverageElo(team, ratingsMap) {
-      if (!team.length) {
-        return ELO_BASE;
-      }
-
-      const total = team.reduce((sum, player) => {
-        return sum + (ratingsMap[player.id] ?? ELO_BASE);
-      }, 0);
-
-      return total / team.length;
-    }
-
-    function getLeagueTeamRating(ratingsMap) {
-      return ratingsMap[LEAGUE_TEAM_ID] ?? ELO_BASE;
-    }
-
-    function getTeamEloBonuses(redCount, blueCount, handicapValue) {
-      if (redCount === blueCount) {
-        return { redBonus: 0, blueBonus: 0 };
-      }
-
-      const smallerTeamSize = Math.min(redCount, blueCount);
-
-      if (smallerTeamSize >= 6) {
-        return { redBonus: 0, blueBonus: 0 };
-      }
-
-      if (redCount > blueCount) {
-        return { redBonus: handicapValue, blueBonus: 0 };
-      }
-
-      return { redBonus: 0, blueBonus: handicapValue };
-    }
-
-    function computeStats(players, games) {
-      const ratings = {};
-      const statsMap = {};
-      const eloK = getCurrentEloK();
-
-      players.forEach(player => {
-        ratings[player.id] = ELO_BASE;
-        statsMap[player.id] = {
-          id: player.id,
-          name: player.name,
-          elo: ELO_BASE,
-          wins: 0,
-          games: 0,
-          winrate: 0.5
-        };
-      });
-
-      ratings[LEAGUE_TEAM_ID] = ELO_BASE;
-      statsMap[LEAGUE_TEAM_ID] = {
-        id: LEAGUE_TEAM_ID,
-        name: LEAGUE_TEAM_NAME,
-        elo: ELO_BASE,
-        wins: 0,
-        games: 0,
-        winrate: 0.5
-      };
-
-      const sortedGames = getGamesSortedOldestFirst(games);
-
-      sortedGames.forEach(game => {
-        const redTeam = Array.isArray(game.redTeam) ? game.redTeam : [];
-        const isLeagueGame = Boolean(game.isLeagueGame);
-        const blueTeam = isLeagueGame ? [] : (Array.isArray(game.blueTeam) ? game.blueTeam : []);
-        const blueCount = isLeagueGame ? LEAGUE_TEAM_SIZE : blueTeam.length;
-
-        const redAvg = getAverageElo(redTeam, ratings);
-        const blueAvg = isLeagueGame
-          ? getLeagueTeamRating(ratings)
-          : getAverageElo(blueTeam, ratings);
-
-        const { redBonus, blueBonus } = getTeamEloBonuses(
-          redTeam.length,
-          blueCount,
-          DEFAULT_HANDICAP_ELO
-        );
-
-        const effectiveRed = redAvg + redBonus;
-        const effectiveBlue = blueAvg + blueBonus;
-
-        const expectedRed = expectedScore(effectiveRed, effectiveBlue);
-        const expectedBlue = 1 - expectedRed;
-
-        const actualRed = game.winner === 'red' ? 1 : 0;
-        const actualBlue = game.winner === 'blue' ? 1 : 0;
-
-        const marginMultiplier = getMarginMultiplier(game.scoreRed, game.scoreBlue);
-        const redDelta = eloK * marginMultiplier * (actualRed - expectedRed);
-        const blueDelta = eloK * marginMultiplier * (actualBlue - expectedBlue);
-
-        redTeam.forEach(player => {
-          if (ratings[player.id] === undefined) {
-            ratings[player.id] = ELO_BASE;
-          }
-          ratings[player.id] += redDelta;
-
-          if (statsMap[player.id]) {
-            statsMap[player.id].games += 1;
-            if (game.winner === 'red') {
-              statsMap[player.id].wins += 1;
-            }
-          }
-        });
-
-        if (isLeagueGame) {
-          ratings[LEAGUE_TEAM_ID] += blueDelta;
-          statsMap[LEAGUE_TEAM_ID].games += 1;
-          if (game.winner === 'blue') {
-            statsMap[LEAGUE_TEAM_ID].wins += 1;
-          }
-        } else {
-          blueTeam.forEach(player => {
-            if (ratings[player.id] === undefined) {
-              ratings[player.id] = ELO_BASE;
-            }
-            ratings[player.id] += blueDelta;
-
-            if (statsMap[player.id]) {
-              statsMap[player.id].games += 1;
-              if (game.winner === 'blue') {
-                statsMap[player.id].wins += 1;
-              }
-            }
-          });
-        }
-      });
-
-      const rows = Object.values(statsMap).map(player => {
-        player.elo = ratings[player.id] ?? ELO_BASE;
-        player.winrate = player.games === 0 ? 0.5 : player.wins / player.games;
-        return player;
-      });
-
-      rows.sort((a, b) => {
-        if (b.elo !== a.elo) return b.elo - a.elo;
-        if (b.winrate !== a.winrate) return b.winrate - a.winrate;
-        if (b.games !== a.games) return b.games - a.games;
-        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-      });
-
-      return rows;
-    }
-
-    function buildHistoryData(players, games) {
-      const ratings = {};
-      const eloK = getCurrentEloK();
-
-      players.forEach(player => {
-        ratings[player.id] = ELO_BASE;
-      });
-      ratings[LEAGUE_TEAM_ID] = ELO_BASE;
-
-      const sortedGames = getGamesSortedOldestFirst(games);
-      const historyData = [];
-
-      sortedGames.forEach(game => {
-        const redTeam = Array.isArray(game.redTeam) ? game.redTeam : [];
-        const isLeagueGame = Boolean(game.isLeagueGame);
-        const blueTeam = isLeagueGame ? [] : (Array.isArray(game.blueTeam) ? game.blueTeam : []);
-        const blueCount = isLeagueGame ? LEAGUE_TEAM_SIZE : blueTeam.length;
-
-        const ratingsBefore = { ...ratings };
-
-        const redAvg = getAverageElo(redTeam, ratings);
-        const blueAvg = isLeagueGame
-          ? getLeagueTeamRating(ratings)
-          : getAverageElo(blueTeam, ratings);
-
-        const { redBonus, blueBonus } = getTeamEloBonuses(
-          redTeam.length,
-          blueCount,
-          DEFAULT_HANDICAP_ELO
-        );
-
-        const effectiveRed = redAvg + redBonus;
-        const effectiveBlue = blueAvg + blueBonus;
-
-        const expectedRed = expectedScore(effectiveRed, effectiveBlue);
-        const expectedBlue = 1 - expectedRed;
-
-        const actualRed = game.winner === 'red' ? 1 : 0;
-        const actualBlue = game.winner === 'blue' ? 1 : 0;
-
-        const marginMultiplier = getMarginMultiplier(game.scoreRed, game.scoreBlue);
-        const redDelta = eloK * marginMultiplier * (actualRed - expectedRed);
-        const blueDelta = eloK * marginMultiplier * (actualBlue - expectedBlue);
-
-        redTeam.forEach(player => {
-          if (ratings[player.id] === undefined) {
-            ratings[player.id] = ELO_BASE;
-          }
-          ratings[player.id] += redDelta;
-        });
-
-        if (isLeagueGame) {
-          ratings[LEAGUE_TEAM_ID] += blueDelta;
-        } else {
-          blueTeam.forEach(player => {
-            if (ratings[player.id] === undefined) {
-              ratings[player.id] = ELO_BASE;
-            }
-            ratings[player.id] += blueDelta;
-          });
-        }
-
-        const ratingsAfter = { ...ratings };
-
-        historyData.push({
-          ...game,
-          redAvgBefore: redAvg,
-          blueAvgBefore: blueAvg,
-          redBonus,
-          blueBonus,
-          effectiveRedBefore: effectiveRed,
-          effectiveBlueBefore: effectiveBlue,
-          marginMultiplier,
-          redPlayersWithElo: redTeam.map(player =>
-            formatPlayerEloPair(player, ratingsBefore, ratingsAfter)
-          ),
-          bluePlayersWithElo: isLeagueGame
-            ? [formatLeagueTeamEloPair(ratingsBefore, ratingsAfter)]
-            : blueTeam.map(player =>
-                formatPlayerEloPair(player, ratingsBefore, ratingsAfter)
-              ),
-          isLeagueGame
-        });
-      });
-
-      return historyData.reverse();
     }
 
     function formatPercent(value) {
@@ -831,102 +564,109 @@
       return `Score: Red ${game.scoreRed} - Blue ${game.scoreBlue}`;
     }
 
-    function renderStats() {
-      const players = loadPlayers();
-      const games = loadGames();
-      const rows = computeStats(players, games);
+function renderStats() {
+  const players = loadPlayers();
+  const games = loadGames();
+  const result = replayRatings({ players, games });
+  const rows = result.standings;
 
-      statsTableBody.innerHTML = '';
+  statsTableBody.innerHTML = '';
 
-      if (rows.length === 0) {
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 6;
-        td.innerHTML = '<div class="empty-state">No players found.</div>';
-        tr.appendChild(td);
-        statsTableBody.appendChild(tr);
-        return;
-      }
+  if (rows.length === 0) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 7;
+    td.innerHTML = '<div class="empty-state">No players found.</div>';
+    tr.appendChild(td);
+    statsTableBody.appendChild(tr);
+    return;
+  }
 
-      rows.forEach((player, index) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${index + 1}</td>
-          <td>${player.name}</td>
-          <td>${Math.round(player.elo)}</td>
-          <td>${player.wins}</td>
-          <td>${player.games}</td>
-          <td>${formatPercent(player.winrate)}</td>
-        `;
-        statsTableBody.appendChild(tr);
-      });
-    }
+  rows.forEach((player, index) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${index + 1}</td>
+      <td>${player.name}</td>
+      <td>${formatDisplayedRating(player.rating)}</td>
+      <td>${player.games}</td>
+      <td>${player.wins}</td>
+      <td>${formatMu(player.mu)}</td>
+      <td>${formatSigma(player.sigma)}</td>
+    `;
+    statsTableBody.appendChild(tr);
+  });
+}
 
-    function renderHistory() {
-      const players = loadPlayers();
-      const games = loadGames();
-      const historyData = buildHistoryData(players, games);
+function renderHistory() {
+  const players = loadPlayers();
+  const games = loadGames();
+  const result = replayRatings({ players, games });
+  const historyData = [...result.history].reverse();
 
-      historyList.innerHTML = '';
+  historyList.innerHTML = '';
 
-      if (historyData.length === 0) {
-        const emptyState = document.createElement('div');
-        emptyState.className = 'empty-state';
-        emptyState.textContent = 'No games recorded yet.';
-        historyList.appendChild(emptyState);
-        return;
-      }
+  if (historyData.length === 0) {
+    const emptyState = document.createElement('div');
+    emptyState.className = 'empty-state';
+    emptyState.textContent = 'No games recorded yet.';
+    historyList.appendChild(emptyState);
+    return;
+  }
 
-      historyData.forEach(game => {
-        const card = document.createElement('div');
-        card.className = 'game-card';
+  historyData.forEach(entry => {
+    const game = entry.game;
+    const winnerClass = game.winner === 'red' ? 'red' : 'blue';
+    const winnerText = game.winner === 'red' ? 'Red Team' : 'Blue Team';
 
-        const winnerClass = game.winner === 'red' ? 'red' : 'blue';
-        const winnerText = game.winner === 'red' ? 'Red Team' : 'Blue Team';
-        const redNames = (game.redPlayersWithElo || []).join(', ') || '(none)';
-        const blueNames = (game.bluePlayersWithElo || []).join(', ') || '(none)';
+    const redNames = entry.before.red.map((p, i) => {
+      const after = entry.after.red[i];
+      const name =
+        (game.redTeam || []).find(player => player.id === p.id)?.name || p.id;
+      return `${name} (${formatDisplayedRating(p.rating)} → ${formatDisplayedRating(after.rating)})`;
+    }).join(', ') || '(none)';
 
-        const redEloLine = game.redBonus > 0
-          ? `Team Elo: ${Math.round(game.redAvgBefore)} (+${Math.round(game.redBonus)} handicap) = ${Math.round(game.effectiveRedBefore)}`
-          : `Team Elo: ${Math.round(game.redAvgBefore)}`;
+    const blueNames = entry.before.blue.map((p, i) => {
+      const after = entry.after.blue[i];
+      const name = p.id === LEAGUE_TEAM_ID
+        ? LEAGUE_TEAM_NAME
+        : ((game.blueTeam || []).find(player => player.id === p.id)?.name || p.id);
+      return `${name} (${formatDisplayedRating(p.rating)} → ${formatDisplayedRating(after.rating)})`;
+    }).join(', ') || '(none)';
 
-        const blueEloLine = game.blueBonus > 0
-          ? `Team Elo: ${Math.round(game.blueAvgBefore)} (+${Math.round(game.blueBonus)} handicap) = ${Math.round(game.effectiveBlueBefore)}`
-          : `Team Elo: ${Math.round(game.blueAvgBefore)}`;
+    const card = document.createElement('div');
+    card.className = 'game-card';
 
-        card.innerHTML = `
-          <div class="game-header">
-            <div>
-              <strong>${game.date || 'Unknown date'}</strong><br>
-              <span class="winner-badge ${winnerClass}">${winnerText} win</span>
-              ${game.isLeagueGame ? '<div class="small">League game</div>' : ''}
-            </div>
-            <div>
-              <button class="danger" data-game-id="${game.id}">Delete</button>
-            </div>
-          </div>
-          <div class="teams-grid">
-            <div class="team-box red-team">
-              <strong>Red Team</strong>
-              <div>${redNames}</div>
-              <div class="small">${redEloLine}</div>
-            </div>
-            <div class="team-box blue-team">
-              <strong>${game.isLeagueGame ? LEAGUE_TEAM_NAME : 'Blue Team'}</strong>
-              <div>${blueNames}</div>
-              <div class="small">${blueEloLine}</div>
-            </div>
-          </div>
-          <div class="small">${formatScore(game)}</div>
-          <div class="small">Elo margin multiplier: ${game.marginMultiplier.toFixed(2)}x</div>
-        `;
+    card.innerHTML = `
+      <div class="game-header">
+        <div>
+          <strong>${game.date || 'Unknown date'}</strong><br>
+          <span class="winner-badge ${winnerClass}">${winnerText} win</span>
+          ${game.isLeagueGame ? '<div class="small">League game</div>' : ''}
+        </div>
+        <div>
+          <button class="danger" data-game-id="${game.id}">Delete</button>
+        </div>
+      </div>
+      <div class="teams-grid">
+        <div class="team-box red-team">
+          <strong>Red Team</strong>
+          <div>${redNames}</div>
+        </div>
+        <div class="team-box blue-team">
+          <strong>${game.isLeagueGame ? LEAGUE_TEAM_NAME : 'Blue Team'}</strong>
+          <div>${blueNames}</div>
+        </div>
+      </div>
+      <div class="small">${formatScore(game)}</div>
+      <div class="small">Margin factor: ${entry.marginFactor.toFixed(2)}x</div>
+    `;
 
-        const deleteButton = card.querySelector('button[data-game-id]');
-        deleteButton.addEventListener('click', () => openDeleteGameDialog(game.id, game.date));
+    const deleteButton = card.querySelector('button[data-game-id]');
+    deleteButton.addEventListener('click', () => openDeleteGameDialog(game.id, game.date));
 
-        historyList.appendChild(card);
-      });
-    }
+    historyList.appendChild(card);
+  });
+}
 
     function renderAll() {
       renderStats();
@@ -1190,13 +930,6 @@
     document.getElementById('confirmDeleteGameButton').addEventListener('click', confirmDeleteGame);
     document.getElementById('cancelDeleteGameButton').addEventListener('click', closeDeleteGameDialog);
 
-    kSliderEl.addEventListener('input', () => {
-      kValueEl.textContent = kSliderEl.value;
-      savePageStatePatch({ eloK: Number(kSliderEl.value) });
-      renderAll();
-      databaseStatus.textContent = `Updated Elo K-factor to ${kSliderEl.value}.`;
-    });
-
     confirmLoadDefaultDatabaseButtonEl.addEventListener('click', async () => {
       try {
         confirmLoadDefaultDatabaseButtonEl.disabled = true;
@@ -1221,6 +954,6 @@
     kValueEl.textContent = kSliderEl.value;
     renderAll();
     maybeOfferDefaultDatabase();
-  </script>
+<script type="module">
 </body>
 </html>

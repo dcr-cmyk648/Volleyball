@@ -18,7 +18,7 @@ import {
   predictWin,
   predictDraw,
   ThurstoneMostellerFull,
-} from './vendor/openskill.js';
+} from "https://esm.sh/openskill@4.1.1";
 
 export const PLAYER_STORAGE_KEY = 'gameDayPlayers';
 export const GAME_STORAGE_KEY = 'gameDayGames';

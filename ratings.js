@@ -17,6 +17,12 @@ export const LEAGUE_TEAM_ID = 'league_team';
 export const LEAGUE_TEAM_NAME = 'League Team';
 export const LEAGUE_TEAM_SIZE = 6;
 
+export const LEAGUE_TEAM_MEMBER_COUNT = 6;
+export const LEAGUE_TEAM_MEMBER_IDS = Array.from(
+  { length: LEAGUE_TEAM_MEMBER_COUNT },
+  (_, i) => `${LEAGUE_TEAM_ID}_${i + 1}`
+);
+
 export const DEFAULT_RATING_OPTIONS = {
   mu: 25,
   sigma: 25 / 3,
@@ -117,7 +123,7 @@ export function ensureRatingsForGame(ratingMap, game, options = {}) {
   redTeam.forEach(player => ensureRatingEntry(ratingMap, player.id, options));
 
   if (game?.isLeagueGame) {
-    ensureRatingEntry(ratingMap, LEAGUE_TEAM_ID, options);
+    LEAGUE_TEAM_MEMBER_IDS.forEach(id => ensureRatingEntry(ratingMap, id, options));
   } else {
     blueTeam.forEach(player => ensureRatingEntry(ratingMap, player.id, options));
   }
@@ -129,7 +135,7 @@ function getRedTeamIds(game) {
 
 function getBlueTeamIds(game) {
   if (game?.isLeagueGame) {
-    return [LEAGUE_TEAM_ID];
+    return LEAGUE_TEAM_MEMBER_IDS;
   }
   return (Array.isArray(game?.blueTeam) ? game.blueTeam : []).map(player => player.id);
 }
@@ -229,8 +235,6 @@ export function replayRatings({ players = [], games = [], options = {} } = {}) {
     };
   });
 
-  ratingMap[LEAGUE_TEAM_ID] = makeInitialRating(cfg);
-
   const sortedGames = getGamesSortedOldestFirst(games);
 
   sortedGames.forEach(game => {
@@ -283,21 +287,47 @@ export function replayRatings({ players = [], games = [], options = {} } = {}) {
       if (b.games !== a.games) return b.games - a.games;
       return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     });
+  const leagueMembers = LEAGUE_TEAM_MEMBER_IDS.map(id => ratingMap[id] ?? makeInitialRating(cfg));
+  const leagueMu = leagueMembers.reduce((sum, s) => sum + Number(s.mu), 0) / leagueMembers.length;
+  const leagueSigma = leagueMembers.reduce((sum, s) => sum + Number(s.sigma), 0) / leagueMembers.length;
+  const leagueSkill = { mu: leagueMu, sigma: leagueSigma };
 
-  const leagueSkill = ratingMap[LEAGUE_TEAM_ID];
+  const leagueTeam = {
+    id: LEAGUE_TEAM_ID,
+    name: LEAGUE_TEAM_NAME,
+    rating: getDisplayedRating(leagueSkill, cfg),
+    mu: Number(leagueSkill.mu),
+    sigma: Number(leagueSkill.sigma),
+    wins: 0,
+    games: 0,
+    winrate: 0.5,
+  };
+
+  games.forEach(game => {
+    if (game.isLeagueGame) {
+      leagueTeam.games += 1;
+      if (game.winner === 'blue') {
+        leagueTeam.wins += 1;
+      }
+    }
+  });
+
+  leagueTeam.winrate = leagueTeam.games > 0 ? leagueTeam.wins / leagueTeam.games : 0.5;
+
+  standings.push(leagueTeam);
+  standings.sort((a, b) => {
+    if (b.rating !== a.rating) return b.rating - a.rating;
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    if (b.games !== a.games) return b.games - a.games;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+  });
 
   return {
     ratingMap,
     statsMap,
     standings,
     history,
-    leagueTeam: {
-      id: LEAGUE_TEAM_ID,
-      name: LEAGUE_TEAM_NAME,
-      rating: getDisplayedRating(leagueSkill, cfg),
-      mu: Number(leagueSkill.mu),
-      sigma: Number(leagueSkill.sigma),
-    },
+    leagueTeam,
   };
 }
 

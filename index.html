@@ -458,867 +458,252 @@
   </dialog>
 
 <script type="module">
-  import {
-    replayRatings,
-    scoreCandidateSplit,
-    getPlayerRatingsForList,
-    formatDisplayedRating,
-    formatMu,
-    formatSigma,
-    getScoreMarginFactor,
-    LEAGUE_TEAM_ID,
-    LEAGUE_TEAM_NAME,
-    LEAGUE_TEAM_SIZE,
-  } from './ratings.js';
+import {
+  replayRatings,
+  scoreCandidateSplit,
+  getPlayerRatingsForList,
+  formatDisplayedRating,
+  formatMu,
+  formatSigma,
+  getScoreMarginFactor,
+  LEAGUE_TEAM_ID,
+  LEAGUE_TEAM_NAME,
+  LEAGUE_TEAM_SIZE,
+} from './ratings.js';
 
-  const PLAYER_STORAGE_KEY = 'gameDayPlayers';
-  const GAME_STORAGE_KEY = 'gameDayGames';
-  const PAGE_STATE_KEY = 'gameDayMainPageState';
+const PLAYER_STORAGE_KEY = 'gameDayPlayers';
+const GAME_STORAGE_KEY = 'gameDayGames';
+const PAGE_STATE_KEY = 'gameDayMainPageState';
 
-  const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
-  const DEFAULT_DB_SOURCE_PATH = './default_database';
+const DEFAULT_BALANCE_ATTEMPTS = 10;
 
-  const DEFAULT_BALANCE_ATTEMPTS = 10;
+const playerListEl = document.getElementById('playerList');
+const redSummaryEl = document.getElementById('redSummary');
+const blueSummaryEl = document.getElementById('blueSummary');
+const balanceStatusEl = document.getElementById('balanceStatus');
+const latestGameEl = document.getElementById('latestGame');
+const errorMessageEl = document.getElementById('errorMessage');
+const balanceSliderEl = document.getElementById('balanceSlider');
+const balanceValueEl = document.getElementById('balanceValue');
+const redScoreEl = document.getElementById('redScore');
+const blueScoreEl = document.getElementById('blueScore');
+const leagueGameCheckboxEl = document.getElementById('leagueGameCheckbox');
+const toggleUnselectedButtonEl = document.getElementById('toggleUnselectedButton');
+const assignTeamsButtonEl = document.getElementById('assignTeamsButton');
 
-  const playerListEl = document.getElementById('playerList');
-  const redSummaryEl = document.getElementById('redSummary');
-  const blueSummaryEl = document.getElementById('blueSummary');
-  const balanceStatusEl = document.getElementById('balanceStatus');
-  const latestGameEl = document.getElementById('latestGame');
-  const errorMessageEl = document.getElementById('errorMessage');
-  const balanceSliderEl = document.getElementById('balanceSlider');
-  const balanceValueEl = document.getElementById('balanceValue');
-  const redScoreEl = document.getElementById('redScore');
-  const blueScoreEl = document.getElementById('blueScore');
-  const leagueGameCheckboxEl = document.getElementById('leagueGameCheckbox');
-  const toggleUnselectedButtonEl = document.getElementById('toggleUnselectedButton');
-  const assignTeamsButtonEl = document.getElementById('assignTeamsButton');
+let players = loadPlayers();
+let games = loadGames();
+let presenceState = buildPresenceState(players);
+let hideUnselectedPlayers = false;
 
-  const defaultDatabaseDialog = document.getElementById('defaultDatabaseDialog');
-  const defaultDatabaseTextEl = document.getElementById('defaultDatabaseText');
-  const defaultDatabaseStatusEl = document.getElementById('defaultDatabaseStatus');
-  const confirmLoadDefaultDatabaseButtonEl = document.getElementById('confirmLoadDefaultDatabaseButton');
-  const declineLoadDefaultDatabaseButtonEl = document.getElementById('declineLoadDefaultDatabaseButton');
+/* ---------------- STATE ---------------- */
 
-  let players = loadPlayers();
-  let games = loadGames();
-  let presenceState = buildPresenceState(players);
-  let hideUnselectedPlayers = false;
-  let defaultDatabaseMeta = null;
+function buildPresenceState(playerList) {
+  const state = {};
+  playerList.forEach(p => {
+    state[p.id] = { present: false, team: '', lockedTeam: '' };
+  });
+  return state;
+}
 
-  function loadPlayers() {
-    const saved = localStorage.getItem(PLAYER_STORAGE_KEY);
-    if (!saved) return [];
-
-    try {
-      const parsed = JSON.parse(saved);
-      if (!Array.isArray(parsed)) return [];
-
-      return parsed
-        .filter(player => player && typeof player.name === 'string')
-        .map(player => ({
-          id: player.id,
-          name: player.name.trim()
-        }))
-        .filter(player => player.name.length > 0)
-        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-    } catch {
-      return [];
-    }
+function getPlayerState(id) {
+  if (!presenceState[id]) {
+    presenceState[id] = { present: false, team: '', lockedTeam: '' };
   }
+  return presenceState[id];
+}
 
-  function loadGames() {
-    const saved = localStorage.getItem(GAME_STORAGE_KEY);
-    if (!saved) return [];
+function syncPresenceState() {
+  const valid = new Set(players.map(p => String(p.id)));
+  const next = {};
 
-    try {
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-
-  function saveGames() {
-    localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(games));
-  }
-
-  function buildPresenceState(playerList) {
-    const state = {};
-    playerList.forEach(player => {
-      state[player.id] = {
-        present: false,
-        team: ''
+  Object.keys(presenceState).forEach(id => {
+    if (valid.has(String(id))) {
+      const s = presenceState[id];
+      next[id] = {
+        present: !!s.present,
+        team: s.team === 'red' || s.team === 'blue' ? s.team : '',
+        lockedTeam: s.lockedTeam === 'red' || s.lockedTeam === 'blue' ? s.lockedTeam : ''
       };
-    });
-    return state;
-  }
-
-  function loadPageState() {
-    const saved = localStorage.getItem(PAGE_STATE_KEY);
-    if (!saved) return null;
-
-    try {
-      const parsed = JSON.parse(saved);
-      return parsed && typeof parsed === 'object' ? parsed : null;
-    } catch {
-      return null;
-    }
-  }
-
-  function savePageState() {
-    const payload = {
-      presenceState,
-      redScore: redScoreEl.value,
-      blueScore: blueScoreEl.value,
-      hideUnselectedPlayers,
-      balanceAttempts: Number(balanceSliderEl.value),
-      leagueGame: leagueGameCheckboxEl.checked
-    };
-
-    localStorage.setItem(PAGE_STATE_KEY, JSON.stringify(payload));
-  }
-
-  function restorePageState() {
-    const saved = loadPageState();
-    if (!saved) return;
-
-    if (saved.presenceState && typeof saved.presenceState === 'object') {
-      presenceState = saved.presenceState;
-    }
-
-    redScoreEl.value = typeof saved.redScore === 'string' ? saved.redScore : '';
-    blueScoreEl.value = typeof saved.blueScore === 'string' ? saved.blueScore : '';
-    hideUnselectedPlayers = Boolean(saved.hideUnselectedPlayers);
-    leagueGameCheckboxEl.checked = Boolean(saved.leagueGame);
-
-    if (typeof saved.balanceAttempts === 'number' && !Number.isNaN(saved.balanceAttempts)) {
-      balanceSliderEl.value = String(saved.balanceAttempts);
-    }
-  }
-
-  function syncPresenceState() {
-    const validIds = new Set(players.map(player => String(player.id)));
-    const nextState = {};
-
-    Object.keys(presenceState).forEach(id => {
-      if (validIds.has(String(id))) {
-        nextState[id] = {
-          present: Boolean(presenceState[id]?.present),
-          team: presenceState[id]?.team === 'red' || presenceState[id]?.team === 'blue'
-            ? presenceState[id].team
-            : ''
-        };
-      }
-    });
-
-    players.forEach(player => {
-      if (!nextState[player.id]) {
-        nextState[player.id] = { present: false, team: '' };
-      }
-    });
-
-    presenceState = nextState;
-  }
-
-  function getPlayerState(playerId) {
-    if (!presenceState[playerId]) {
-      presenceState[playerId] = { present: false, team: '' };
-    }
-    return presenceState[playerId];
-  }
-
-  function clearError() {
-    errorMessageEl.textContent = '';
-  }
-
-  function setError(message) {
-    errorMessageEl.textContent = message;
-  }
-
-  function isLeagueGameMode() {
-    return leagueGameCheckboxEl.checked;
-  }
-
-  function nextTeam(currentTeam) {
-    if (currentTeam === '') return 'red';
-    if (currentTeam === 'red') return 'blue';
-    return '';
-  }
-
-  function getPresentPlayers() {
-    return players.filter(player => getPlayerState(player.id).present);
-  }
-
-  function getTeamPlayers(teamName) {
-    return players.filter(player => {
-      const state = getPlayerState(player.id);
-      return state.present && state.team === teamName;
-    });
-  }
-
-  function shuffleArray(input) {
-    const arr = [...input];
-    for (let i = arr.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
-  }
-
-  function formatPercent(value) {
-    return `${(value * 100).toFixed(1)}%`;
-  }
-
-  function getAverageDisplayedRating(teamPlayers, ratingMap) {
-    if (!teamPlayers.length) return 0;
-
-    const ratedPlayers = getPlayerRatingsForList(teamPlayers, ratingMap);
-    const total = ratedPlayers.reduce((sum, player) => sum + player.rating, 0);
-    return total / ratedPlayers.length;
-  }
-
-  function buildCandidateTeams(presentPlayers, ratingMap) {
-    const shuffled = shuffleArray(presentPlayers);
-    const redSize = Math.ceil(shuffled.length / 2);
-    const redTeam = shuffled.slice(0, redSize);
-    const blueTeam = shuffled.slice(redSize);
-
-    const score = scoreCandidateSplit({
-      redPlayers: redTeam,
-      bluePlayers: blueTeam,
-      ratingMap
-    });
-
-    return {
-      redTeam,
-      blueTeam,
-      fairness: score.fairness,
-      drawProxy: score.drawProxy,
-      redWinProbability: score.redWinProbability,
-      blueWinProbability: score.blueWinProbability
-    };
-  }
-
-  function assignBalancedTeams() {
-    clearError();
-
-    if (isLeagueGameMode()) {
-      setError('Assign Teams is unavailable for league games.');
-      return;
-    }
-
-    const presentPlayers = getPresentPlayers();
-    if (presentPlayers.length < 2) {
-      setError('At least 2 players must be marked present.');
-      return;
-    }
-
-    const attempts = Number(balanceSliderEl.value);
-    const ratingData = replayRatings({ players, games });
-
-    let bestCandidate = null;
-
-    for (let i = 0; i < attempts; i += 1) {
-      const candidate = buildCandidateTeams(presentPlayers, ratingData.ratingMap);
-      if (!bestCandidate || candidate.fairness > bestCandidate.fairness) {
-        bestCandidate = candidate;
-      }
-    }
-
-    players.forEach(player => {
-      const state = getPlayerState(player.id);
-      if (state.present) state.team = '';
-    });
-
-    bestCandidate.redTeam.forEach(player => {
-      presenceState[player.id].team = 'red';
-    });
-
-    bestCandidate.blueTeam.forEach(player => {
-      presenceState[player.id].team = 'blue';
-    });
-
-    savePageState();
-    renderPlayers();
-    updateBalanceStatus(bestCandidate, attempts);
-  }
-
-  function updateBalanceStatus(candidate = null, attempts = null) {
-    const ratingData = replayRatings({ players, games });
-
-    if (isLeagueGameMode()) {
-      const redTeam = getTeamPlayers('red');
-
-      if (redTeam.length === 0) {
-        balanceStatusEl.textContent = 'League game mode: select at least 1 red-team player.';
-        return;
-      }
-
-      const redAvg = getAverageDisplayedRating(redTeam, ratingData.ratingMap);
-      const league = ratingData.leagueTeam;
-
-      const lines = [
-        'League game mode is on.',
-        `Red average Rating: ${formatDisplayedRating(redAvg)}`,
-        `Blue Rating: ${formatDisplayedRating(league.rating)} (${LEAGUE_TEAM_NAME})`,
-        `Blue mu: ${formatMu(league.mu)}`,
-        `Blue sigma: ${formatSigma(league.sigma)}`
-      ];
-
-      balanceStatusEl.textContent = lines.join('\n');
-      return;
-    }
-
-    const redTeam = candidate ? candidate.redTeam : getTeamPlayers('red');
-    const blueTeam = candidate ? candidate.blueTeam : getTeamPlayers('blue');
-
-    if (redTeam.length === 0 && blueTeam.length === 0) {
-      balanceStatusEl.textContent = 'No team assignment yet.';
-      return;
-    }
-
-    const score = candidate ?? scoreCandidateSplit({
-      redPlayers: redTeam,
-      bluePlayers: blueTeam,
-      ratingMap: ratingData.ratingMap
-    });
-
-    const redAvg = getAverageDisplayedRating(redTeam, ratingData.ratingMap);
-    const blueAvg = getAverageDisplayedRating(blueTeam, ratingData.ratingMap);
-
-    const lines = [
-      `Red average Rating: ${formatDisplayedRating(redAvg)}`,
-      `Blue average Rating: ${formatDisplayedRating(blueAvg)}`,
-      `Red win probability: ${formatPercent(score.redWinProbability)}`,
-      `Blue win probability: ${formatPercent(score.blueWinProbability)}`,
-      `Fairness: ${formatPercent(score.fairness)}`
-    ];
-
-    if (typeof score.drawProxy === 'number') {
-      lines.push(`Match quality proxy: ${formatPercent(score.drawProxy)}`);
-    }
-
-    if (attempts !== null) {
-      lines.unshift(`Selected best split from ${attempts} candidate team assignments.`);
-    }
-
-    balanceStatusEl.textContent = lines.join('\n');
-  }
-
-  function validateTeamSetup() {
-    const redTeam = getTeamPlayers('red');
-    const blueTeam = getTeamPlayers('blue');
-
-    if (isLeagueGameMode()) {
-      if (redTeam.length === 0) {
-        return 'Red team must have at least 1 player for a league game.';
-      }
-      return null;
-    }
-
-    if (redTeam.length === 0 || blueTeam.length === 0) {
-      return 'Both teams must have at least 1 player.';
-    }
-
-    if (Math.abs(redTeam.length - blueTeam.length) > 1) {
-      return 'Team sizes cannot differ by more than 1 player.';
-    }
-
-    return null;
-  }
-
-  function parseOptionalScore(value) {
-    return value === '' ? null : Number(value);
-  }
-
-  function validateScoreAgainstWinner(scoreRed, scoreBlue, winner) {
-    if (scoreRed === null && scoreBlue === null) {
-      return null;
-    }
-
-    if (scoreRed === null || scoreBlue === null) {
-      return 'Enter both scores or leave both blank.';
-    }
-
-    if (Number.isNaN(scoreRed) || Number.isNaN(scoreBlue)) {
-      return 'Scores must be valid numbers.';
-    }
-
-    if (scoreRed === scoreBlue) {
-      return 'Scores cannot be tied.';
-    }
-
-    if (winner === 'red' && scoreRed <= scoreBlue) {
-      return 'Scores contradict the selected winner.';
-    }
-
-    if (winner === 'blue' && scoreBlue <= scoreRed) {
-      return 'Scores contradict the selected winner.';
-    }
-
-    return null;
-  }
-
-  function buildGameRecord(winner) {
-    const teamError = validateTeamSetup();
-    if (teamError) return { error: teamError };
-
-    const redTeam = getTeamPlayers('red');
-    const blueTeam = isLeagueGameMode() ? [] : getTeamPlayers('blue');
-
-    const scoreRed = parseOptionalScore(redScoreEl.value);
-    const scoreBlue = parseOptionalScore(blueScoreEl.value);
-
-    const scoreError = validateScoreAgainstWinner(scoreRed, scoreBlue, winner);
-    if (scoreError) return { error: scoreError };
-
-    return {
-      id: Date.now(),
-      date: new Date().toISOString().slice(0, 10),
-      redTeam: redTeam.map(player => ({ id: player.id, name: player.name })),
-      blueTeam: blueTeam.map(player => ({ id: player.id, name: player.name })),
-      scoreRed,
-      scoreBlue,
-      winner,
-      isLeagueGame: isLeagueGameMode(),
-      leagueOpponent: isLeagueGameMode()
-        ? {
-            id: LEAGUE_TEAM_ID,
-            name: LEAGUE_TEAM_NAME,
-            size: LEAGUE_TEAM_SIZE
-          }
-        : null
-    };
-  }
-
-  function recordGame(winner) {
-    clearError();
-
-    const record = buildGameRecord(winner);
-    if (record.error) {
-      setError(record.error);
-      return;
-    }
-
-    games.unshift(record);
-    saveGames();
-    renderLatestGame();
-
-    redScoreEl.value = '';
-    blueScoreEl.value = '';
-    savePageState();
-
-    clearError();
-    alert('Game recorded.');
-  }
-
-  function clearPresentSelections() {
-    players.forEach(player => {
-      presenceState[player.id] = {
-        present: false,
-        team: ''
-      };
-    });
-    savePageState();
-    renderPlayers();
-    updateBalanceStatus();
-  }
-
-  function clearTeams() {
-    clearError();
-    players.forEach(player => {
-      const state = getPlayerState(player.id);
-      if (state.present) state.team = '';
-    });
-    savePageState();
-    renderPlayers();
-    updateBalanceStatus();
-  }
-
-  function markAllPresent() {
-    clearError();
-    players.forEach(player => {
-      getPlayerState(player.id).present = true;
-    });
-    savePageState();
-    renderPlayers();
-    updateBalanceStatus();
-  }
-
-  function clearPresent() {
-    clearError();
-    clearPresentSelections();
-  }
-
-  function updateToggleButton() {
-    toggleUnselectedButtonEl.textContent = hideUnselectedPlayers
-      ? 'Show All Players'
-      : 'Hide Unselected Players';
-  }
-
-  function updateLeagueModeUI() {
-    assignTeamsButtonEl.disabled = isLeagueGameMode();
-  }
-
-  function toggleUnselectedPlayers() {
-    hideUnselectedPlayers = !hideUnselectedPlayers;
-    savePageState();
-    updateToggleButton();
-    renderPlayers();
-  }
-
-  function renderLatestGame() {
-    games = loadGames();
-
-    if (games.length === 0) {
-      latestGameEl.textContent = 'No games recorded yet.';
-      return;
-    }
-
-    const latest = games[0];
-    const isLeagueGame = Boolean(latest.isLeagueGame);
-    const scoreText =
-      latest.scoreRed === null || latest.scoreBlue === null
-        ? 'Score: none'
-        : `Score: Red ${latest.scoreRed} - Blue ${latest.scoreBlue}`;
-
-    const marginFactor = getScoreMarginFactor(latest.scoreRed, latest.scoreBlue);
-    const blueLine = isLeagueGame
-      ? `Blue: ${LEAGUE_TEAM_NAME}`
-      : `Blue: ${(latest.blueTeam || []).map(player => player.name).join(', ') || '(none)'}`;
-
-    latestGameEl.textContent = [
-      `Latest record: ${latest.date}`,
-      `Winner: ${latest.winner === 'red' ? 'Red' : 'Blue'}`,
-      isLeagueGame ? 'Game type: League game' : 'Game type: Standard game',
-      `Red: ${(latest.redTeam || []).map(player => player.name).join(', ') || '(none)'}`,
-      blueLine,
-      scoreText,
-      `Margin factor: ${marginFactor.toFixed(2)}x`
-    ].join('\n');
-  }
-
-  function renderPlayers() {
-    players = loadPlayers();
-    games = loadGames();
-    syncPresenceState();
-
-    playerListEl.innerHTML = '';
-
-    if (players.length === 0) {
-      const emptyState = document.createElement('div');
-      emptyState.className = 'empty-state';
-      emptyState.textContent = 'No players found. Add players in Player Management first.';
-      playerListEl.appendChild(emptyState);
-      redSummaryEl.textContent = '0 players';
-      blueSummaryEl.textContent = isLeagueGameMode() ? `${LEAGUE_TEAM_NAME} (${LEAGUE_TEAM_SIZE} players)` : '0 players';
-      renderLatestGame();
-      return;
-    }
-
-    const visiblePlayers = hideUnselectedPlayers
-      ? players.filter(player => getPlayerState(player.id).present)
-      : players;
-
-    if (visiblePlayers.length === 0) {
-      const emptyState = document.createElement('div');
-      emptyState.className = 'empty-state';
-      emptyState.textContent = hideUnselectedPlayers
-        ? 'No players are currently selected.'
-        : 'No players found. Add players in Player Management first.';
-      playerListEl.appendChild(emptyState);
-    } else {
-      visiblePlayers.forEach(player => {
-        const state = getPlayerState(player.id);
-
-        const row = document.createElement('div');
-        row.className = 'player-row';
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = state.present;
-        checkbox.addEventListener('change', () => {
-          clearError();
-          state.present = checkbox.checked;
-          if (!state.present) state.team = '';
-          savePageState();
-          renderPlayers();
-          updateBalanceStatus();
-        });
-
-        const name = document.createElement('div');
-        name.className = `player-name ${state.team || 'none'}`;
-        name.textContent = player.name;
-        name.addEventListener('click', () => {
-          clearError();
-          if (!state.present) return;
-
-          if (isLeagueGameMode()) {
-            state.team = state.team === 'red' ? '' : 'red';
-          } else {
-            state.team = nextTeam(state.team);
-          }
-
-          savePageState();
-          renderPlayers();
-          updateBalanceStatus();
-        });
-
-        const tag = document.createElement('div');
-        tag.className = 'tag';
-        tag.textContent = state.present ? (state.team || 'present') : 'away';
-
-        row.appendChild(checkbox);
-        row.appendChild(name);
-        row.appendChild(tag);
-        playerListEl.appendChild(row);
-      });
-    }
-
-    const redPlayers = getTeamPlayers('red').map(player => player.name);
-    const bluePlayers = getTeamPlayers('blue').map(player => player.name);
-
-    redSummaryEl.textContent = redPlayers.length
-      ? `${redPlayers.length} players: ${redPlayers.join(', ')}`
-      : '0 players';
-
-    if (isLeagueGameMode()) {
-      blueSummaryEl.textContent = `${LEAGUE_TEAM_NAME} (${LEAGUE_TEAM_SIZE} players)`;
-    } else {
-      blueSummaryEl.textContent = bluePlayers.length
-        ? `${bluePlayers.length} players: ${bluePlayers.join(', ')}`
-        : '0 players';
-    }
-
-    updateLeagueModeUI();
-    renderLatestGame();
-    updateToggleButton();
-  }
-
-  function getPromptChoice() {
-    return localStorage.getItem(DEFAULT_DB_PROMPT_KEY) || '';
-  }
-
-  function setPromptChoice(value) {
-    localStorage.setItem(DEFAULT_DB_PROMPT_KEY, value);
-  }
-
-  function hasNoRealData() {
-    const currentPlayers = loadPlayers();
-    const currentGames = loadGames();
-
-    if (currentGames.length > 0) return false;
-    if (currentPlayers.length === 0) return true;
-
-    if (
-      currentPlayers.length === 1 &&
-      currentPlayers[0].name === 'DustinR' &&
-      Number(currentPlayers[0].id) === 1
-    ) {
-      return true;
-    }
-
-    return false;
-  }
-
-  function normalizeImportedPlayers(playersList) {
-    return playersList
-      .filter(player => player && typeof player.name === 'string')
-      .map(player => ({
-        id: player.id,
-        name: player.name.trim()
-      }))
-      .filter(player => player.name.length > 0);
-  }
-
-  function normalizeImportedGames(gamesList) {
-    return gamesList
-      .filter(game => game && typeof game === 'object')
-      .map((game, index) => ({
-        id: game.id ?? (Date.now() + index),
-        date: game.date ?? '',
-        redTeam: Array.isArray(game.redTeam) ? game.redTeam : [],
-        blueTeam: Array.isArray(game.blueTeam) ? game.blueTeam : [],
-        scoreRed: typeof game.scoreRed === 'undefined' ? null : game.scoreRed,
-        scoreBlue: typeof game.scoreBlue === 'undefined' ? null : game.scoreBlue,
-        winner: game.winner === 'blue' ? 'blue' : 'red',
-        isLeagueGame: Boolean(game.isLeagueGame),
-        leagueOpponent: game.isLeagueGame
-          ? {
-              id: game.leagueOpponent?.id || LEAGUE_TEAM_ID,
-              name: game.leagueOpponent?.name || LEAGUE_TEAM_NAME,
-              size: Number(game.leagueOpponent?.size) || LEAGUE_TEAM_SIZE
-            }
-          : null
-      }));
-  }
-
-  function getLatestGameDate(gamesList) {
-    if (!gamesList.length) return 'unknown date';
-
-    const latest = [...gamesList]
-      .map(game => game.date || '')
-      .filter(Boolean)
-      .sort()
-      .at(-1);
-
-    return latest || 'unknown date';
-  }
-
-  async function fetchDefaultDatabase() {
-    const response = await fetch(DEFAULT_DB_SOURCE_PATH, { cache: 'no-store' });
-    if (!response.ok) {
-      throw new Error('Could not load the default database file.');
-    }
-
-    const parsed = await response.json();
-
-    if (!parsed || typeof parsed !== 'object') {
-      throw new Error('Default database file is invalid.');
-    }
-
-    const normalizedPlayers = normalizeImportedPlayers(
-      Array.isArray(parsed.players) ? parsed.players : []
-    );
-
-    const normalizedGames = normalizeImportedGames(
-      Array.isArray(parsed.games) ? parsed.games : []
-    );
-
-    return {
-      players: normalizedPlayers,
-      games: normalizedGames,
-      latestGameDate: getLatestGameDate(normalizedGames)
-    };
-  }
-
-  async function prepareDefaultDatabaseMeta() {
-    if (defaultDatabaseMeta) {
-      return defaultDatabaseMeta;
-    }
-
-    defaultDatabaseMeta = await fetchDefaultDatabase();
-    return defaultDatabaseMeta;
-  }
-
-  function openDefaultDatabaseDialog(meta) {
-    defaultDatabaseTextEl.textContent =
-      `The bundled default database includes games through ${meta.latestGameDate}.`;
-
-    defaultDatabaseStatusEl.textContent =
-      `Default database has ${meta.players.length} players and ${meta.games.length} games.`;
-
-    confirmLoadDefaultDatabaseButtonEl.disabled = false;
-    defaultDatabaseDialog.showModal();
-  }
-
-  async function maybeOfferDefaultDatabase() {
-    if (!hasNoRealData()) {
-      return;
-    }
-
-    if (getPromptChoice() !== '') {
-      return;
-    }
-
-    try {
-      defaultDatabaseStatusEl.textContent = 'Checking default database...';
-      confirmLoadDefaultDatabaseButtonEl.disabled = true;
-      const meta = await prepareDefaultDatabaseMeta();
-      openDefaultDatabaseDialog(meta);
-    } catch {
-      defaultDatabaseTextEl.textContent = 'A bundled default database is available.';
-      defaultDatabaseStatusEl.textContent = 'Could not read the default database file.';
-      confirmLoadDefaultDatabaseButtonEl.disabled = true;
-      defaultDatabaseDialog.showModal();
-    }
-  }
-
-  async function loadDefaultDatabaseIntoStorage() {
-    const meta = await prepareDefaultDatabaseMeta();
-
-    localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(meta.players));
-    localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(meta.games));
-
-    presenceState = buildPresenceState(meta.players);
-    players = loadPlayers();
-    games = loadGames();
-    hideUnselectedPlayers = false;
-
-    redScoreEl.value = '';
-    blueScoreEl.value = '';
-    balanceSliderEl.value = String(DEFAULT_BALANCE_ATTEMPTS);
-    leagueGameCheckboxEl.checked = false;
-
-    savePageState();
-    setPromptChoice('loaded');
-
-    balanceValueEl.textContent = balanceSliderEl.value;
-
-    renderPlayers();
-    updateBalanceStatus();
-  }
-
-  balanceSliderEl.addEventListener('input', () => {
-    balanceValueEl.textContent = balanceSliderEl.value;
-    savePageState();
-  });
-
-  redScoreEl.addEventListener('input', savePageState);
-  blueScoreEl.addEventListener('input', savePageState);
-
-  leagueGameCheckboxEl.addEventListener('change', () => {
-    clearError();
-
-    if (isLeagueGameMode()) {
-      players.forEach(player => {
-        const state = getPlayerState(player.id);
-        if (state.team === 'blue') {
-          state.team = '';
-        }
-      });
-    }
-
-    savePageState();
-    renderPlayers();
-    updateBalanceStatus();
-  });
-
-  document.getElementById('assignTeamsButton').addEventListener('click', assignBalancedTeams);
-  document.getElementById('clearTeamsButton').addEventListener('click', clearTeams);
-  document.getElementById('selectAllButton').addEventListener('click', markAllPresent);
-  document.getElementById('clearPresentButton').addEventListener('click', clearPresent);
-  document.getElementById('recordRedWinButton').addEventListener('click', () => recordGame('red'));
-  document.getElementById('recordBlueWinButton').addEventListener('click', () => recordGame('blue'));
-  toggleUnselectedButtonEl.addEventListener('click', toggleUnselectedPlayers);
-
-  confirmLoadDefaultDatabaseButtonEl.addEventListener('click', async () => {
-    try {
-      confirmLoadDefaultDatabaseButtonEl.disabled = true;
-      defaultDatabaseStatusEl.textContent = 'Loading default database...';
-      await loadDefaultDatabaseIntoStorage();
-      defaultDatabaseDialog.close();
-      alert('Default database loaded.');
-    } catch {
-      defaultDatabaseStatusEl.textContent = 'Failed to load the default database.';
-      confirmLoadDefaultDatabaseButtonEl.disabled = false;
     }
   });
 
-  declineLoadDefaultDatabaseButtonEl.addEventListener('click', () => {
-    setPromptChoice('declined');
-    defaultDatabaseDialog.close();
+  players.forEach(p => {
+    if (!next[p.id]) next[p.id] = { present: false, team: '', lockedTeam: '' };
   });
 
-  restorePageState();
-  syncPresenceState();
+  presenceState = next;
+}
 
-  balanceValueEl.textContent = balanceSliderEl.value;
-  updateToggleButton();
+/* ---------------- HELPERS ---------------- */
+
+function nextTeam(t) {
+  return t === '' ? 'red' : t === 'red' ? 'blue' : '';
+}
+
+function nextLockedTeam(t) {
+  return t === '' ? 'red' : t === 'red' ? 'blue' : '';
+}
+
+function getLockedLabel(t) {
+  if (t === 'red') return '🔒 Red';
+  if (t === 'blue') return '🔒 Blue';
+  return 'No Lock';
+}
+
+function clearError() {
+  errorMessageEl.textContent = '';
+}
+
+function setError(msg) {
+  errorMessageEl.textContent = msg;
+}
+
+function isLeagueGameMode() {
+  return leagueGameCheckboxEl.checked;
+}
+
+function getPresentPlayers() {
+  return players.filter(p => getPlayerState(p.id).present);
+}
+
+/* ---------------- TEAM BUILDING ---------------- */
+
+function buildCandidateTeams(presentPlayers, ratingMap) {
+  const lockedRed = [];
+  const lockedBlue = [];
+  const unlocked = [];
+
+  presentPlayers.forEach(p => {
+    const s = getPlayerState(p.id);
+    if (s.lockedTeam === 'red') lockedRed.push(p);
+    else if (s.lockedTeam === 'blue') lockedBlue.push(p);
+    else unlocked.push(p);
+  });
+
+  const total = presentPlayers.length;
+  const targetRed = Math.ceil(total / 2);
+  const targetBlue = total - targetRed;
+
+  if (lockedRed.length > targetRed || lockedBlue.length > targetBlue) {
+    return { error: 'Too many locked players on one side.' };
+  }
+
+  const shuffled = [...unlocked].sort(() => Math.random() - 0.5);
+
+  const red = [...lockedRed];
+  const blue = [...lockedBlue];
+
+  while (red.length < targetRed && shuffled.length) red.push(shuffled.shift());
+  while (blue.length < targetBlue && shuffled.length) blue.push(shuffled.shift());
+
+  const score = scoreCandidateSplit({
+    redPlayers: red,
+    bluePlayers: blue,
+    ratingMap
+  });
+
+  return {
+    redTeam: red,
+    blueTeam: blue,
+    fairness: score.fairness,
+    redWinProbability: score.redWinProbability,
+    blueWinProbability: score.blueWinProbability
+  };
+}
+
+function assignBalancedTeams() {
+  clearError();
+
+  const present = getPresentPlayers();
+  if (present.length < 2) return setError('Need at least 2 players.');
+
+  const attempts = Number(balanceSliderEl.value);
+  const ratingData = replayRatings({ players, games });
+
+  let best = null;
+
+  for (let i = 0; i < attempts; i++) {
+    const c = buildCandidateTeams(present, ratingData.ratingMap);
+
+    if (c.error) return setError(c.error);
+    if (!best || c.fairness > best.fairness) best = c;
+  }
+
+  players.forEach(p => {
+    const s = getPlayerState(p.id);
+    if (s.present) s.team = '';
+  });
+
+  best.redTeam.forEach(p => presenceState[p.id].team = 'red');
+  best.blueTeam.forEach(p => presenceState[p.id].team = 'blue');
+
   renderPlayers();
-  updateBalanceStatus();
-  maybeOfferDefaultDatabase();
+}
+
+/* ---------------- RENDER ---------------- */
+
+function renderPlayers() {
+  syncPresenceState();
+  playerListEl.innerHTML = '';
+
+  players.forEach(p => {
+    const s = getPlayerState(p.id);
+
+    const row = document.createElement('div');
+    row.className = 'player-row';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = s.present;
+    checkbox.onchange = () => {
+      s.present = checkbox.checked;
+      if (!s.present) {
+        s.team = '';
+        s.lockedTeam = '';
+      }
+      renderPlayers();
+    };
+
+    const name = document.createElement('div');
+    name.className = `player-name ${s.team || 'none'}`;
+    name.textContent = p.name;
+    name.onclick = () => {
+      if (!s.present) return;
+      s.team = nextTeam(s.team);
+      renderPlayers();
+    };
+
+    const lock = document.createElement('button');
+    lock.className = 'ghost';
+    lock.textContent = getLockedLabel(s.lockedTeam);
+    lock.disabled = !s.present || isLeagueGameMode();
+    lock.onclick = () => {
+      s.lockedTeam = nextLockedTeam(s.lockedTeam);
+      if (s.lockedTeam && s.team && s.team !== s.lockedTeam) {
+        s.team = s.lockedTeam;
+      }
+      renderPlayers();
+    };
+
+    const tag = document.createElement('div');
+    tag.className = 'tag';
+    tag.textContent = s.present ? (s.team || 'present') : 'away';
+
+    row.appendChild(checkbox);
+    row.appendChild(name);
+    row.appendChild(lock);
+    row.appendChild(tag);
+
+    playerListEl.appendChild(row);
+  });
+}
+
+/* ---------------- INIT ---------------- */
+
+document.getElementById('assignTeamsButton').onclick = assignBalancedTeams;
+
+renderPlayers();
 </script>
 </body>
 </html>

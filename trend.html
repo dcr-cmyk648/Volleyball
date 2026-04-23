@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Player Rating Trend</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: #111827;
+      --card-2: #172033;
+      --text: #f3f4f6;
+      --muted: #94a3b8;
+      --border: #243041;
+      --button: #334155;
+      --button-text: #f3f4f6;
+      --red: #f87171;
+      --blue: #60a5fa;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+      --link: #93c5fd;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      color-scheme: dark;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background:
+        radial-gradient(circle at top, #172033 0%, var(--bg) 45%),
+        var(--bg);
+      color: var(--text);
+      padding: 16px;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    h1, h2 {
+      margin: 0 0 12px;
+      letter-spacing: 0.01em;
+    }
+
+    h1 {
+      font-size: 2rem;
+    }
+
+    h2 {
+      font-size: 1.2rem;
+    }
+
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)),
+        var(--card);
+      border-radius: 18px;
+      padding: 18px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+    }
+
+    a.button-link {
+      border: 1px solid transparent;
+      background: var(--button);
+      color: var(--button-text);
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      transition: transform 0.12s ease, opacity 0.12s ease, background 0.12s ease;
+    }
+
+    a.button-link:hover {
+      transform: translateY(-1px);
+      opacity: 0.96;
+    }
+
+    .small {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 8px;
+      line-height: 1.45;
+    }
+
+    .status {
+      margin-top: 12px;
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--card-2);
+      white-space: pre-wrap;
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .summary-box {
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--card-2);
+    }
+
+    .summary-label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .summary-value {
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+
+    .chart-wrap {
+      height: 380px;
+      margin-top: 12px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.02);
+      margin-top: 12px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    th {
+      font-size: 14px;
+      color: var(--muted);
+      background: rgba(255,255,255,0.04);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    tbody tr:hover {
+      background: rgba(255,255,255,0.03);
+    }
+
+    .result-win {
+      color: #bbf7d0;
+      font-weight: 700;
+    }
+
+    .result-loss {
+      color: #fecaca;
+      font-weight: 700;
+    }
+
+    .empty-state {
+      color: var(--muted);
+      border: 1px dashed var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      background: rgba(255,255,255,0.03);
+    }
+
+    @media (max-width: 800px) {
+      .summary-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .chart-wrap {
+        height: 320px;
+      }
+
+      h1 {
+        font-size: 1.7rem;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .summary-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <h1 id="pageTitle">Player Rating Trend</h1>
+      <div class="nav-links">
+        <a href="stats.html" class="button-link">Back to Stats</a>
+        <a href="index.html" class="button-link">Main Page</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Rating Over Time</h2>
+      <div class="small">
+        This graph shows the player’s public Rating after each game they played. Rating is the Elo-like display transform of mu - 3 × sigma.
+      </div>
+      <div id="summaryGrid" class="summary-grid"></div>
+      <div id="statusMessage" class="status">Loading player trend...</div>
+      <div class="chart-wrap">
+        <canvas id="ratingChart"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Game-by-game history</h2>
+      <div class="small">
+        Chronological rating changes for this player.
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Result</th>
+              <th>Side</th>
+              <th>Score</th>
+              <th>Rating</th>
+              <th>Mu</th>
+              <th>Sigma</th>
+            </tr>
+          </thead>
+          <tbody id="timelineTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import {
+      PLAYER_STORAGE_KEY,
+      GAME_STORAGE_KEY,
+      getPlayerRatingTimeline,
+      formatDisplayedRating,
+      formatMu,
+      formatSigma,
+    } from './ratings.js';
+
+    const pageTitleEl = document.getElementById('pageTitle');
+    const summaryGridEl = document.getElementById('summaryGrid');
+    const statusMessageEl = document.getElementById('statusMessage');
+    const timelineTableBodyEl = document.getElementById('timelineTableBody');
+    const chartCanvas = document.getElementById('ratingChart');
+
+    let chart = null;
+
+    function loadPlayers() {
+      const saved = localStorage.getItem(PLAYER_STORAGE_KEY);
+      if (!saved) return [];
+
+      try {
+        const parsed = JSON.parse(saved);
+        if (!Array.isArray(parsed)) return [];
+
+        return parsed
+          .filter(player => player && typeof player.name === 'string')
+          .map(player => ({
+            id: player.id,
+            name: player.name.trim()
+          }))
+          .filter(player => player.name.length > 0);
+      } catch {
+        return [];
+      }
+    }
+
+    function loadGames() {
+      const saved = localStorage.getItem(GAME_STORAGE_KEY);
+      if (!saved) return [];
+
+      try {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function getPlayerIdFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('id');
+    }
+
+    function findPlayer(players, playerId) {
+      return players.find(player => String(player.id) === String(playerId)) || null;
+    }
+
+    function formatScore(row) {
+      if (
+        row.scoreRed === null ||
+        row.scoreBlue === null ||
+        typeof row.scoreRed === 'undefined' ||
+        typeof row.scoreBlue === 'undefined'
+      ) {
+        return 'None';
+      }
+
+      return `Red ${row.scoreRed} - Blue ${row.scoreBlue}`;
+    }
+
+    function formatSide(side) {
+      if (side === 'red') return 'Red';
+      if (side === 'blue') return 'Blue';
+      return '';
+    }
+
+    function renderSummary(timeline) {
+      summaryGridEl.innerHTML = '';
+
+      if (timeline.length === 0) {
+        return;
+      }
+
+      const first = timeline[0];
+      const latest = timeline[timeline.length - 1];
+      const wins = timeline.filter(row => row.won).length;
+      const losses = timeline.length - wins;
+      const change = latest.displayRatingAfter - first.displayRatingBefore;
+
+      const items = [
+        ['Current Rating', Math.round(latest.displayRatingAfter)],
+        ['Games', timeline.length],
+        ['Record', `${wins}-${losses}`],
+        ['Change', `${change >= 0 ? '+' : ''}${Math.round(change)}`],
+      ];
+
+      items.forEach(([label, value]) => {
+        const box = document.createElement('div');
+        box.className = 'summary-box';
+
+        box.innerHTML = `
+          <div class="summary-label">${label}</div>
+          <div class="summary-value">${value}</div>
+        `;
+
+        summaryGridEl.appendChild(box);
+      });
+    }
+
+    function renderChart(timeline) {
+      if (chart) {
+        chart.destroy();
+      }
+
+      const labels = timeline.map(row => row.date || 'Unknown');
+      const data = timeline.map(row => Math.round(row.displayRatingAfter));
+
+      chart = new Chart(chartCanvas, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Rating',
+              data,
+              tension: 0.25,
+              pointRadius: 4,
+              pointHoverRadius: 6
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: 'index',
+            intersect: false
+          },
+          plugins: {
+            legend: {
+              labels: {
+                color: '#f3f4f6'
+              }
+            },
+            tooltip: {
+              callbacks: {
+                afterLabel: function(context) {
+                  const row = timeline[context.dataIndex];
+                  const result = row.won ? 'Win' : 'Loss';
+                  const score = formatScore(row);
+                  return [
+                    `Result: ${result}`,
+                    `Side: ${formatSide(row.side)}`,
+                    `Score: ${score}`,
+                    `Mu: ${formatMu(row.muAfter)}`,
+                    `Sigma: ${formatSigma(row.sigmaAfter)}`
+                  ];
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: {
+                color: '#94a3b8'
+              },
+              grid: {
+                color: 'rgba(148, 163, 184, 0.18)'
+              }
+            },
+            y: {
+              ticks: {
+                color: '#94a3b8'
+              },
+              grid: {
+                color: 'rgba(148, 163, 184, 0.18)'
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function renderTable(timeline) {
+      timelineTableBodyEl.innerHTML = '';
+
+      if (timeline.length === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 7;
+        td.innerHTML = '<div class="empty-state">No recorded games for this player.</div>';
+        tr.appendChild(td);
+        timelineTableBodyEl.appendChild(tr);
+        return;
+      }
+
+      timeline.forEach(row => {
+        const tr = document.createElement('tr');
+        const resultClass = row.won ? 'result-win' : 'result-loss';
+        const resultText = row.won ? 'Win' : 'Loss';
+
+        tr.innerHTML = `
+          <td>${row.date || 'Unknown'}</td>
+          <td><span class="${resultClass}">${resultText}</span></td>
+          <td>${formatSide(row.side)}</td>
+          <td>${formatScore(row)}</td>
+          <td>${formatDisplayedRating(row.ratingBefore)} → ${formatDisplayedRating(row.ratingAfter)}</td>
+          <td>${formatMu(row.muBefore)} → ${formatMu(row.muAfter)}</td>
+          <td>${formatSigma(row.sigmaBefore)} → ${formatSigma(row.sigmaAfter)}</td>
+        `;
+
+        timelineTableBodyEl.appendChild(tr);
+      });
+    }
+
+    function renderPage() {
+      const playerId = getPlayerIdFromUrl();
+      const players = loadPlayers();
+      const games = loadGames();
+      const player = findPlayer(players, playerId);
+
+      if (!playerId || !player) {
+        pageTitleEl.textContent = 'Player Not Found';
+        statusMessageEl.textContent = 'Could not find that player. Go back to Stats and choose a player from the standings.';
+        renderTable([]);
+        return;
+      }
+
+      pageTitleEl.textContent = `${player.name} Rating Trend`;
+
+      const timeline = getPlayerRatingTimeline({
+        players,
+        games,
+        playerId
+      });
+
+      if (timeline.length === 0) {
+        statusMessageEl.textContent = `${player.name} has no recorded games yet.`;
+        renderSummary(timeline);
+        renderTable(timeline);
+        return;
+      }
+
+      const latest = timeline[timeline.length - 1];
+
+      statusMessageEl.textContent = [
+        `Player: ${player.name}`,
+        `Current Rating: ${Math.round(latest.displayRatingAfter)}`,
+        `Games included: ${timeline.length}`,
+        `Latest game: ${latest.date || 'Unknown'}`
+      ].join('\n');
+
+      renderSummary(timeline);
+      renderChart(timeline);
+      renderTable(timeline);
+    }
+
+    renderPage();
+  </script>
+</body>
+</html>

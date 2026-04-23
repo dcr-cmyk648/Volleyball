@@ -428,7 +428,7 @@
     </div>
   </dialog>
 
-  <script>
+  <script type="module">
     import {
   replayRatings,
   getDisplayedRating,
@@ -445,14 +445,6 @@
 
     const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
     const DEFAULT_DB_SOURCE_PATH = './default_database';
-
-    const LEAGUE_TEAM_ID = 'league_team';
-    const LEAGUE_TEAM_NAME = 'League Team';
-    const LEAGUE_TEAM_SIZE = 6;
-
-    const ELO_BASE = 1500;
-    const DEFAULT_ELO_K = 28;
-    const DEFAULT_HANDICAP_ELO = 40;
 
     const statsTableBody = document.getElementById('statsTableBody');
     const historyList = document.getElementById('historyList');
@@ -531,9 +523,6 @@
       localStorage.setItem(PAGE_STATE_KEY, JSON.stringify(next));
     }
 
-      const pointDiff = Math.abs(scoreRed - scoreBlue);
-      return 1 + Math.min(pointDiff / 30, 0.5);
-    }
 
     function getGamesSortedOldestFirst(gamesList) {
       return [...gamesList].sort((a, b) => {
@@ -950,10 +939,8 @@ function renderHistory() {
       defaultDatabaseDialog.close();
     });
 
-    restoreSharedSettings();
-    kValueEl.textContent = kSliderEl.value;
     renderAll();
     maybeOfferDefaultDatabase();
-<script type="module">
+  </script>
 </body>
 </html>

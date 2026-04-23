@@ -22,6 +22,7 @@
       --danger: #ef4444;
       --success: #22c55e;
       --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+      --link: #93c5fd;
     }
 
     * {
@@ -136,6 +137,16 @@
       background: rgba(34, 197, 94, 0.16);
       color: #bbf7d0;
       border-color: rgba(34, 197, 94, 0.35);
+    }
+
+    a.player-link {
+      color: var(--link);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    a.player-link:hover {
+      text-decoration: underline;
     }
 
     .controls {
@@ -576,6 +587,25 @@
       }
     }
 
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function formatPlayerNameCell(player) {
+      if (player.id === LEAGUE_TEAM_ID) {
+        return escapeHtml(player.name);
+      }
+
+      const id = encodeURIComponent(player.id);
+      const name = escapeHtml(player.name);
+      return `<a href="trend.html?id=${id}" class="player-link">${name}</a>`;
+    }
+
     function formatScore(game) {
       if (
         game.scoreRed === null ||
@@ -613,7 +643,7 @@
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${index + 1}</td>
-          <td>${player.name}</td>
+          <td>${formatPlayerNameCell(player)}</td>
           <td>${formatDisplayedRating(player.rating)}</td>
           <td>${player.games}</td>
           <td>${player.wins}</td>

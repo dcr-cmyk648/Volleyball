@@ -574,14 +574,22 @@
           (game.redTeam || []).find(player => player.id === p.id)?.name || p.id;
         return `${name} (${formatDisplayedRating(p.rating)} → ${formatDisplayedRating(after.rating)})`;
       }).join(', ') || '(none)';
+      
+const blueNames = game.isLeagueGame
+  ? (() => {
+      const beforeAvg =
+        entry.before.blue.reduce((sum, p) => sum + Number(p.rating), 0) / entry.before.blue.length;
+      const afterAvg =
+        entry.after.blue.reduce((sum, p) => sum + Number(p.rating), 0) / entry.after.blue.length;
 
-      const blueNames = entry.before.blue.map((p, i) => {
-        const after = entry.after.blue[i];
-        const name = p.id === LEAGUE_TEAM_ID
-          ? LEAGUE_TEAM_NAME
-          : ((game.blueTeam || []).find(player => player.id === p.id)?.name || p.id);
-        return `${name} (${formatDisplayedRating(p.rating)} → ${formatDisplayedRating(after.rating)})`;
-      }).join(', ') || '(none)';
+      return `${LEAGUE_TEAM_NAME} (${formatDisplayedRating(beforeAvg)} → ${formatDisplayedRating(afterAvg)})`;
+    })()
+  : entry.before.blue.map((p, i) => {
+      const after = entry.after.blue[i];
+      const name =
+        (game.blueTeam || []).find(player => player.id === p.id)?.name || p.id;
+      return `${name} (${formatDisplayedRating(p.rating)} → ${formatDisplayedRating(after.rating)})`;
+    }).join(', ') || '(none)';
 
       const card = document.createElement('div');
       card.className = 'game-card';

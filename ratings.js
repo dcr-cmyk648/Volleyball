@@ -339,8 +339,15 @@ export function getPlayerRatingsForList(players, ratingMap, options = {}) {
   });
 }
 
+export const DISPLAY_RATING_BASE = 1500;
+export const DISPLAY_RATING_SCALE = 50;
+
+export function toDisplayRating(value) {
+  return DISPLAY_RATING_BASE + Number(value) * DISPLAY_RATING_SCALE;
+}
+
 export function formatDisplayedRating(value) {
-  return `${Math.round(value)}`;
+  return `${Math.round(toDisplayRating(value))}`;
 }
 
 export function formatMu(value) {

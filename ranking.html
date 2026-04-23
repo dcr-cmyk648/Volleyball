@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>How Ranking Works</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --bg-accent: #111827;
+      --card: #111827;
+      --card-2: #172033;
+      --text: #f3f4f6;
+      --muted: #94a3b8;
+      --border: #243041;
+      --button: #334155;
+      --button-text: #f3f4f6;
+      --secondary: #475569;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+      --link: #93c5fd;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      color-scheme: dark;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background:
+        radial-gradient(circle at top, #172033 0%, var(--bg) 45%),
+        var(--bg);
+      color: var(--text);
+      padding: 16px;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    h1, h2, h3 {
+      margin: 0 0 12px;
+      letter-spacing: 0.01em;
+    }
+
+    h1 {
+      font-size: 2rem;
+    }
+
+    h2 {
+      font-size: 1.2rem;
+      margin-top: 6px;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)),
+        var(--card);
+      border-radius: 18px;
+      padding: 18px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+    }
+
+    a.button-link {
+      border: 1px solid transparent;
+      background: var(--button);
+      color: var(--button-text);
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      transition: transform 0.12s ease, opacity 0.12s ease, background 0.12s ease;
+    }
+
+    a.button-link:hover {
+      transform: translateY(-1px);
+      opacity: 0.96;
+    }
+
+    .small {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 8px;
+      line-height: 1.45;
+    }
+
+    .callout {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      background: var(--card-2);
+      margin: 14px 0;
+    }
+
+    .term {
+      font-weight: 700;
+      color: #e5e7eb;
+    }
+
+    ul {
+      margin: 0 0 14px 20px;
+      padding: 0;
+    }
+
+    li {
+      margin-bottom: 8px;
+    }
+
+    code {
+      font-family: Consolas, Monaco, monospace;
+      background: rgba(255,255,255,0.06);
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 0.95em;
+    }
+
+    .equation {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin: 10px 0 14px;
+      color: #e5e7eb;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    @media (max-width: 700px) {
+      h1 {
+        font-size: 1.7rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <h1>How Ranking Works</h1>
+      <div class="nav-links">
+        <a href="stats.html" class="button-link">Back to Stats</a>
+        <a href="index.html" class="button-link">Main Page</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Short version</h2>
+      <p>
+        This app uses a modern rating system in the same general family as
+        TrueSkill rather than a simple Elo system. The basic idea is that every
+        player has both an estimated skill level and a level of uncertainty.
+      </p>
+      <div class="callout">
+        <div><span class="term">Mu</span> = estimated skill</div>
+        <div><span class="term">Sigma</span> = uncertainty about that estimate</div>
+        <div class="equation">Public Ranking = mu - 3 × sigma</div>
+      </div>
+      <p>
+        A player rises when they perform well against strong opposition and falls
+        when results are worse than expected. The system is also more cautious
+        when it has less data and more confident when it has seen many games.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>The basic idea</h2>
+      <p>
+        Instead of saying “this player is exactly a 1542,” the model says
+        something closer to:
+      </p>
+      <p>
+        “Based on the games recorded so far, this player appears to be around this
+        skill level, and this is how certain we are about that estimate.”
+      </p>
+      <p>
+        That is what <span class="term">mu</span> and <span class="term">sigma</span>
+        are doing.
+      </p>
+      <ul>
+        <li><span class="term">Higher mu</span> means the model thinks the player is stronger.</li>
+        <li><span class="term">Higher sigma</span> means the model is less certain.</li>
+        <li><span class="term">Lower sigma</span> means the model has more confidence.</li>
+      </ul>
+      <p>
+        The app then publishes a conservative ranking based on
+        <code>mu - 3 × sigma</code>. That means the public ranking does not only
+        reward high estimated skill. It also rewards having enough data for that
+        estimate to be trusted.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Why confidence matters</h2>
+      <p>
+        Early on, the system is unsure about everyone. A new player starts with a
+        reasonable default estimate but also a fairly wide confidence interval.
+        After only a few games, the model may suspect that someone is strong, but
+        it does not immediately treat that estimate as settled fact.
+      </p>
+      <p>
+        As more games are recorded, the model has more evidence. Sigma gradually
+        falls, which means confidence rises. That is why players with a longer
+        track record tend to have more stable rankings, while newer players can
+        move more quickly.
+      </p>
+      <div class="callout">
+        <p style="margin-bottom:0;">
+          In plain English: the app becomes less gullible as it sees more data.
+        </p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>How team games are handled</h2>
+      <p>
+        The app rates volleyball as a team game, not as a collection of isolated
+        one-on-one matchups. A game result updates all players who participated,
+        but the update depends on the strength of the teams involved, not just the
+        final winner.
+      </p>
+      <p>
+        This lets the model handle:
+      </p>
+      <ul>
+        <li>changing teams from game to game</li>
+        <li>uneven player experience levels</li>
+        <li>the fact that one player’s result is partly shaped by teammates and opponents</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>How does score margin affect ranking?</h2>
+      <p>
+        A narrow result such as 26–24 should not be treated exactly the same as a
+        lopsided result such as 25–10. At the same time, blowouts should not
+        completely dominate the rankings. So the app uses a bounded margin
+        adjustment: larger score differences matter more, but only up to a cap.
+      </p>
+      <p>
+        In practical terms, that means score margin influences the update, but it
+        does not overwhelm the underlying win/loss result.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Why rankings sometimes look conservative</h2>
+      <p>
+        Because the public ranking is intentionally cautious.
+      </p>
+      <p>
+        A player can have a good estimated skill but still have a middling public
+        ranking if the model is not yet very certain. This is a feature, not a
+        bug. It helps prevent someone from jumping unrealistically high after only
+        a few strong appearances.
+      </p>
+      <p>
+        It also means players with more sustained results (who play more games) usually separate more
+        clearly over time.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>What “Seasonal ranking (beta)” means</h2>
+      <p>
+        I added this mode to support future mini-leagues where players can be ranked based primarily on their performance within a specific window, rather than relying heavily on historical performance.
+      </p>
+      <p>
+        Older games are not deleted, but their effect is
+        tapered down. Very recent games count most. Games from roughly three
+        months ago or older contribute much less.
+      </p>
+    </div>
+  </div>
+</body>
+</html>

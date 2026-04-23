@@ -1,18 +1,15 @@
 // ratings.js
 // Shared rating engine for the Volleyball app.
 //
-// Goals:
-// - One source of truth for all rating calculations
-// - Replay games oldest -> newest
-// - Support visible Rating = mu - 3*sigma
-// - Support team balancing / candidate split scoring
-// - Support a persistent synthetic Blue league team
-// - Keep score margin bounded so 25-10 matters more than 26-24,
-//   but does not dominate the model
+// IMPORTANT:
+// This file expects vendor/openskill.js to be a browser-loadable module that
+// directly exports the OpenSkill API. If your current vendor/openskill.js file
+// starts with many imports like "/gaussian..." and "/ramda...", it is only a
+// wrapper and is NOT self-contained for GitHub Pages. In that case, replace the
+// contents of vendor/openskill.js with the actual bundle file from:
+// https://esm.sh/openskill@4.1.1/es2022/openskill.bundle.mjs
 //
-// This draft is intentionally defensive about input shape so it can be
-// adapted to the app's existing localStorage/database structure with
-// minimal pain.
+// Then this import will work as-is.
 
 import {
   rating,
@@ -20,362 +17,325 @@ import {
   ordinal,
   predictWin,
   predictDraw,
-  models,
+  ThurstoneMostellerFull,
 } from './vendor/openskill.js';
 
-const DEFAULTS = {
-  // Visible label should be "Rating", but internally these are the
-  // usual skill parameters.
+export const PLAYER_STORAGE_KEY = 'gameDayPlayers';
+export const GAME_STORAGE_KEY = 'gameDayGames';
+export const PAGE_STATE_KEY = 'gameDayMainPageState';
+
+export const LEAGUE_TEAM_ID = 'league_team';
+export const LEAGUE_TEAM_NAME = 'League Team';
+export const LEAGUE_TEAM_SIZE = 6;
+
+export const DEFAULT_RATING_OPTIONS = {
   mu: 25,
   sigma: 25 / 3,
-
-  // OpenSkill/TrueSkill-style model config.
-  // Thurstone-Mosteller is the closest conceptual fit to classic TrueSkill.
-  model: 'thurstone-mosteller',
-
-  // Margin settings.
-  useScoreMargin: true,
-  maxMarginBonus: 0.25, // caps multiplier at 1.25x
-  marginScale: 20,      // 20-point diff reaches the cap
-
-  // Conservative displayed rating.
   ordinalSigmaMultiplier: 3,
-
-  // Synthetic persistent league opponent key.
-  leagueTeamKey: '__blue_league_team__',
+  useScoreMargin: true,
+  maxMarginBonus: 0.25,
+  marginScale: 20,
 };
-
-function getModel(modelName = DEFAULTS.model) {
-  switch (modelName) {
-    case 'plackett-luce':
-      return models.PlackettLuce;
-    case 'bradley-terry':
-      return models.BradleyTerryFull;
-    case 'thurstone-mosteller':
-    default:
-      return models.ThurstoneMostellerFull;
-  }
-}
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function toNumberOrNull(value) {
-  if (value === null || value === undefined || value === '') return null;
+function toFiniteNumber(value, fallback = null) {
   const n = Number(value);
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n) ? n : fallback;
 }
 
-function deepClone(value) {
+function cloneSimple(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-export function mergeOptions(overrides = {}) {
-  return { ...DEFAULTS, ...overrides };
+export function mergeRatingOptions(overrides = {}) {
+  return { ...DEFAULT_RATING_OPTIONS, ...overrides };
 }
 
 export function makeInitialRating(options = {}) {
-  const cfg = mergeOptions(options);
+  const cfg = mergeRatingOptions(options);
   return rating({ mu: cfg.mu, sigma: cfg.sigma });
 }
 
-export function displayRating(skill, options = {}) {
-  const cfg = mergeOptions(options);
-  // ordinal() is already mu - 3*sigma in openskill-style libraries,
-  // but we keep a fallback for plain objects.
-  if (skill && typeof ordinal === 'function') {
-    try {
-      return ordinal(skill, { z: cfg.ordinalSigmaMultiplier });
-    } catch (_) {
-      // fall through to manual computation
-    }
+export function getDisplayedRating(skill, options = {}) {
+  const cfg = mergeRatingOptions(options);
+  try {
+    return ordinal(skill, { z: cfg.ordinalSigmaMultiplier });
+  } catch {
+    const mu = Number(skill?.mu ?? cfg.mu);
+    const sigma = Number(skill?.sigma ?? cfg.sigma);
+    return mu - cfg.ordinalSigmaMultiplier * sigma;
   }
-  const mu = Number(skill?.mu ?? cfg.mu);
-  const sigma = Number(skill?.sigma ?? cfg.sigma);
-  return mu - cfg.ordinalSigmaMultiplier * sigma;
 }
 
-export function marginFactor(winnerScore, loserScore, options = {}) {
-  const cfg = mergeOptions(options);
+export function getGamesSortedOldestFirst(gamesList) {
+  return [...gamesList].sort((a, b) => {
+    const dateA = a?.date || '';
+    const dateB = b?.date || '';
+    if (dateA !== dateB) {
+      return dateA.localeCompare(dateB);
+    }
+    const idA = typeof a?.id === 'number' ? a.id : 0;
+    const idB = typeof b?.id === 'number' ? b.id : 0;
+    return idA - idB;
+  });
+}
+
+export function getScoreMarginFactor(scoreRed, scoreBlue, options = {}) {
+  const cfg = mergeRatingOptions(options);
   if (!cfg.useScoreMargin) return 1;
 
-  const w = toNumberOrNull(winnerScore);
-  const l = toNumberOrNull(loserScore);
-  if (w === null || l === null) return 1;
+  const red = toFiniteNumber(scoreRed, null);
+  const blue = toFiniteNumber(scoreBlue, null);
+  if (red === null || blue === null) return 1;
 
-  const diff = Math.max(0, Math.abs(w - l));
-  const bonus = clamp(diff / cfg.marginScale, 0, cfg.maxMarginBonus);
+  const pointDiff = Math.abs(red - blue);
+  const bonus = clamp(pointDiff / cfg.marginScale, 0, cfg.maxMarginBonus);
   return 1 + bonus;
 }
 
-// Bounded score encoding for the underlying model.
-//
-// We keep the winner above the loser, but only modestly separate them.
-// This allows score margin to influence updates without letting blowouts
-// completely overwhelm the base result.
-export function boundedScorePair(winnerScore, loserScore, options = {}) {
-  const factor = marginFactor(winnerScore, loserScore, options);
+// Converts volleyball score margin into a bounded pair that preserves who won,
+// but does not let blowouts dominate the update.
+export function buildBoundedModelScores(scoreRed, scoreBlue, winner, options = {}) {
+  const marginFactor = getScoreMarginFactor(scoreRed, scoreBlue, options);
+
+  if (winner === 'red') {
+    return {
+      modelScores: [marginFactor, 1],
+      marginFactor,
+    };
+  }
+
   return {
-    winnerModelScore: factor,
-    loserModelScore: 1,
-    marginMultiplier: factor,
+    modelScores: [1, marginFactor],
+    marginFactor,
   };
 }
 
-function normalizePlayerRef(player) {
-  if (typeof player === 'string') return player;
-  if (player && typeof player === 'object') {
-    return (
-      player.id ??
-      player.name ??
-      player.playerId ??
-      player.playerName ??
-      null
-    );
+export function ensureRatingEntry(ratingMap, playerId, options = {}) {
+  if (!ratingMap[playerId]) {
+    ratingMap[playerId] = makeInitialRating(options);
   }
-  return null;
+  return ratingMap[playerId];
 }
 
-export function normalizePlayerKey(player) {
-  const key = normalizePlayerRef(player);
-  if (!key) throw new Error(`Could not normalize player reference: ${JSON.stringify(player)}`);
-  return String(key);
+export function ensureRatingsForGame(ratingMap, game, options = {}) {
+  const redTeam = Array.isArray(game?.redTeam) ? game.redTeam : [];
+  const blueTeam = Array.isArray(game?.blueTeam) ? game.blueTeam : [];
+
+  redTeam.forEach(player => ensureRatingEntry(ratingMap, player.id, options));
+
+  if (game?.isLeagueGame) {
+    ensureRatingEntry(ratingMap, LEAGUE_TEAM_ID, options);
+  } else {
+    blueTeam.forEach(player => ensureRatingEntry(ratingMap, player.id, options));
+  }
 }
 
-export function getGameTeams(game, options = {}) {
-  const cfg = mergeOptions(options);
+function getRedTeamIds(game) {
+  return (Array.isArray(game?.redTeam) ? game.redTeam : []).map(player => player.id);
+}
 
-  const redRaw = game.redTeam ?? game.red ?? game.teamRed ?? [];
-  let blueRaw = game.blueTeam ?? game.blue ?? game.teamBlue ?? [];
+function getBlueTeamIds(game) {
+  if (game?.isLeagueGame) {
+    return [LEAGUE_TEAM_ID];
+  }
+  return (Array.isArray(game?.blueTeam) ? game.blueTeam : []).map(player => player.id);
+}
 
-  const isLeagueGame = Boolean(
-    game.isLeagueGame ?? game.leagueGame ?? game.isLeague ?? false
+function buildTeamObjectsFromIds(ids, ratingMap) {
+  return ids.map(id => ratingMap[id]);
+}
+
+function applyUpdatedTeam(ids, updatedTeam, ratingMap) {
+  ids.forEach((id, index) => {
+    ratingMap[id] = updatedTeam[index];
+  });
+}
+
+export function rateSingleGame(game, ratingMap, options = {}) {
+  const cfg = mergeRatingOptions(options);
+  ensureRatingsForGame(ratingMap, game, cfg);
+
+  const redIds = getRedTeamIds(game);
+  const blueIds = getBlueTeamIds(game);
+
+  const redBefore = redIds.map(id => ({
+    id,
+    mu: Number(ratingMap[id].mu),
+    sigma: Number(ratingMap[id].sigma),
+    rating: getDisplayedRating(ratingMap[id], cfg),
+  }));
+
+  const blueBefore = blueIds.map(id => ({
+    id,
+    mu: Number(ratingMap[id].mu),
+    sigma: Number(ratingMap[id].sigma),
+    rating: getDisplayedRating(ratingMap[id], cfg),
+  }));
+
+  const redTeam = buildTeamObjectsFromIds(redIds, ratingMap);
+  const blueTeam = buildTeamObjectsFromIds(blueIds, ratingMap);
+
+  const { modelScores, marginFactor } = buildBoundedModelScores(
+    game?.scoreRed,
+    game?.scoreBlue,
+    game?.winner,
+    cfg
   );
 
-  const redPlayers = Array.isArray(redRaw) ? redRaw.map(normalizePlayerKey) : [];
-
-  let bluePlayers;
-  if (isLeagueGame) {
-    bluePlayers = [cfg.leagueTeamKey];
-  } else {
-    bluePlayers = Array.isArray(blueRaw) ? blueRaw.map(normalizePlayerKey) : [];
-  }
-
-  return {
-    redPlayers,
-    bluePlayers,
-    isLeagueGame,
-  };
-}
-
-export function getWinnerSide(game) {
-  const explicit = game.winner ?? game.winningTeam ?? game.result ?? null;
-  if (explicit === 'red' || explicit === 'blue') return explicit;
-
-  const redScore = toNumberOrNull(game.redScore);
-  const blueScore = toNumberOrNull(game.blueScore);
-
-  if (redScore !== null && blueScore !== null) {
-    if (redScore > blueScore) return 'red';
-    if (blueScore > redScore) return 'blue';
-  }
-
-  throw new Error(`Game is missing a usable winner: ${JSON.stringify(game)}`);
-}
-
-export function ensureRatingsForPlayers(ratingMap, playerKeys, options = {}) {
-  for (const key of playerKeys) {
-    if (!ratingMap[key]) {
-      ratingMap[key] = makeInitialRating(options);
+  const [updatedRedTeam, updatedBlueTeam] = rate(
+    [redTeam, blueTeam],
+    {
+      model: ThurstoneMostellerFull,
+      score: modelScores,
     }
-  }
-  return ratingMap;
-}
+  );
 
-function buildTeamRatings(playerKeys, ratingMap) {
-  return playerKeys.map((key) => ratingMap[key]);
-}
+  applyUpdatedTeam(redIds, updatedRedTeam, ratingMap);
+  applyUpdatedTeam(blueIds, updatedBlueTeam, ratingMap);
 
-function updateTeamRatings(playerKeys, ratingMap, newRatings) {
-  if (playerKeys.length !== newRatings.length) {
-    throw new Error('Player count and updated rating count do not match.');
-  }
-  for (let i = 0; i < playerKeys.length; i += 1) {
-    ratingMap[playerKeys[i]] = newRatings[i];
-  }
-}
+  const redAfter = redIds.map(id => ({
+    id,
+    mu: Number(ratingMap[id].mu),
+    sigma: Number(ratingMap[id].sigma),
+    rating: getDisplayedRating(ratingMap[id], cfg),
+  }));
 
-export function rateGame(game, ratingMap, options = {}) {
-  const cfg = mergeOptions(options);
-  const model = getModel(cfg.model);
-
-  const { redPlayers, bluePlayers, isLeagueGame } = getGameTeams(game, cfg);
-  const allPlayers = [...redPlayers, ...bluePlayers];
-  ensureRatingsForPlayers(ratingMap, allPlayers, cfg);
-
-  const winnerSide = getWinnerSide(game);
-  const redScore = toNumberOrNull(game.redScore);
-  const blueScore = toNumberOrNull(game.blueScore);
-
-  const redTeam = buildTeamRatings(redPlayers, ratingMap);
-  const blueTeam = buildTeamRatings(bluePlayers, ratingMap);
-
-  const before = {
-    red: redPlayers.map((key) => ({ key, ...deepClone(ratingMap[key]) })),
-    blue: bluePlayers.map((key) => ({ key, ...deepClone(ratingMap[key]) })),
-  };
-
-  let rated;
-  let marginInfo = { winnerModelScore: 1, loserModelScore: 1, marginMultiplier: 1 };
-
-  if (winnerSide === 'red') {
-    marginInfo = boundedScorePair(redScore, blueScore, cfg);
-    rated = rate(
-      [redTeam, blueTeam],
-      {
-        model,
-        score: [marginInfo.winnerModelScore, marginInfo.loserModelScore],
-      }
-    );
-  } else {
-    marginInfo = boundedScorePair(blueScore, redScore, cfg);
-    rated = rate(
-      [blueTeam, redTeam],
-      {
-        model,
-        score: [marginInfo.winnerModelScore, marginInfo.loserModelScore],
-      }
-    );
-    // Reorder result back into [red, blue] form.
-    rated = [rated[1], rated[0]];
-  }
-
-  updateTeamRatings(redPlayers, ratingMap, rated[0]);
-  updateTeamRatings(bluePlayers, ratingMap, rated[1]);
-
-  const after = {
-    red: redPlayers.map((key) => ({ key, ...deepClone(ratingMap[key]) })),
-    blue: bluePlayers.map((key) => ({ key, ...deepClone(ratingMap[key]) })),
-  };
+  const blueAfter = blueIds.map(id => ({
+    id,
+    mu: Number(ratingMap[id].mu),
+    sigma: Number(ratingMap[id].sigma),
+    rating: getDisplayedRating(ratingMap[id], cfg),
+  }));
 
   return {
-    winnerSide,
-    isLeagueGame,
-    redPlayers,
-    bluePlayers,
-    redScore,
-    blueScore,
-    marginInfo,
-    before,
-    after,
+    game: cloneSimple(game),
+    marginFactor,
+    before: {
+      red: redBefore,
+      blue: blueBefore,
+    },
+    after: {
+      red: redAfter,
+      blue: blueAfter,
+    },
   };
 }
 
 export function replayRatings({ players = [], games = [], options = {} } = {}) {
-  const cfg = mergeOptions(options);
+  const cfg = mergeRatingOptions(options);
   const ratingMap = {};
   const statsMap = {};
   const history = [];
 
-  const playerKeys = players.map(normalizePlayerKey);
-  ensureRatingsForPlayers(ratingMap, playerKeys, cfg);
-
-  for (const key of playerKeys) {
-    statsMap[key] = {
-      key,
+  players.forEach(player => {
+    ratingMap[player.id] = makeInitialRating(cfg);
+    statsMap[player.id] = {
+      id: player.id,
+      name: player.name,
       wins: 0,
       games: 0,
     };
-  }
+  });
 
-  // Always initialize the synthetic league team lazily when first used.
-  for (const game of games) {
-    const snapshot = rateGame(game, ratingMap, cfg);
-    history.push({ game: deepClone(game), snapshot });
+  ratingMap[LEAGUE_TEAM_ID] = makeInitialRating(cfg);
 
-    for (const key of snapshot.redPlayers) {
-      if (!statsMap[key]) statsMap[key] = { key, wins: 0, games: 0 };
-      statsMap[key].games += 1;
+  const sortedGames = getGamesSortedOldestFirst(games);
+
+  sortedGames.forEach(game => {
+    const historyEntry = rateSingleGame(game, ratingMap, cfg);
+    history.push(historyEntry);
+
+    const redTeam = Array.isArray(game.redTeam) ? game.redTeam : [];
+    const blueTeam = Array.isArray(game.blueTeam) ? game.blueTeam : [];
+
+    redTeam.forEach(player => {
+      if (!statsMap[player.id]) {
+        statsMap[player.id] = { id: player.id, name: player.name, wins: 0, games: 0 };
+      }
+      statsMap[player.id].games += 1;
+      if (game.winner === 'red') {
+        statsMap[player.id].wins += 1;
+      }
+    });
+
+    if (!game.isLeagueGame) {
+      blueTeam.forEach(player => {
+        if (!statsMap[player.id]) {
+          statsMap[player.id] = { id: player.id, name: player.name, wins: 0, games: 0 };
+        }
+        statsMap[player.id].games += 1;
+        if (game.winner === 'blue') {
+          statsMap[player.id].wins += 1;
+        }
+      });
     }
-    for (const key of snapshot.bluePlayers) {
-      if (key === cfg.leagueTeamKey) continue;
-      if (!statsMap[key]) statsMap[key] = { key, wins: 0, games: 0 };
-      statsMap[key].games += 1;
-    }
+  });
 
-    const winningKeys = snapshot.winnerSide === 'red' ? snapshot.redPlayers : snapshot.bluePlayers;
-    for (const key of winningKeys) {
-      if (key === cfg.leagueTeamKey) continue;
-      if (!statsMap[key]) statsMap[key] = { key, wins: 0, games: 0 };
-      statsMap[key].wins += 1;
-    }
-  }
-
-  const standings = Object.keys(statsMap)
-    .filter((key) => key !== cfg.leagueTeamKey)
-    .map((key) => {
-      const skill = ratingMap[key] ?? makeInitialRating(cfg);
-      const gamesPlayed = statsMap[key]?.games ?? 0;
-      const wins = statsMap[key]?.wins ?? 0;
+  const standings = Object.values(statsMap)
+    .map(player => {
+      const skill = ratingMap[player.id] ?? makeInitialRating(cfg);
       return {
-        key,
-        rating: displayRating(skill, cfg),
+        id: player.id,
+        name: player.name,
+        rating: getDisplayedRating(skill, cfg),
         mu: Number(skill.mu),
         sigma: Number(skill.sigma),
-        wins,
-        games: gamesPlayed,
-        winrate: gamesPlayed > 0 ? wins / gamesPlayed : 0,
+        wins: player.wins,
+        games: player.games,
+        winrate: player.games > 0 ? player.wins / player.games : 0.5,
       };
     })
     .sort((a, b) => {
       if (b.rating !== a.rating) return b.rating - a.rating;
       if (b.wins !== a.wins) return b.wins - a.wins;
       if (b.games !== a.games) return b.games - a.games;
-      return String(a.key).localeCompare(String(b.key));
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     });
 
-  const leagueSkill = ratingMap[cfg.leagueTeamKey] ?? null;
+  const leagueSkill = ratingMap[LEAGUE_TEAM_ID];
 
   return {
-    config: cfg,
     ratingMap,
     statsMap,
     standings,
     history,
-    leagueTeam: leagueSkill
-      ? {
-          key: cfg.leagueTeamKey,
-          rating: displayRating(leagueSkill, cfg),
-          mu: Number(leagueSkill.mu),
-          sigma: Number(leagueSkill.sigma),
-        }
-      : null,
+    leagueTeam: {
+      id: LEAGUE_TEAM_ID,
+      name: LEAGUE_TEAM_NAME,
+      rating: getDisplayedRating(leagueSkill, cfg),
+      mu: Number(leagueSkill.mu),
+      sigma: Number(leagueSkill.sigma),
+    },
   };
 }
 
 export function scoreCandidateSplit({ redPlayers, bluePlayers, ratingMap, options = {} }) {
-  const cfg = mergeOptions(options);
-  const model = getModel(cfg.model);
+  const cfg = mergeRatingOptions(options);
 
-  const redKeys = redPlayers.map(normalizePlayerKey);
-  const blueKeys = bluePlayers.map(normalizePlayerKey);
-  ensureRatingsForPlayers(ratingMap, [...redKeys, ...blueKeys], cfg);
+  redPlayers.forEach(player => ensureRatingEntry(ratingMap, player.id, cfg));
+  bluePlayers.forEach(player => ensureRatingEntry(ratingMap, player.id, cfg));
 
-  const redTeam = buildTeamRatings(redKeys, ratingMap);
-  const blueTeam = buildTeamRatings(blueKeys, ratingMap);
+  const redTeam = redPlayers.map(player => ratingMap[player.id]);
+  const blueTeam = bluePlayers.map(player => ratingMap[player.id]);
 
-  const redWinProbability = predictWin([redTeam, blueTeam], { model })?.[0] ?? 0.5;
+  const redWinProbability = predictWin([redTeam, blueTeam], {
+    model: ThurstoneMostellerFull,
+  })?.[0] ?? 0.5;
+
   const blueWinProbability = 1 - redWinProbability;
-  const drawProxy = predictDraw([redTeam, blueTeam], { model }) ?? 0;
+  const drawProxy = predictDraw([redTeam, blueTeam], {
+    model: ThurstoneMostellerFull,
+  }) ?? 0;
 
-  // A simple fairness score where bigger is better.
-  // 1.0 is perfectly balanced in the red-win sense.
   const fairness = 1 - Math.abs(redWinProbability - 0.5) * 2;
 
   return {
-    redPlayers: redKeys,
-    bluePlayers: blueKeys,
+    redPlayers,
+    bluePlayers,
     redWinProbability,
     blueWinProbability,
     drawProxy,
@@ -383,33 +343,27 @@ export function scoreCandidateSplit({ redPlayers, bluePlayers, ratingMap, option
   };
 }
 
-export function attachRatingsToPlayers(players, ratingMap, options = {}) {
-  const cfg = mergeOptions(options);
-  return players.map((player) => {
-    const key = normalizePlayerKey(player);
-    const skill = ratingMap[key] ?? makeInitialRating(cfg);
+export function getPlayerRatingsForList(players, ratingMap, options = {}) {
+  const cfg = mergeRatingOptions(options);
+  return players.map(player => {
+    const skill = ratingMap[player.id] ?? makeInitialRating(cfg);
     return {
       ...player,
-      rating: displayRating(skill, cfg),
+      rating: getDisplayedRating(skill, cfg),
       mu: Number(skill.mu),
       sigma: Number(skill.sigma),
     };
   });
 }
 
-export const Ratings = {
-  DEFAULTS,
-  mergeOptions,
-  makeInitialRating,
-  displayRating,
-  marginFactor,
-  boundedScorePair,
-  normalizePlayerKey,
-  getGameTeams,
-  getWinnerSide,
-  ensureRatingsForPlayers,
-  rateGame,
-  replayRatings,
-  scoreCandidateSplit,
-  attachRatingsToPlayers,
-};
+export function formatDisplayedRating(value) {
+  return `${Math.round(value)}`;
+}
+
+export function formatMu(value) {
+  return Number(value).toFixed(2);
+}
+
+export function formatSigma(value) {
+  return Number(value).toFixed(2);
+}

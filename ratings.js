@@ -35,9 +35,6 @@ export const DEFAULT_RATING_OPTIONS = {
 export const DISPLAY_RATING_BASE = 1500;
 export const DISPLAY_RATING_SCALE = 50;
 
-// Seasonal ranking settings:
-// - 0 days old: full weight
-// - ~90+ days old: near-minimal impact
 export const SEASONAL_FULL_WEIGHT_DAYS = 7;
 export const SEASONAL_TAPER_DAYS = 90;
 export const SEASONAL_MIN_WEIGHT = 0.05;
@@ -85,13 +82,8 @@ export function getSeasonalWeight(gameDateString, referenceDate = null) {
 
   const ageDays = daysBetween(gameDate, referenceDate);
 
-  if (ageDays <= SEASONAL_FULL_WEIGHT_DAYS) {
-    return 1;
-  }
-
-  if (ageDays >= SEASONAL_TAPER_DAYS) {
-    return SEASONAL_MIN_WEIGHT;
-  }
+  if (ageDays <= SEASONAL_FULL_WEIGHT_DAYS) return 1;
+  if (ageDays >= SEASONAL_TAPER_DAYS) return SEASONAL_MIN_WEIGHT;
 
   const progress =
     (ageDays - SEASONAL_FULL_WEIGHT_DAYS) /
@@ -125,9 +117,8 @@ export function getGamesSortedOldestFirst(gamesList) {
   return [...gamesList].sort((a, b) => {
     const dateA = a?.date || '';
     const dateB = b?.date || '';
-    if (dateA !== dateB) {
-      return dateA.localeCompare(dateB);
-    }
+    if (dateA !== dateB) return dateA.localeCompare(dateB);
+
     const idA = typeof a?.id === 'number' ? a.id : 0;
     const idB = typeof b?.id === 'number' ? b.id : 0;
     return idA - idB;
@@ -147,8 +138,6 @@ export function getScoreMarginFactor(scoreRed, scoreBlue, options = {}) {
   return 1 + bonus;
 }
 
-// Converts volleyball score margin into a bounded pair that preserves who won,
-// but does not let blowouts dominate the update.
 export function buildBoundedModelScores(scoreRed, scoreBlue, winner, options = {}) {
   const marginFactor = getScoreMarginFactor(scoreRed, scoreBlue, options);
 
@@ -169,7 +158,6 @@ export function applySeasonalWeightToModelScores(modelScores, seasonalWeight) {
   const safeWeight = clamp(seasonalWeight, SEASONAL_MIN_WEIGHT, 1);
 
   return modelScores.map(score => {
-    // Keep loser score at 1 and pull winner score toward 1 as games get older.
     return 1 + (Number(score) - 1) * safeWeight;
   });
 }
@@ -199,9 +187,7 @@ function getRedTeamIds(game) {
 }
 
 function getBlueTeamIds(game) {
-  if (game?.isLeagueGame) {
-    return LEAGUE_TEAM_MEMBER_IDS;
-  }
+  if (game?.isLeagueGame) return LEAGUE_TEAM_MEMBER_IDS;
   return (Array.isArray(game?.blueTeam) ? game.blueTeam : []).map(player => player.id);
 }
 
@@ -213,6 +199,35 @@ function applyUpdatedTeam(ids, updatedTeam, ratingMap) {
   ids.forEach((id, index) => {
     ratingMap[id] = updatedTeam[index];
   });
+}
+
+function findRatingEntry(entries, playerId) {
+  return entries.find(entry => String(entry.id) === String(playerId)) || null;
+}
+
+function getGamePlayerIds(game) {
+  const redIds = getRedTeamIds(game).map(String);
+  const blueIds = getBlueTeamIds(game).map(String);
+  return [...redIds, ...blueIds];
+}
+
+function getPlayerResultForGame(game, playerId) {
+  const playerIdString = String(playerId);
+  const redIds = getRedTeamIds(game).map(String);
+  const blueIds = getBlueTeamIds(game).map(String);
+
+  const side = redIds.includes(playerIdString)
+    ? 'red'
+    : blueIds.includes(playerIdString)
+      ? 'blue'
+      : '';
+
+  if (!side) return null;
+
+  return {
+    side,
+    won: game.winner === side,
+  };
 }
 
 export function rateSingleGame(game, ratingMap, options = {}) {
@@ -337,9 +352,7 @@ export function replayRatings({
         statsMap[player.id] = { id: player.id, name: player.name, wins: 0, games: 0 };
       }
       statsMap[player.id].games += 1;
-      if (game.winner === 'red') {
-        statsMap[player.id].wins += 1;
-      }
+      if (game.winner === 'red') statsMap[player.id].wins += 1;
     });
 
     if (!game.isLeagueGame) {
@@ -348,9 +361,7 @@ export function replayRatings({
           statsMap[player.id] = { id: player.id, name: player.name, wins: 0, games: 0 };
         }
         statsMap[player.id].games += 1;
-        if (game.winner === 'blue') {
-          statsMap[player.id].wins += 1;
-        }
+        if (game.winner === 'blue') statsMap[player.id].wins += 1;
       });
     }
   });
@@ -402,9 +413,7 @@ export function replayRatings({
   games.forEach(game => {
     if (game.isLeagueGame) {
       leagueTeam.games += 1;
-      if (game.winner === 'blue') {
-        leagueTeam.wins += 1;
-      }
+      if (game.winner === 'blue') leagueTeam.wins += 1;
     }
   });
 
@@ -425,6 +434,79 @@ export function replayRatings({
     history,
     leagueTeam,
   };
+}
+
+export function getPlayerRatingTimeline({
+  players = [],
+  games = [],
+  playerId,
+  options = {},
+  seasonal = false,
+} = {}) {
+  const cfg = mergeRatingOptions(options);
+  const ratingMap = {};
+  const timeline = [];
+
+  players.forEach(player => {
+    ratingMap[player.id] = makeInitialRating(cfg);
+  });
+
+  const sortedGames = getGamesSortedOldestFirst(games);
+  const referenceDate = seasonal ? getMostRecentGameDate(sortedGames) : null;
+
+  sortedGames.forEach((game, chronologicalIndex) => {
+    const playerIds = getGamePlayerIds(game);
+
+    if (!playerIds.includes(String(playerId))) {
+      ensureRatingsForGame(ratingMap, game, cfg);
+      return;
+    }
+
+    const seasonalWeight = seasonal
+      ? getSeasonalWeight(game?.date, referenceDate)
+      : 1;
+
+    const result = rateSingleGame(game, ratingMap, {
+      ...cfg,
+      seasonalWeight,
+    });
+
+    const beforeEntries = [...result.before.red, ...result.before.blue];
+    const afterEntries = [...result.after.red, ...result.after.blue];
+
+    const before = findRatingEntry(beforeEntries, playerId);
+    const after = findRatingEntry(afterEntries, playerId);
+    const playerResult = getPlayerResultForGame(game, playerId);
+
+    if (!before || !after || !playerResult) return;
+
+    timeline.push({
+      gameId: game.id,
+      chronologicalIndex,
+      date: game.date || '',
+      winner: game.winner,
+      side: playerResult.side,
+      won: playerResult.won,
+      isLeagueGame: Boolean(game.isLeagueGame),
+      scoreRed: typeof game.scoreRed === 'undefined' ? null : game.scoreRed,
+      scoreBlue: typeof game.scoreBlue === 'undefined' ? null : game.scoreBlue,
+      ratingBefore: before.rating,
+      ratingAfter: after.rating,
+      displayRatingBefore: toDisplayRating(before.rating),
+      displayRatingAfter: toDisplayRating(after.rating),
+      muBefore: before.mu,
+      muAfter: after.mu,
+      sigmaBefore: before.sigma,
+      sigmaAfter: after.sigma,
+      marginFactor: result.marginFactor,
+      seasonalWeight: result.seasonalWeight,
+      redTeam: Array.isArray(game.redTeam) ? cloneSimple(game.redTeam) : [],
+      blueTeam: Array.isArray(game.blueTeam) ? cloneSimple(game.blueTeam) : [],
+      leagueOpponent: game.leagueOpponent ? cloneSimple(game.leagueOpponent) : null,
+    });
+  });
+
+  return timeline;
 }
 
 export function scoreCandidateSplit({ redPlayers, bluePlayers, ratingMap, options = {} }) {

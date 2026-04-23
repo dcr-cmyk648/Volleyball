@@ -15,9 +15,9 @@
       --border: #243041;
       --button: #334155;
       --button-text: #f3f4f6;
-      --secondary: #475569;
       --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
-      --link: #93c5fd;
+      --accent: #93c5fd;
+      --accent-soft: rgba(147, 197, 253, 0.12);
     }
 
     * {
@@ -26,6 +26,7 @@
 
     html {
       color-scheme: dark;
+      scroll-behavior: smooth;
     }
 
     body {
@@ -36,11 +37,11 @@
         var(--bg);
       color: var(--text);
       padding: 16px;
-      line-height: 1.6;
+      line-height: 1.65;
     }
 
     .container {
-      max-width: 900px;
+      max-width: 920px;
       margin: 0 auto;
     }
 
@@ -60,7 +61,7 @@
     }
 
     h1, h2, h3 {
-      margin: 0 0 12px;
+      margin: 0;
       letter-spacing: 0.01em;
     }
 
@@ -69,22 +70,33 @@
     }
 
     h2 {
-      font-size: 1.2rem;
-      margin-top: 6px;
+      font-size: 1.18rem;
+      margin-bottom: 12px;
     }
 
     p {
       margin: 0 0 14px;
     }
 
-    .card {
-      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)),
-        var(--card);
-      border-radius: 18px;
-      padding: 18px;
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow);
-      margin-bottom: 16px;
+    ul {
+      margin: 0 0 14px 20px;
+      padding: 0;
+    }
+
+    li {
+      margin-bottom: 8px;
+    }
+
+    code {
+      font-family: Consolas, Monaco, monospace;
+      background: rgba(255,255,255,0.06);
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 0.95em;
+    }
+
+    a {
+      color: var(--accent);
     }
 
     a.button-link {
@@ -106,57 +118,125 @@
       opacity: 0.96;
     }
 
-    .small {
-      font-size: 13px;
-      color: var(--muted);
-      margin-top: 8px;
-      line-height: 1.45;
+    .hero,
+    .section {
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)),
+        var(--card);
+      border-radius: 18px;
+      padding: 20px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
     }
 
-    .callout {
+    .hero {
+      padding: 24px 20px;
+    }
+
+    .hero-subtitle {
+      color: var(--muted);
+      margin-top: 10px;
+      margin-bottom: 0;
+      max-width: 760px;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: 18px 0 0;
+    }
+
+    .metric-card {
       border: 1px solid var(--border);
       border-radius: 14px;
       padding: 14px;
       background: var(--card-2);
-      margin: 14px 0;
     }
 
-    .term {
+    .metric-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .metric-value {
+      font-size: 1rem;
       font-weight: 700;
-      color: #e5e7eb;
-    }
-
-    ul {
-      margin: 0 0 14px 20px;
-      padding: 0;
-    }
-
-    li {
-      margin-bottom: 8px;
-    }
-
-    code {
-      font-family: Consolas, Monaco, monospace;
-      background: rgba(255,255,255,0.06);
-      padding: 2px 6px;
-      border-radius: 6px;
-      font-size: 0.95em;
+      color: var(--text);
     }
 
     .equation {
-      font-size: 1.05rem;
+      border: 1px solid rgba(147, 197, 253, 0.25);
+      background: var(--accent-soft);
+      color: #dbeafe;
+      border-radius: 14px;
+      padding: 14px 16px;
       font-weight: 700;
-      margin: 10px 0 14px;
-      color: #e5e7eb;
+      margin-top: 14px;
     }
 
-    .muted {
+    .section p:last-child,
+    .section ul:last-child {
+      margin-bottom: 0;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .section-number {
+      width: 30px;
+      height: 30px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: #dbeafe;
+      background: var(--accent-soft);
+      border: 1px solid rgba(147, 197, 253, 0.25);
+      flex: 0 0 auto;
+    }
+
+    .callout {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--card-2);
       color: var(--muted);
     }
 
-    @media (max-width: 700px) {
+    .reference-text {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .footer-note {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 8px;
+    }
+
+    @media (max-width: 760px) {
+      .summary-grid {
+        grid-template-columns: 1fr;
+      }
+
       h1 {
         font-size: 1.7rem;
+      }
+
+      .hero,
+      .section {
+        padding: 18px;
       }
     }
   </style>
@@ -171,86 +251,90 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="hero">
       <h2>Summary</h2>
-      <p>
-        This app uses a modern rating system specifically designed for ranking players who play in frequently-changing teams. The basic idea is that every
-        player has both an estimated skill level and a level of uncertainty.
-
-        Julia Ibstedt, Elsa Rådahl, Erik Turesson, and Magdalena vande Voorde. Application and further development of trueskill™ ranking in sports. 2019.
-        Ruby C. Weng and Chih-Jen Lin. A bayesian approximation method for online ranking. Journal of Machine Learning Research, 12(9):267–300, 2011.
+      <p class="hero-subtitle">
+        This app uses a modern rating system specifically designed for ranking players who play in frequently-changing teams. The basic idea is that every player has both an estimated skill level and a level of uncertainty. Julia Ibstedt, Elsa Rådahl, Erik Turesson, and Magdalena vande Voorde. Application and further development of trueskill™ ranking in sports. 2019. Ruby C. Weng and Chih-Jen Lin. A bayesian approximation method for online ranking. Journal of Machine Learning Research, 12(9):267–300, 2011.
       </p>
-      <div class="callout">
-        <div><span class="term">Mu</span> = estimated skill</div>
-        <div><span class="term">Sigma</span> = uncertainty about that estimate</div>
-        <div class="equation">Public Ranking = mu - 3 × sigma</div>
+
+      <div class="summary-grid">
+        <div class="metric-card">
+          <div class="metric-label">Mu</div>
+          <div class="metric-value">estimated skill</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Sigma</div>
+          <div class="metric-value">uncertainty about that estimate</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Public Ranking</div>
+          <div class="metric-value">mu - 3 × sigma</div>
+        </div>
       </div>
-      <p>
-        A player rises when they perform well against strong opposition and falls
-        when results are worse than expected. The system is also more cautious
-        when it has less data and more confident when it has seen many games.
+
+      <div class="equation">
+        Public Ranking = mu - 3 × sigma
+      </div>
+
+      <p style="margin-top:14px;">
+        A player rises when they perform well against strong opposition and falls when results are worse than expected. The system is also more cautious when it has less data and more confident when it has seen many games.
       </p>
     </div>
 
-    <div class="card">
-      <h2>The basic idea</h2>
-      <p>
-        Instead of saying “this player is exactly a 1542,” the model says
-        something closer to:
-      </p>
-      <p>
-        “Based on the games recorded so far, this player appears to be around this
-        skill level, and this is how certain we are about that estimate.”
-      </p>
-      <p>
-        That is what <span class="term">mu</span> and <span class="term">sigma</span>
-        are doing.
-      </p>
+    <div class="section">
+      <div class="section-header">
+        <div class="section-number">1</div>
+        <h2>The basic idea</h2>
+      </div>
+
+      <p>Instead of saying “this player is exactly a 1542,” the model says something closer to:</p>
+
+      <p>“Based on the games recorded so far, this player appears to be around this skill level, and this is how certain we are about that estimate.”</p>
+
+      <p>That is what mu and sigma are doing.</p>
+
       <ul>
-        <li><span class="term">Higher mu</span> means the model thinks the player is stronger.</li>
-        <li><span class="term">Higher sigma</span> means the model is less certain.</li>
-        <li><span class="term">Lower sigma</span> means the model has more confidence.</li>
+        <li>Higher mu means the model thinks the player is stronger.</li>
+        <li>Higher sigma means the model is less certain.</li>
+        <li>Lower sigma means the model has more confidence.</li>
       </ul>
+
       <p>
-        The app then publishes a conservative ranking based on
-        <code>mu - 3 × sigma</code>. That means the public ranking does not only
-        reward high estimated skill. It also rewards having enough data for that
-        estimate to be trusted.
+        The app then publishes a conservative ranking based on <code>mu - 3 × sigma</code>. That means the public ranking does not only reward high estimated skill. It also rewards having enough data for that estimate to be trusted.
       </p>
     </div>
 
-    <div class="card">
-      <h2>Why confidence matters</h2>
+    <div class="section">
+      <div class="section-header">
+        <div class="section-number">2</div>
+        <h2>Why confidence matters</h2>
+      </div>
+
       <p>
-        Early on, the system is unsure about everyone. A new player starts with a
-        reasonable default estimate but also a fairly wide confidence interval.
-        After only a few games, the model may suspect that someone is strong, but
-        it does not immediately treat that estimate as settled fact.
+        Early on, the system is unsure about everyone. A new player starts with a reasonable default estimate but also a fairly wide confidence interval. After only a few games, the model may suspect that someone is strong, but it does not immediately treat that estimate as settled fact.
       </p>
+
       <p>
-        As more games are recorded, the model has more evidence. Sigma gradually
-        falls, which means confidence rises. That is why players with a longer
-        track record tend to have more stable rankings, while newer players can
-        move more quickly.
+        As more games are recorded, the model has more evidence. Sigma gradually falls, which means confidence rises. That is why players with a longer track record tend to have more stable rankings, while newer players can move more quickly.
       </p>
+
       <div class="callout">
-        <p style="margin-bottom:0;">
-          In plain English: the app becomes less gullible as it sees more data.
-        </p>
+        In plain English: the app becomes less gullible as it sees more data.
       </div>
     </div>
 
-    <div class="card">
-      <h2>How team games are handled</h2>
+    <div class="section">
+      <div class="section-header">
+        <div class="section-number">3</div>
+        <h2>How team games are handled</h2>
+      </div>
+
       <p>
-        The app rates volleyball as a team game, not as a collection of isolated
-        one-on-one matchups. A game result updates all players who participated,
-        but the update depends on the strength of the teams involved, not just the
-        final winner.
+        The app rates volleyball as a team game, not as a collection of isolated one-on-one matchups. A game result updates all players who participated, but the update depends on the strength of the teams involved, not just the final winner.
       </p>
-      <p>
-        This lets the model handle:
-      </p>
+
+      <p>This lets the model handle:</p>
+
       <ul>
         <li>changing teams from game to game</li>
         <li>uneven player experience levels</li>
@@ -258,42 +342,48 @@
       </ul>
     </div>
 
-    <div class="card">
-      <h2>How does score margin affect ranking?</h2>
+    <div class="section">
+      <div class="section-header">
+        <div class="section-number">4</div>
+        <h2>How does score margin affect ranking?</h2>
+      </div>
+
       <p>
-        I didn't think that a narrow win such as 26–24 should not be treated exactly the same as a
-        lopsided result such as 25–10. At the same time, blowouts should not
-        completely dominate the rankings. So the app uses a bounded margin
-        adjustment: larger score differences matter more, but only up to a cap.
+        I didn't think that a narrow win such as 26–24 should not be treated exactly the same as a lopsided result such as 25–10. At the same time, blowouts should not completely dominate the rankings. So the app uses a bounded margin adjustment: larger score differences matter more, but only up to a cap.
       </p>
+
       <p>
         In practical terms, that means score margin can influence the ranking change after a game by around 20-30%
       </p>
     </div>
 
-    <div class="card">
-      <h2>Why is my ranking low when I have won most of my games?</h2>
+    <div class="section">
+      <div class="section-header">
+        <div class="section-number">5</div>
+        <h2>Why is my ranking low when I have won most of my games?</h2>
+      </div>
+
       <p>
-        A player can have a good estimated skill but still have a middling public
-        ranking if the model is not yet very certain. This is a feature, not a
-        bug. It helps prevent someone from jumping unrealistically high after only
-        a few strong appearances.
+        A player can have a good estimated skill but still have a middling public ranking if the model is not yet very certain. This is a feature, not a bug. It helps prevent someone from jumping unrealistically high after only a few strong appearances.
       </p>
+
       <p>
-        It also means players with more sustained results (who play more games) usually separate more
-        clearly over time.
+        It also means players with more sustained results (who play more games) usually separate more clearly over time.
       </p>
     </div>
 
-    <div class="card">
-      <h2>What “Seasonal ranking (beta)” means</h2>
+    <div class="section">
+      <div class="section-header">
+        <div class="section-number">6</div>
+        <h2>What “Seasonal ranking (beta)” means</h2>
+      </div>
+
       <p>
         I added this mode to support future mini-leagues where players can be ranked based primarily on their performance within a specific window, rather than relying heavily on historical performance.
       </p>
+
       <p>
-        Older games are not deleted, but their effect is
-        tapered down. Very recent games count most. Games from roughly three
-        months ago or older contribute much less.
+        Older games are not deleted, but their effect is tapered down. Very recent games count most. Games from roughly three months ago or older contribute much less.
       </p>
     </div>
   </div>

@@ -13,11 +13,13 @@
       --text: #f3f4f6;
       --muted: #94a3b8;
       --border: #243041;
---button: #334155;
---button-text: #f3f4f6;
---secondary: #475569;
---ghost: #1e293b;
+      --button: #334155;
+      --button-text: #f3f4f6;
+      --secondary: #475569;
+      --ghost: #1e293b;
       --danger: #ef4444;
+      --red: #f87171;
+      --blue: #60a5fa;
       --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
     }
 
@@ -94,7 +96,7 @@
       cursor: pointer;
       text-decoration: none;
       display: inline-block;
-      transition: transform 0.12s ease, opacity 0.12s ease, background 0.12s ease;
+      transition: transform 0.12s ease, opacity 0.12s ease, background 0.12s ease, border-color 0.12s ease;
     }
 
     button:hover,
@@ -108,10 +110,28 @@
       color: var(--text);
     }
 
+    button.ghost {
+      background: var(--ghost);
+      color: var(--text);
+      border-color: var(--border);
+    }
+
     button.danger {
       background: rgba(239, 68, 68, 0.16);
       color: #fecaca;
       border-color: rgba(239, 68, 68, 0.35);
+    }
+
+    button.lock-red {
+      background: rgba(248, 113, 113, 0.16);
+      color: #fecaca;
+      border-color: rgba(248, 113, 113, 0.35);
+    }
+
+    button.lock-blue {
+      background: rgba(96, 165, 250, 0.16);
+      color: #bfdbfe;
+      border-color: rgba(96, 165, 250, 0.35);
     }
 
     .controls {
@@ -148,8 +168,8 @@
 
     .player-row {
       display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 10px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
       align-items: center;
       border: 1px solid var(--border);
       border-radius: 14px;
@@ -157,10 +177,27 @@
       padding: 12px;
     }
 
+    .player-main {
+      min-width: 0;
+    }
+
     .player-name {
       font-size: 17px;
       font-weight: 600;
       word-break: break-word;
+      margin-bottom: 6px;
+    }
+
+    .player-meta {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .player-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
 
     .empty-state {
@@ -224,6 +261,14 @@
       h1 {
         font-size: 1.7rem;
       }
+
+      .player-row {
+        grid-template-columns: 1fr;
+      }
+
+      .player-actions {
+        justify-content: flex-start;
+      }
     }
   </style>
 </head>
@@ -244,6 +289,9 @@
       </div>
       <div class="small">
         This page is the source of truth for the player database. Players are sorted alphabetically. Deleting a player does not change old game history.
+      </div>
+      <div class="small">
+        Locking a player here tells team generation to keep that player on the selected team whenever teams are assigned automatically.
       </div>
       <div id="statusMessage" class="status">Ready.</div>
     </div>
@@ -300,7 +348,7 @@
   <script>
     const PLAYER_STORAGE_KEY = 'gameDayPlayers';
     const DEFAULT_PLAYERS = [
-      { id: 1, name: 'DustinR' }
+      { id: 1, name: 'DustinR', lockedTeam: '' }
     ];
 
     const playerListEl = document.getElementById('playerList');
@@ -318,6 +366,28 @@
       statusMessageEl.textContent = message;
     }
 
+    function normalizeLockedTeam(value) {
+      return value === 'red' || value === 'blue' ? value : '';
+    }
+
+    function getLockedTeamLabel(lockedTeam) {
+      if (lockedTeam === 'red') return 'Locked to Red';
+      if (lockedTeam === 'blue') return 'Locked to Blue';
+      return 'No team lock';
+    }
+
+    function getLockButtonLabel(lockedTeam) {
+      if (lockedTeam === 'red') return 'Lock Red';
+      if (lockedTeam === 'blue') return 'Lock Blue';
+      return 'No Lock';
+    }
+
+    function getNextLockedTeam(current) {
+      if (current === '') return 'red';
+      if (current === 'red') return 'blue';
+      return '';
+    }
+
     function normalizePlayers(rawPlayers) {
       if (!Array.isArray(rawPlayers)) {
         return [];
@@ -327,7 +397,8 @@
         .filter(player => player && typeof player.name === 'string')
         .map(player => ({
           id: player.id,
-          name: player.name.trim()
+          name: player.name.trim(),
+          lockedTeam: normalizeLockedTeam(player.lockedTeam)
         }))
         .filter(player => player.name.length > 0);
     }
@@ -366,6 +437,18 @@
       );
     }
 
+    function cyclePlayerLock(playerId) {
+      const players = loadPlayers();
+      const player = players.find(p => p.id === playerId);
+
+      if (!player) return;
+
+      player.lockedTeam = getNextLockedTeam(normalizeLockedTeam(player.lockedTeam));
+      savePlayers(players);
+      renderPlayers();
+      setStatus(`${player.name}: ${getLockedTeamLabel(player.lockedTeam)}`);
+    }
+
     function renderPlayers() {
       const players = getSortedPlayers(loadPlayers());
       playerListEl.innerHTML = '';
@@ -382,9 +465,34 @@
         const row = document.createElement('div');
         row.className = 'player-row';
 
+        const main = document.createElement('div');
+        main.className = 'player-main';
+
         const name = document.createElement('div');
         name.className = 'player-name';
         name.textContent = player.name;
+
+        const meta = document.createElement('div');
+        meta.className = 'player-meta';
+        meta.textContent = getLockedTeamLabel(player.lockedTeam);
+
+        main.appendChild(name);
+        main.appendChild(meta);
+
+        const actions = document.createElement('div');
+        actions.className = 'player-actions';
+
+        const lockButton = document.createElement('button');
+        lockButton.className =
+          player.lockedTeam === 'red'
+            ? 'lock-red'
+            : player.lockedTeam === 'blue'
+              ? 'lock-blue'
+              : 'ghost';
+        lockButton.textContent = getLockButtonLabel(player.lockedTeam);
+        lockButton.addEventListener('click', () => {
+          cyclePlayerLock(player.id);
+        });
 
         const deleteButton = document.createElement('button');
         deleteButton.className = 'danger';
@@ -393,8 +501,11 @@
           openDeletePlayerDialog(player.id, player.name);
         });
 
-        row.appendChild(name);
-        row.appendChild(deleteButton);
+        actions.appendChild(lockButton);
+        actions.appendChild(deleteButton);
+
+        row.appendChild(main);
+        row.appendChild(actions);
         playerListEl.appendChild(row);
       });
     }
@@ -419,7 +530,8 @@
 
       players.push({
         id: Date.now(),
-        name: rawName
+        name: rawName,
+        lockedTeam: ''
       });
 
       savePlayers(players);

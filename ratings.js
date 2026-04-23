@@ -1,15 +1,5 @@
 // ratings.js
 // Shared rating engine for the Volleyball app.
-//
-// IMPORTANT:
-// This file expects vendor/openskill.js to be a browser-loadable module that
-// directly exports the OpenSkill API. If your current vendor/openskill.js file
-// starts with many imports like "/gaussian..." and "/ramda...", it is only a
-// wrapper and is NOT self-contained for GitHub Pages. In that case, replace the
-// contents of vendor/openskill.js with the actual bundle file from:
-// https://esm.sh/openskill@4.1.1/es2022/openskill.bundle.mjs
-//
-// Then this import will work as-is.
 
 import {
   rating,
@@ -17,7 +7,6 @@ import {
   ordinal,
   predictWin,
   predictDraw,
-  ThurstoneMostellerFull,
 } from "https://esm.sh/openskill@4.1.1";
 
 export const PLAYER_STORAGE_KEY = 'gameDayPlayers';
@@ -189,7 +178,6 @@ export function rateSingleGame(game, ratingMap, options = {}) {
   const [updatedRedTeam, updatedBlueTeam] = rate(
     [redTeam, blueTeam],
     {
-      model: ThurstoneMostellerFull,
       score: modelScores,
     }
   );
@@ -322,14 +310,9 @@ export function scoreCandidateSplit({ redPlayers, bluePlayers, ratingMap, option
   const redTeam = redPlayers.map(player => ratingMap[player.id]);
   const blueTeam = bluePlayers.map(player => ratingMap[player.id]);
 
-  const redWinProbability = predictWin([redTeam, blueTeam], {
-    model: ThurstoneMostellerFull,
-  })?.[0] ?? 0.5;
-
+  const redWinProbability = predictWin([redTeam, blueTeam])?.[0] ?? 0.5;
   const blueWinProbability = 1 - redWinProbability;
-  const drawProxy = predictDraw([redTeam, blueTeam], {
-    model: ThurstoneMostellerFull,
-  }) ?? 0;
+  const drawProxy = predictDraw([redTeam, blueTeam]) ?? 0;
 
   const fairness = 1 - Math.abs(redWinProbability - 0.5) * 2;
 

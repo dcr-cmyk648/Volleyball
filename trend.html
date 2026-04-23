@@ -15,10 +15,7 @@
       --border: #243041;
       --button: #334155;
       --button-text: #f3f4f6;
-      --red: #f87171;
-      --blue: #60a5fa;
       --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
-      --link: #93c5fd;
     }
 
     * {
@@ -148,7 +145,7 @@
     }
 
     .chart-wrap {
-      height: 380px;
+      height: 390px;
       margin-top: 12px;
     }
 
@@ -238,7 +235,7 @@
     <div class="card">
       <h2>Rating Over Time</h2>
       <div class="small">
-        This graph shows the player’s public Rating after each game they played. Rating is the Elo-like display transform of mu - 3 × sigma.
+        This graph starts at the player’s initial baseline rating, then shows their public Rating after each game they played.
       </div>
       <div id="summaryGrid" class="summary-grid"></div>
       <div id="statusMessage" class="status">Loading player trend...</div>
@@ -250,7 +247,7 @@
     <div class="card">
       <h2>Game-by-game history</h2>
       <div class="small">
-        Chronological rating changes for this player.
+        Newest games are shown first. The graph above still runs left-to-right from oldest to newest.
       </div>
       <div class="table-wrap">
         <table>
@@ -276,10 +273,11 @@
       PLAYER_STORAGE_KEY,
       GAME_STORAGE_KEY,
       getPlayerRatingTimeline,
-      formatDisplayedRating,
       formatMu,
       formatSigma,
     } from './ratings.js';
+
+    const SEASONAL_RANKING_STORAGE_KEY = 'gameDaySeasonalRankingEnabled';
 
     const pageTitleEl = document.getElementById('pageTitle');
     const summaryGridEl = document.getElementById('summaryGrid');
@@ -321,6 +319,10 @@
       }
     }
 
+    function loadSeasonalRankingEnabled() {
+      return localStorage.getItem(SEASONAL_RANKING_STORAGE_KEY) === 'true';
+    }
+
     function getPlayerIdFromUrl() {
       const params = new URLSearchParams(window.location.search);
       return params.get('id');
@@ -328,6 +330,10 @@
 
     function findPlayer(players, playerId) {
       return players.find(player => String(player.id) === String(playerId)) || null;
+    }
+
+    function formatRating(value) {
+      return `${Math.round(Number(value))}`;
     }
 
     function formatScore(row) {
@@ -349,6 +355,11 @@
       return '';
     }
 
+    function makeGameLabel(row, index) {
+      const date = row.date || 'Unknown';
+      return `${date} #${index + 1}`;
+    }
+
     function renderSummary(timeline) {
       summaryGridEl.innerHTML = '';
 
@@ -363,7 +374,7 @@
       const change = latest.displayRatingAfter - first.displayRatingBefore;
 
       const items = [
-        ['Current Rating', Math.round(latest.displayRatingAfter)],
+        ['Current Rating', formatRating(latest.displayRatingAfter)],
         ['Games', timeline.length],
         ['Record', `${wins}-${losses}`],
         ['Change', `${change >= 0 ? '+' : ''}${Math.round(change)}`],
@@ -387,15 +398,19 @@
         chart.destroy();
       }
 
-const labels = [
-  'Start',
-  ...timeline.map((row, index) => `${row.date || 'Unknown'} #${index + 1}`)
-];
+      if (timeline.length === 0) {
+        return;
+      }
 
-const data = [
-  Math.round(timeline[0].displayRatingBefore),
-  ...timeline.map(row => Math.round(row.displayRatingAfter))
-];
+      const labels = [
+        'Start',
+        ...timeline.map((row, index) => makeGameLabel(row, index))
+      ];
+
+      const data = [
+        Math.round(timeline[0].displayRatingBefore),
+        ...timeline.map(row => Math.round(row.displayRatingAfter))
+      ];
 
       chart = new Chart(chartCanvas, {
         type: 'line',
@@ -427,15 +442,21 @@ const data = [
             tooltip: {
               callbacks: {
                 afterLabel: function(context) {
-                  const row = timeline[context.dataIndex];
+                  if (context.dataIndex === 0) {
+                    return ['Initial baseline before first recorded game'];
+                  }
+
+                  const row = timeline[context.dataIndex - 1];
                   const result = row.won ? 'Win' : 'Loss';
                   const score = formatScore(row);
+
                   return [
                     `Result: ${result}`,
                     `Side: ${formatSide(row.side)}`,
                     `Score: ${score}`,
-                    `Mu: ${formatMu(row.muAfter)}`,
-                    `Sigma: ${formatSigma(row.sigmaAfter)}`
+                    `Rating: ${formatRating(row.displayRatingBefore)} → ${formatRating(row.displayRatingAfter)}`,
+                    `Mu: ${formatMu(row.muBefore)} → ${formatMu(row.muAfter)}`,
+                    `Sigma: ${formatSigma(row.sigmaBefore)} → ${formatSigma(row.sigmaAfter)}`
                   ];
                 }
               }
@@ -444,7 +465,9 @@ const data = [
           scales: {
             x: {
               ticks: {
-                color: '#94a3b8'
+                color: '#94a3b8',
+                maxRotation: 0,
+                autoSkip: true
               },
               grid: {
                 color: 'rgba(148, 163, 184, 0.18)'
@@ -476,7 +499,9 @@ const data = [
         return;
       }
 
-      timeline.forEach(row => {
+      const newestFirst = [...timeline].reverse();
+
+      newestFirst.forEach(row => {
         const tr = document.createElement('tr');
         const resultClass = row.won ? 'result-win' : 'result-loss';
         const resultText = row.won ? 'Win' : 'Loss';
@@ -486,7 +511,7 @@ const data = [
           <td><span class="${resultClass}">${resultText}</span></td>
           <td>${formatSide(row.side)}</td>
           <td>${formatScore(row)}</td>
-          <td>${formatDisplayedRating(row.ratingBefore)} → ${formatDisplayedRating(row.ratingAfter)}</td>
+          <td>${formatRating(row.displayRatingBefore)} → ${formatRating(row.displayRatingAfter)}</td>
           <td>${formatMu(row.muBefore)} → ${formatMu(row.muAfter)}</td>
           <td>${formatSigma(row.sigmaBefore)} → ${formatSigma(row.sigmaAfter)}</td>
         `;
@@ -500,6 +525,7 @@ const data = [
       const players = loadPlayers();
       const games = loadGames();
       const player = findPlayer(players, playerId);
+      const seasonal = loadSeasonalRankingEnabled();
 
       if (!playerId || !player) {
         pageTitleEl.textContent = 'Player Not Found';
@@ -513,7 +539,8 @@ const data = [
       const timeline = getPlayerRatingTimeline({
         players,
         games,
-        playerId
+        playerId,
+        seasonal
       });
 
       if (timeline.length === 0) {
@@ -523,11 +550,14 @@ const data = [
         return;
       }
 
+      const first = timeline[0];
       const latest = timeline[timeline.length - 1];
 
       statusMessageEl.textContent = [
         `Player: ${player.name}`,
-        `Current Rating: ${Math.round(latest.displayRatingAfter)}`,
+        `Mode: ${seasonal ? 'Seasonal ranking' : 'All-time ranking'}`,
+        `Starting Rating: ${formatRating(first.displayRatingBefore)}`,
+        `Current Rating: ${formatRating(latest.displayRatingAfter)}`,
         `Games included: ${timeline.length}`,
         `Latest game: ${latest.date || 'Unknown'}`
       ].join('\n');

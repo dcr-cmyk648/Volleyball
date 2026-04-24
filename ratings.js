@@ -86,6 +86,10 @@ function sigmoid(value) {
   return 1 / (1 + Math.exp(-value));
 }
 
+function getEffectiveVolleyballSize(players) {
+  return Math.min(Array.isArray(players) ? players.length : 0, LEAGUE_TEAM_SIZE);
+}
+
 export function getMostRecentGameDate(gamesList) {
   const parsedDates = gamesList
     .map(game => parseDateString(game?.date))
@@ -308,6 +312,7 @@ export function getVolleyballTeamStrength({
   if (!ratings.length) {
     return {
       teamSize: 0,
+      effectiveTeamSize: 0,
       strength: DISPLAY_RATING_BASE,
       baseStrength: DISPLAY_RATING_BASE,
       averageRating: DISPLAY_RATING_BASE,
@@ -334,6 +339,7 @@ export function getVolleyballTeamStrength({
 
   return {
     teamSize: players.length,
+    effectiveTeamSize: getEffectiveVolleyballSize(players),
     strength: baseStrength,
     baseStrength,
     averageRating,
@@ -373,7 +379,12 @@ export function scoreVolleyballCandidateSplit({
     volleyballOptions: volleyballCfg,
   });
 
-  const sizeDiff = redPlayers.length - bluePlayers.length;
+  // Team-size correction is capped at 6 because only 6 players can be on court.
+  // This means 7v6, 8v6, etc. receive no extra size bonus beyond 6.
+  const redEffectiveSize = getEffectiveVolleyballSize(redPlayers);
+  const blueEffectiveSize = getEffectiveVolleyballSize(bluePlayers);
+
+  const sizeDiff = redEffectiveSize - blueEffectiveSize;
   const redSizeAdjustment = sizeDiff * volleyballCfg.sizeBonusPerExtraPlayer;
   const blueSizeAdjustment = -sizeDiff * volleyballCfg.sizeBonusPerExtraPlayer;
 
@@ -408,6 +419,8 @@ export function scoreVolleyballCandidateSplit({
 
     redTeamSize: redPlayers.length,
     blueTeamSize: bluePlayers.length,
+    redEffectiveSize,
+    blueEffectiveSize,
     sizeDiff,
 
     redSizeAdjustment,
@@ -417,12 +430,14 @@ export function scoreVolleyballCandidateSplit({
       ...redStrengthBase,
       strength: redStrength,
       sizeAdjustment: redSizeAdjustment,
+      effectiveTeamSize: redEffectiveSize,
     },
 
     blueBreakdown: {
       ...blueStrengthBase,
       strength: blueStrength,
       sizeAdjustment: blueSizeAdjustment,
+      effectiveTeamSize: blueEffectiveSize,
     },
   };
 }

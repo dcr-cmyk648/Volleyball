@@ -289,7 +289,7 @@
       </div>
 
       <div class="equation">
-        Public Ranking is just a mathematical transform that makes scores easier for humans to read (by making them 4 digits numbers normed around 1500) without changing ranking order in the database
+        Public Ranking is just a mathematical transform that makes scores easier for humans to read (by making them 4 digit numbers normed around 1500) without changing ranking order in the database
       </div>
 
       <p style="margin-top:14px;">
@@ -387,16 +387,17 @@
     <div class="section">
       <div class="section-header">
         <div class="section-number">6</div>
-        <h2>What “Seasonal ranking (beta)” means</h2>
+        <h2>What are the beta checkboxes?</h2>
       </div>
 
       <p>
-        I added this mode to support future mini-leagues where players can be ranked based primarily on their performance within a specific window, rather than relying heavily on historical performance.
+        These are modes I am testing that are my own more tenuous mathematical adjustments for applying team skill logic more specifically to volleyball. 
       </p>
-
       <p>
-        Older games are not deleted, but their effect is tapered down. Very recent games count most. Games from roughly three months ago or older contribute much less.
+        I added the seasonal mode to support future mini-leagues where players can be ranked based primarily on their performance within a specific window, rather than relying heavily on historical performance.
+        Older games are not deleted, but their effect is tapered down. Very recent games count most (near-100% effect if within past 2 weeks). Games from roughly three months ago or older contribute much less.
       </p>
+      <p>The other volleyball-adjustment checkbox applies the team balance logic from the MAX algorithm to how openskill adjusts rankings after matches. I am already using this logic on the team creation page because it produces balanced teams more consistently.</p>
     </div>
   </div>
 </body>

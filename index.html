@@ -865,10 +865,6 @@
       );
     }
 
-    if (typeof score.drawProxy === 'number') {
-      lines.push(`Match quality proxy: ${formatPercent(score.drawProxy)}`);
-    }
-
     if (attempts !== null) {
       lines.unshift(`Selected best split from ${attempts} candidate team assignments.`);
     }

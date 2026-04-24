@@ -160,7 +160,7 @@
     .toggle-row {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 14px;
       flex-wrap: wrap;
       margin-top: 10px;
     }
@@ -409,6 +409,15 @@
           <input type="checkbox" id="seasonalToggle" />
           Seasonal ranking (beta)
         </label>
+
+        <label for="volleyballAdjustedToggle">
+          <input type="checkbox" id="volleyballAdjustedToggle" />
+          Volleyball-adjusted model (beta)
+        </label>
+      </div>
+
+      <div class="small" id="modelHelpText">
+        Seasonal ranking gives more weight to recent games. Volleyball-adjusted model reduces how strongly team size drives expected outcomes.
       </div>
 
       <div class="table-wrap" style="margin-top: 12px;">
@@ -483,6 +492,7 @@
     const DEFAULT_DB_SOURCE_PATH = './default_database';
     const LEAGUE_TEAM_SIZE = 6;
     const SEASONAL_RANKING_STORAGE_KEY = 'gameDaySeasonalRankingEnabled';
+    const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
 
     const statsTableBody = document.getElementById('statsTableBody');
     const historyList = document.getElementById('historyList');
@@ -493,6 +503,7 @@
     const deleteGameText = document.getElementById('deleteGameText');
     const loadDefaultDatabaseButtonEl = document.getElementById('loadDefaultDatabaseButton');
     const seasonalToggleEl = document.getElementById('seasonalToggle');
+    const volleyballAdjustedToggleEl = document.getElementById('volleyballAdjustedToggle');
     const rankingModeDescriptionEl = document.getElementById('rankingModeDescription');
     const historyModeDescriptionEl = document.getElementById('historyModeDescription');
 
@@ -554,8 +565,20 @@
       localStorage.setItem(SEASONAL_RANKING_STORAGE_KEY, value ? 'true' : 'false');
     }
 
+    function loadVolleyballAdjustedEnabled() {
+      return localStorage.getItem(VOLLEYBALL_ADJUSTED_STORAGE_KEY) === 'true';
+    }
+
+    function saveVolleyballAdjustedEnabled(value) {
+      localStorage.setItem(VOLLEYBALL_ADJUSTED_STORAGE_KEY, value ? 'true' : 'false');
+    }
+
     function isSeasonalMode() {
       return seasonalToggleEl.checked;
+    }
+
+    function isVolleyballAdjustedMode() {
+      return volleyballAdjustedToggleEl.checked;
     }
 
     function getReplayResult() {
@@ -565,16 +588,27 @@
       return replayRatings({
         players,
         games,
-        seasonal: isSeasonalMode()
+        seasonal: isSeasonalMode(),
+        volleyballAdjusted: isVolleyballAdjustedMode()
       });
     }
 
     function updateModeDescriptions() {
+      const modes = [];
+
       if (isSeasonalMode()) {
+        modes.push('seasonal recency weighting');
+      }
+
+      if (isVolleyballAdjustedMode()) {
+        modes.push('volleyball-adjusted expectation model');
+      }
+
+      if (modes.length) {
         rankingModeDescriptionEl.textContent =
-          'Sorted by Rating, an elo-like transform of (mu - 3 × sigma), using recency weighting. Older games taper toward minimal impact after about 3 months.';
+          `Sorted by Rating, an elo-like transform of (mu - 3 × sigma), using ${modes.join(' + ')}.`;
         historyModeDescriptionEl.textContent =
-          'Newest games at the top. Delete removes the game from history and updates all derived stats automatically. Seasonal ranking mode is currently on.';
+          `Newest games at the top. Delete removes the game from history and updates all derived stats automatically. Active mode: ${modes.join(' + ')}.`;
       } else {
         rankingModeDescriptionEl.textContent =
           'Sorted by Rating, an elo-like transform of (mu - 3 × sigma).';
@@ -597,9 +631,19 @@
         return escapeHtml(player.name);
       }
 
-      const id = encodeURIComponent(player.id);
+      const params = new URLSearchParams();
+      params.set('id', player.id);
+
+      if (isSeasonalMode()) {
+        params.set('seasonal', '1');
+      }
+
+      if (isVolleyballAdjustedMode()) {
+        params.set('volleyballAdjusted', '1');
+      }
+
       const name = escapeHtml(player.name);
-      return `<a href="trend.html?id=${id}" class="player-link">${name}</a>`;
+      return `<a href="trend.html?${params.toString()}" class="player-link">${name}</a>`;
     }
 
     function formatScore(game) {
@@ -685,6 +729,14 @@
               return `${name} (${formatDisplayedRating(p.rating)} → ${formatDisplayedRating(after.rating)})`;
             }).join(', ') || '(none)';
 
+        const modeBits = [];
+        if (entry.seasonalWeight !== 1) {
+          modeBits.push(`Seasonal weight: ${entry.seasonalWeight.toFixed(2)}x`);
+        }
+        if (entry.volleyballAdjusted) {
+          modeBits.push(`Volleyball update: ${entry.volleyballUpdateMultiplier.toFixed(2)}x`);
+        }
+
         const card = document.createElement('div');
         card.className = 'game-card';
 
@@ -711,6 +763,7 @@
           </div>
           <div class="small">${formatScore(game)}</div>
           <div class="small">Margin factor: ${entry.marginFactor.toFixed(2)}x</div>
+          ${modeBits.length ? `<div class="small">${modeBits.join(' | ')}</div>` : ''}
         `;
 
         const deleteButton = card.querySelector('button[data-game-id]');
@@ -1008,7 +1061,13 @@
       renderAll();
     });
 
+    volleyballAdjustedToggleEl.addEventListener('change', () => {
+      saveVolleyballAdjustedEnabled(volleyballAdjustedToggleEl.checked);
+      renderAll();
+    });
+
     seasonalToggleEl.checked = loadSeasonalRankingEnabled();
+    volleyballAdjustedToggleEl.checked = loadVolleyballAdjustedEnabled();
 
     renderAll();
     maybeOfferDefaultDatabase();

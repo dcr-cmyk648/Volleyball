@@ -260,6 +260,7 @@
               <th>Rating</th>
               <th>Mu</th>
               <th>Sigma</th>
+              <th>Model</th>
             </tr>
           </thead>
           <tbody id="timelineTableBody"></tbody>
@@ -278,6 +279,7 @@
     } from './ratings.js';
 
     const SEASONAL_RANKING_STORAGE_KEY = 'gameDaySeasonalRankingEnabled';
+    const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
 
     const pageTitleEl = document.getElementById('pageTitle');
     const summaryGridEl = document.getElementById('summaryGrid');
@@ -319,8 +321,24 @@
       }
     }
 
+    function getUrlFlag(name) {
+      const params = new URLSearchParams(window.location.search);
+      const value = params.get(name);
+      return value === '1' || value === 'true';
+    }
+
     function loadSeasonalRankingEnabled() {
+      if (new URLSearchParams(window.location.search).has('seasonal')) {
+        return getUrlFlag('seasonal');
+      }
       return localStorage.getItem(SEASONAL_RANKING_STORAGE_KEY) === 'true';
+    }
+
+    function loadVolleyballAdjustedEnabled() {
+      if (new URLSearchParams(window.location.search).has('volleyballAdjusted')) {
+        return getUrlFlag('volleyballAdjusted');
+      }
+      return localStorage.getItem(VOLLEYBALL_ADJUSTED_STORAGE_KEY) === 'true';
     }
 
     function getPlayerIdFromUrl() {
@@ -358,6 +376,40 @@
     function makeGameLabel(row, index) {
       const date = row.date || 'Unknown';
       return `${date} #${index + 1}`;
+    }
+
+    function getModeText(seasonal, volleyballAdjusted) {
+      const modes = [];
+
+      if (seasonal) {
+        modes.push('Seasonal ranking');
+      } else {
+        modes.push('All-time ranking');
+      }
+
+      if (volleyballAdjusted) {
+        modes.push('Volleyball-adjusted model');
+      } else {
+        modes.push('Standard OpenSkill model');
+      }
+
+      return modes.join(' + ');
+    }
+
+    function getModelCell(row) {
+      const parts = [];
+
+      if (row.seasonalWeight !== 1) {
+        parts.push(`Seasonal ${row.seasonalWeight.toFixed(2)}x`);
+      }
+
+      if (row.volleyballAdjusted) {
+        parts.push(`VB update ${row.volleyballUpdateMultiplier.toFixed(2)}x`);
+      } else {
+        parts.push('Standard');
+      }
+
+      return parts.join(' | ');
     }
 
     function renderSummary(timeline) {
@@ -449,6 +501,7 @@
                   const row = timeline[context.dataIndex - 1];
                   const result = row.won ? 'Win' : 'Loss';
                   const score = formatScore(row);
+                  const model = getModelCell(row);
 
                   return [
                     `Result: ${result}`,
@@ -456,7 +509,8 @@
                     `Score: ${score}`,
                     `Rating: ${formatRating(row.displayRatingBefore)} → ${formatRating(row.displayRatingAfter)}`,
                     `Mu: ${formatMu(row.muBefore)} → ${formatMu(row.muAfter)}`,
-                    `Sigma: ${formatSigma(row.sigmaBefore)} → ${formatSigma(row.sigmaAfter)}`
+                    `Sigma: ${formatSigma(row.sigmaBefore)} → ${formatSigma(row.sigmaAfter)}`,
+                    `Model: ${model}`
                   ];
                 }
               }
@@ -492,7 +546,7 @@
       if (timeline.length === 0) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 7;
+        td.colSpan = 8;
         td.innerHTML = '<div class="empty-state">No recorded games for this player.</div>';
         tr.appendChild(td);
         timelineTableBodyEl.appendChild(tr);
@@ -514,6 +568,7 @@
           <td>${formatRating(row.displayRatingBefore)} → ${formatRating(row.displayRatingAfter)}</td>
           <td>${formatMu(row.muBefore)} → ${formatMu(row.muAfter)}</td>
           <td>${formatSigma(row.sigmaBefore)} → ${formatSigma(row.sigmaAfter)}</td>
+          <td>${getModelCell(row)}</td>
         `;
 
         timelineTableBodyEl.appendChild(tr);
@@ -526,6 +581,7 @@
       const games = loadGames();
       const player = findPlayer(players, playerId);
       const seasonal = loadSeasonalRankingEnabled();
+      const volleyballAdjusted = loadVolleyballAdjustedEnabled();
 
       if (!playerId || !player) {
         pageTitleEl.textContent = 'Player Not Found';
@@ -540,7 +596,8 @@
         players,
         games,
         playerId,
-        seasonal
+        seasonal,
+        volleyballAdjusted
       });
 
       if (timeline.length === 0) {
@@ -555,7 +612,7 @@
 
       statusMessageEl.textContent = [
         `Player: ${player.name}`,
-        `Mode: ${seasonal ? 'Seasonal ranking' : 'All-time ranking'}`,
+        `Mode: ${getModeText(seasonal, volleyballAdjusted)}`,
         `Starting Rating: ${formatRating(first.displayRatingBefore)}`,
         `Current Rating: ${formatRating(latest.displayRatingAfter)}`,
         `Games included: ${timeline.length}`,

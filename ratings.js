@@ -39,24 +39,19 @@ export const SEASONAL_FULL_WEIGHT_DAYS = 7;
 export const SEASONAL_TAPER_DAYS = 90;
 export const SEASONAL_MIN_WEIGHT = 0.05;
 
-// This is only used for team-assignment prediction, not for rating updates.
-// The goal is to avoid overvaluing raw headcount in casual volleyball.
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   topPlayerWeight: 0.40,
   secondPlayerWeight: 0.25,
   averageWeight: 0.25,
   depthWeight: 0.10,
-
-  // Public-rating points added per extra player relative to the other team.
-  // Example: 4v3 gives the 4-person team +35 rating points by default.
   sizeBonusPerExtraPlayer: 35,
-
-  // Larger = win probability moves less aggressively for the same strength gap.
   probabilityScale: 220,
-
-  // Keeps extreme probabilities from going fully to 0/100.
   minWinProbability: 0.05,
   maxWinProbability: 0.95,
+
+  // Used only when volleyballAdjusted is applied to actual rating updates.
+  minUpdateMultiplier: 0.35,
+  maxUpdateMultiplier: 2.0,
 };
 
 function clamp(value, min, max) {
@@ -152,8 +147,6 @@ export function getGamesSortedOldestFirst(gamesList) {
         return dateA.localeCompare(dateB);
       }
 
-      // Games are stored newest-first in localStorage.
-      // For games on the same date, chronological replay should reverse that order.
       return b.originalIndex - a.originalIndex;
     })
     .map(entry => entry.game);
@@ -264,8 +257,280 @@ function getPlayerResultForGame(game, playerId) {
   };
 }
 
+function getAverage(values) {
+  if (!values.length) return 0;
+  return values.reduce((sum, value) => sum + Number(value), 0) / values.length;
+}
+
+function getMedian(values) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+
+  if (sorted.length % 2 === 1) {
+    return sorted[middle];
+  }
+
+  return (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function getTopValue(values, index, fallback) {
+  if (!values.length) return fallback;
+  const sorted = [...values].sort((a, b) => b - a);
+  return typeof sorted[index] === 'number' ? sorted[index] : fallback;
+}
+
+export function getVolleyballTeamStrength({
+  players = [],
+  ratingMap = {},
+  ratingOptions = {},
+  volleyballOptions = {},
+} = {}) {
+  const ratingCfg = mergeRatingOptions(ratingOptions);
+  const volleyballCfg = mergeVolleyballBalanceOptions(volleyballOptions);
+
+  const ratedPlayers = players.map(player => {
+    const skill = ratingMap[player.id] ?? makeInitialRating(ratingCfg);
+    const rawRating = getDisplayedRating(skill, ratingCfg);
+    const displayRating = toDisplayRating(rawRating);
+
+    return {
+      ...player,
+      rawRating,
+      displayRating,
+      mu: Number(skill.mu),
+      sigma: Number(skill.sigma),
+    };
+  });
+
+  const ratings = ratedPlayers.map(player => player.displayRating);
+
+  if (!ratings.length) {
+    return {
+      teamSize: 0,
+      strength: DISPLAY_RATING_BASE,
+      baseStrength: DISPLAY_RATING_BASE,
+      averageRating: DISPLAY_RATING_BASE,
+      medianRating: DISPLAY_RATING_BASE,
+      bestRating: DISPLAY_RATING_BASE,
+      secondBestRating: DISPLAY_RATING_BASE,
+      depthRating: DISPLAY_RATING_BASE,
+      sizeAdjustment: 0,
+      ratedPlayers,
+    };
+  }
+
+  const averageRating = getAverage(ratings);
+  const medianRating = getMedian(ratings);
+  const bestRating = getTopValue(ratings, 0, averageRating);
+  const secondBestRating = getTopValue(ratings, 1, averageRating);
+  const depthRating = (averageRating + medianRating) / 2;
+
+  const baseStrength =
+    volleyballCfg.topPlayerWeight * bestRating +
+    volleyballCfg.secondPlayerWeight * secondBestRating +
+    volleyballCfg.averageWeight * averageRating +
+    volleyballCfg.depthWeight * depthRating;
+
+  return {
+    teamSize: players.length,
+    strength: baseStrength,
+    baseStrength,
+    averageRating,
+    medianRating,
+    bestRating,
+    secondBestRating,
+    depthRating,
+    sizeAdjustment: 0,
+    ratedPlayers,
+  };
+}
+
+export function scoreVolleyballCandidateSplit({
+  redPlayers,
+  bluePlayers,
+  ratingMap,
+  options = {},
+  volleyballOptions = {},
+} = {}) {
+  const ratingCfg = mergeRatingOptions(options);
+  const volleyballCfg = mergeVolleyballBalanceOptions(volleyballOptions);
+
+  redPlayers.forEach(player => ensureRatingEntry(ratingMap, player.id, ratingCfg));
+  bluePlayers.forEach(player => ensureRatingEntry(ratingMap, player.id, ratingCfg));
+
+  const redStrengthBase = getVolleyballTeamStrength({
+    players: redPlayers,
+    ratingMap,
+    ratingOptions: ratingCfg,
+    volleyballOptions: volleyballCfg,
+  });
+
+  const blueStrengthBase = getVolleyballTeamStrength({
+    players: bluePlayers,
+    ratingMap,
+    ratingOptions: ratingCfg,
+    volleyballOptions: volleyballCfg,
+  });
+
+  const sizeDiff = redPlayers.length - bluePlayers.length;
+  const redSizeAdjustment = sizeDiff * volleyballCfg.sizeBonusPerExtraPlayer;
+  const blueSizeAdjustment = -sizeDiff * volleyballCfg.sizeBonusPerExtraPlayer;
+
+  const redStrength = redStrengthBase.baseStrength + redSizeAdjustment;
+  const blueStrength = blueStrengthBase.baseStrength + blueSizeAdjustment;
+
+  const strengthDiff = redStrength - blueStrength;
+
+  const rawRedWinProbability = sigmoid(strengthDiff / volleyballCfg.probabilityScale);
+  const redWinProbability = clamp(
+    rawRedWinProbability,
+    volleyballCfg.minWinProbability,
+    volleyballCfg.maxWinProbability
+  );
+
+  const blueWinProbability = 1 - redWinProbability;
+  const fairness = 1 - Math.abs(redWinProbability - 0.5) * 2;
+  const drawProxy = fairness;
+
+  return {
+    model: 'volleyball-adjusted',
+    redPlayers,
+    bluePlayers,
+    redWinProbability,
+    blueWinProbability,
+    drawProxy,
+    fairness,
+
+    redStrength,
+    blueStrength,
+    strengthDiff,
+
+    redTeamSize: redPlayers.length,
+    blueTeamSize: bluePlayers.length,
+    sizeDiff,
+
+    redSizeAdjustment,
+    blueSizeAdjustment,
+
+    redBreakdown: {
+      ...redStrengthBase,
+      strength: redStrength,
+      sizeAdjustment: redSizeAdjustment,
+    },
+
+    blueBreakdown: {
+      ...blueStrengthBase,
+      strength: blueStrength,
+      sizeAdjustment: blueSizeAdjustment,
+    },
+  };
+}
+
+function getOpenSkillWinnerProbability(redTeam, blueTeam, winner) {
+  const predicted = predictWin([redTeam, blueTeam]);
+  const redProbability = predicted?.[0] ?? 0.5;
+  const blueProbability = predicted?.[1] ?? (1 - redProbability);
+
+  return winner === 'red' ? redProbability : blueProbability;
+}
+
+function getVolleyballWinnerProbability(game, ratingMap, options = {}, volleyballOptions = {}) {
+  const redPlayers = Array.isArray(game?.redTeam) ? game.redTeam : [];
+  const bluePlayers = Array.isArray(game?.blueTeam) ? game.blueTeam : [];
+
+  if (game?.isLeagueGame) {
+    return null;
+  }
+
+  const score = scoreVolleyballCandidateSplit({
+    redPlayers,
+    bluePlayers,
+    ratingMap,
+    options,
+    volleyballOptions,
+  });
+
+  return game?.winner === 'red'
+    ? score.redWinProbability
+    : score.blueWinProbability;
+}
+
+function applyUpdateMultiplier({
+  ids,
+  beforeEntries,
+  updatedTeam,
+  ratingMap,
+  multiplier,
+  options = {},
+}) {
+  const cfg = mergeRatingOptions(options);
+
+  ids.forEach((id, index) => {
+    const before = beforeEntries[index];
+    const after = updatedTeam[index];
+
+    const nextMu = before.mu + (Number(after.mu) - before.mu) * multiplier;
+    const nextSigma = before.sigma + (Number(after.sigma) - before.sigma) * multiplier;
+
+    ratingMap[id] = rating({
+      mu: nextMu,
+      sigma: clamp(nextSigma, 1, cfg.sigma),
+    });
+  });
+}
+
+function getVolleyballUpdateMultiplier({
+  game,
+  redTeam,
+  blueTeam,
+  ratingMap,
+  options = {},
+  volleyballOptions = {},
+}) {
+  if (!game || game.isLeagueGame) {
+    return {
+      multiplier: 1,
+      openSkillWinnerProbability: null,
+      volleyballWinnerProbability: null,
+    };
+  }
+
+  const volleyballCfg = mergeVolleyballBalanceOptions(volleyballOptions);
+
+  const openSkillWinnerProbability = clamp(
+    getOpenSkillWinnerProbability(redTeam, blueTeam, game.winner),
+    0.01,
+    0.99
+  );
+
+  const volleyballWinnerProbability = clamp(
+    getVolleyballWinnerProbability(game, ratingMap, options, volleyballOptions) ?? openSkillWinnerProbability,
+    0.01,
+    0.99
+  );
+
+  const openSkillSurprise = 1 - openSkillWinnerProbability;
+  const volleyballSurprise = 1 - volleyballWinnerProbability;
+
+  const rawMultiplier = volleyballSurprise / openSkillSurprise;
+
+  return {
+    multiplier: clamp(
+      rawMultiplier,
+      volleyballCfg.minUpdateMultiplier,
+      volleyballCfg.maxUpdateMultiplier
+    ),
+    openSkillWinnerProbability,
+    volleyballWinnerProbability,
+  };
+}
+
 export function rateSingleGame(game, ratingMap, options = {}) {
   const cfg = mergeRatingOptions(options);
+  const volleyballAdjusted = Boolean(options?.volleyballAdjusted);
+  const volleyballOptions = options?.volleyballOptions || {};
+
   ensureRatingsForGame(ratingMap, game, cfg);
 
   const redIds = getRedTeamIds(game);
@@ -303,6 +568,21 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     seasonalWeight
   );
 
+  const adjustment = volleyballAdjusted
+    ? getVolleyballUpdateMultiplier({
+        game,
+        redTeam,
+        blueTeam,
+        ratingMap,
+        options: cfg,
+        volleyballOptions,
+      })
+    : {
+        multiplier: 1,
+        openSkillWinnerProbability: null,
+        volleyballWinnerProbability: null,
+      };
+
   const [updatedRedTeam, updatedBlueTeam] = rate(
     [redTeam, blueTeam],
     {
@@ -310,8 +590,28 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     }
   );
 
-  applyUpdatedTeam(redIds, updatedRedTeam, ratingMap);
-  applyUpdatedTeam(blueIds, updatedBlueTeam, ratingMap);
+  if (volleyballAdjusted && adjustment.multiplier !== 1) {
+    applyUpdateMultiplier({
+      ids: redIds,
+      beforeEntries: redBefore,
+      updatedTeam: updatedRedTeam,
+      ratingMap,
+      multiplier: adjustment.multiplier,
+      options: cfg,
+    });
+
+    applyUpdateMultiplier({
+      ids: blueIds,
+      beforeEntries: blueBefore,
+      updatedTeam: updatedBlueTeam,
+      ratingMap,
+      multiplier: adjustment.multiplier,
+      options: cfg,
+    });
+  } else {
+    applyUpdatedTeam(redIds, updatedRedTeam, ratingMap);
+    applyUpdatedTeam(blueIds, updatedBlueTeam, ratingMap);
+  }
 
   const redAfter = redIds.map(id => ({
     id,
@@ -331,6 +631,10 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     game: cloneSimple(game),
     marginFactor,
     seasonalWeight,
+    volleyballAdjusted,
+    volleyballUpdateMultiplier: adjustment.multiplier,
+    openSkillWinnerProbability: adjustment.openSkillWinnerProbability,
+    volleyballWinnerProbability: adjustment.volleyballWinnerProbability,
     before: {
       red: redBefore,
       blue: blueBefore,
@@ -347,6 +651,8 @@ export function replayRatings({
   games = [],
   options = {},
   seasonal = false,
+  volleyballAdjusted = false,
+  volleyballOptions = {},
 } = {}) {
   const cfg = mergeRatingOptions(options);
   const ratingMap = {};
@@ -374,6 +680,8 @@ export function replayRatings({
     const historyEntry = rateSingleGame(game, ratingMap, {
       ...cfg,
       seasonalWeight,
+      volleyballAdjusted,
+      volleyballOptions,
     });
 
     history.push(historyEntry);
@@ -467,6 +775,7 @@ export function replayRatings({
     standings,
     history,
     leagueTeam,
+    volleyballAdjusted,
   };
 }
 
@@ -476,6 +785,8 @@ export function getPlayerRatingTimeline({
   playerId,
   options = {},
   seasonal = false,
+  volleyballAdjusted = false,
+  volleyballOptions = {},
 } = {}) {
   const cfg = mergeRatingOptions(options);
   const ratingMap = {};
@@ -503,6 +814,8 @@ export function getPlayerRatingTimeline({
     const result = rateSingleGame(game, ratingMap, {
       ...cfg,
       seasonalWeight,
+      volleyballAdjusted,
+      volleyballOptions,
     });
 
     const beforeEntries = [...result.before.red, ...result.before.blue];
@@ -534,6 +847,10 @@ export function getPlayerRatingTimeline({
       sigmaAfter: after.sigma,
       marginFactor: result.marginFactor,
       seasonalWeight: result.seasonalWeight,
+      volleyballAdjusted: result.volleyballAdjusted,
+      volleyballUpdateMultiplier: result.volleyballUpdateMultiplier,
+      openSkillWinnerProbability: result.openSkillWinnerProbability,
+      volleyballWinnerProbability: result.volleyballWinnerProbability,
       redTeam: Array.isArray(game.redTeam) ? cloneSimple(game.redTeam) : [],
       blueTeam: Array.isArray(game.blueTeam) ? cloneSimple(game.blueTeam) : [],
       leagueOpponent: game.leagueOpponent ? cloneSimple(game.leagueOpponent) : null,
@@ -543,9 +860,6 @@ export function getPlayerRatingTimeline({
   return timeline;
 }
 
-// Original OpenSkill prediction model.
-// This is still useful as a comparison, but it can overvalue raw headcount
-// in casual volleyball because it passes unequal team sizes directly to OpenSkill.
 export function scoreCandidateSplit({ redPlayers, bluePlayers, ratingMap, options = {} }) {
   const cfg = mergeRatingOptions(options);
 
@@ -576,190 +890,15 @@ export function getPlayerRatingsForList(players, ratingMap, options = {}) {
   const cfg = mergeRatingOptions(options);
   return players.map(player => {
     const skill = ratingMap[player.id] ?? makeInitialRating(cfg);
+    const rawRating = getDisplayedRating(skill, cfg);
     return {
       ...player,
-      rating: getDisplayedRating(skill, cfg),
-      displayRating: toDisplayRating(getDisplayedRating(skill, cfg)),
+      rating: rawRating,
+      displayRating: toDisplayRating(rawRating),
       mu: Number(skill.mu),
       sigma: Number(skill.sigma),
     };
   });
-}
-
-function getAverage(values) {
-  if (!values.length) return 0;
-  return values.reduce((sum, value) => sum + Number(value), 0) / values.length;
-}
-
-function getMedian(values) {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-
-  if (sorted.length % 2 === 1) {
-    return sorted[middle];
-  }
-
-  return (sorted[middle - 1] + sorted[middle]) / 2;
-}
-
-function getTopValue(values, index, fallback) {
-  if (!values.length) return fallback;
-  const sorted = [...values].sort((a, b) => b - a);
-  return typeof sorted[index] === 'number' ? sorted[index] : fallback;
-}
-
-export function getVolleyballTeamStrength({
-  players = [],
-  ratingMap = {},
-  ratingOptions = {},
-  volleyballOptions = {},
-} = {}) {
-  const ratingCfg = mergeRatingOptions(ratingOptions);
-  const volleyballCfg = mergeVolleyballBalanceOptions(volleyballOptions);
-
-  const ratedPlayers = players.map(player => {
-    const skill = ratingMap[player.id] ?? makeInitialRating(ratingCfg);
-    const rawRating = getDisplayedRating(skill, ratingCfg);
-    const displayRating = toDisplayRating(rawRating);
-
-    return {
-      ...player,
-      rawRating,
-      displayRating,
-      mu: Number(skill.mu),
-      sigma: Number(skill.sigma),
-    };
-  });
-
-  const ratings = ratedPlayers.map(player => player.displayRating);
-
-  if (!ratings.length) {
-    return {
-      teamSize: 0,
-      strength: DISPLAY_RATING_BASE,
-      baseStrength: DISPLAY_RATING_BASE,
-      averageRating: DISPLAY_RATING_BASE,
-      medianRating: DISPLAY_RATING_BASE,
-      bestRating: DISPLAY_RATING_BASE,
-      secondBestRating: DISPLAY_RATING_BASE,
-      depthRating: DISPLAY_RATING_BASE,
-      sizeAdjustment: 0,
-      ratedPlayers,
-    };
-  }
-
-  const averageRating = getAverage(ratings);
-  const medianRating = getMedian(ratings);
-  const bestRating = getTopValue(ratings, 0, averageRating);
-  const secondBestRating = getTopValue(ratings, 1, averageRating);
-
-  // Depth is intentionally conservative. It rewards having a decent roster,
-  // but does not allow a large group of weak players to dominate the model.
-  const depthRating = (averageRating + medianRating) / 2;
-
-  const baseStrength =
-    volleyballCfg.topPlayerWeight * bestRating +
-    volleyballCfg.secondPlayerWeight * secondBestRating +
-    volleyballCfg.averageWeight * averageRating +
-    volleyballCfg.depthWeight * depthRating;
-
-  return {
-    teamSize: players.length,
-    strength: baseStrength,
-    baseStrength,
-    averageRating,
-    medianRating,
-    bestRating,
-    secondBestRating,
-    depthRating,
-    sizeAdjustment: 0,
-    ratedPlayers,
-  };
-}
-
-export function scoreVolleyballCandidateSplit({
-  redPlayers,
-  bluePlayers,
-  ratingMap,
-  options = {},
-  volleyballOptions = {},
-} = {}) {
-  const ratingCfg = mergeRatingOptions(options);
-  const volleyballCfg = mergeVolleyballBalanceOptions(volleyballOptions);
-
-  redPlayers.forEach(player => ensureRatingEntry(ratingMap, player.id, ratingCfg));
-  bluePlayers.forEach(player => ensureRatingEntry(ratingMap, player.id, ratingCfg));
-
-  const redStrengthBase = getVolleyballTeamStrength({
-    players: redPlayers,
-    ratingMap,
-    ratingOptions: ratingCfg,
-    volleyballOptions: volleyballCfg,
-  });
-
-  const blueStrengthBase = getVolleyballTeamStrength({
-    players: bluePlayers,
-    ratingMap,
-    ratingOptions: ratingCfg,
-    volleyballOptions: volleyballCfg,
-  });
-
-  const sizeDiff = redPlayers.length - bluePlayers.length;
-  const redSizeAdjustment = sizeDiff * volleyballCfg.sizeBonusPerExtraPlayer;
-  const blueSizeAdjustment = -sizeDiff * volleyballCfg.sizeBonusPerExtraPlayer;
-
-  const redStrength = redStrengthBase.baseStrength + redSizeAdjustment;
-  const blueStrength = blueStrengthBase.baseStrength + blueSizeAdjustment;
-
-  const strengthDiff = redStrength - blueStrength;
-
-  const rawRedWinProbability = sigmoid(strengthDiff / volleyballCfg.probabilityScale);
-  const redWinProbability = clamp(
-    rawRedWinProbability,
-    volleyballCfg.minWinProbability,
-    volleyballCfg.maxWinProbability
-  );
-
-  const blueWinProbability = 1 - redWinProbability;
-  const fairness = 1 - Math.abs(redWinProbability - 0.5) * 2;
-
-  // Comparable to the old drawProxy field. This is not a real draw probability;
-  // volleyball does not draw. It is a "match quality" proxy.
-  const drawProxy = fairness;
-
-  return {
-    model: 'volleyball-adjusted',
-    redPlayers,
-    bluePlayers,
-    redWinProbability,
-    blueWinProbability,
-    drawProxy,
-    fairness,
-
-    redStrength,
-    blueStrength,
-    strengthDiff,
-
-    redTeamSize: redPlayers.length,
-    blueTeamSize: bluePlayers.length,
-    sizeDiff,
-
-    redSizeAdjustment,
-    blueSizeAdjustment,
-
-    redBreakdown: {
-      ...redStrengthBase,
-      strength: redStrength,
-      sizeAdjustment: redSizeAdjustment,
-    },
-
-    blueBreakdown: {
-      ...blueStrengthBase,
-      strength: blueStrength,
-      sizeAdjustment: blueSizeAdjustment,
-    },
-  };
 }
 
 export function toDisplayRating(value) {

@@ -460,7 +460,7 @@
 <script type="module">
   import {
     replayRatings,
-    scoreCandidateSplit,
+    scoreVolleyballCandidateSplit,
     getPlayerRatingsForList,
     formatDisplayedRating,
     formatMu,
@@ -731,7 +731,7 @@
       blueTeam.push(shuffledUnlocked.shift());
     }
 
-    const score = scoreCandidateSplit({
+    const score = scoreVolleyballCandidateSplit({
       redPlayers: redTeam,
       bluePlayers: blueTeam,
       ratingMap
@@ -743,7 +743,15 @@
       fairness: score.fairness,
       drawProxy: score.drawProxy,
       redWinProbability: score.redWinProbability,
-      blueWinProbability: score.blueWinProbability
+      blueWinProbability: score.blueWinProbability,
+      redStrength: score.redStrength,
+      blueStrength: score.blueStrength,
+      strengthDiff: score.strengthDiff,
+      redSizeAdjustment: score.redSizeAdjustment,
+      blueSizeAdjustment: score.blueSizeAdjustment,
+      redBreakdown: score.redBreakdown,
+      blueBreakdown: score.blueBreakdown,
+      model: score.model
     };
   }
 
@@ -831,7 +839,7 @@
       return;
     }
 
-    const score = candidate ?? scoreCandidateSplit({
+    const score = candidate ?? scoreVolleyballCandidateSplit({
       redPlayers: redTeam,
       bluePlayers: blueTeam,
       ratingMap: ratingData.ratingMap
@@ -841,12 +849,21 @@
     const blueAvg = getAverageDisplayedRating(blueTeam, ratingData.ratingMap);
 
     const lines = [
+      `Balancing model: volleyball-adjusted`,
       `Red average Rating: ${formatDisplayedRating(redAvg)}`,
       `Blue average Rating: ${formatDisplayedRating(blueAvg)}`,
+      `Red strength: ${Math.round(score.redStrength)}`,
+      `Blue strength: ${Math.round(score.blueStrength)}`,
       `Red win probability: ${formatPercent(score.redWinProbability)}`,
       `Blue win probability: ${formatPercent(score.blueWinProbability)}`,
       `Fairness: ${formatPercent(score.fairness)}`
     ];
+
+    if (score.redTeamSize !== score.blueTeamSize || score.redSizeAdjustment !== 0 || score.blueSizeAdjustment !== 0) {
+      lines.push(
+        `Size adjustment: Red ${score.redSizeAdjustment >= 0 ? '+' : ''}${Math.round(score.redSizeAdjustment)}, Blue ${score.blueSizeAdjustment >= 0 ? '+' : ''}${Math.round(score.blueSizeAdjustment)}`
+      );
+    }
 
     if (typeof score.drawProxy === 'number') {
       lines.push(`Match quality proxy: ${formatPercent(score.drawProxy)}`);

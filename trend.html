@@ -18,13 +18,8 @@
       --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
     }
 
-    * {
-      box-sizing: border-box;
-    }
-
-    html {
-      color-scheme: dark;
-    }
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
 
     body {
       margin: 0;
@@ -36,10 +31,7 @@
       padding: 16px;
     }
 
-    .container {
-      max-width: 1100px;
-      margin: 0 auto;
-    }
+    .container { max-width: 1100px; margin: 0 auto; }
 
     .topbar {
       display: flex;
@@ -50,28 +42,14 @@
       margin-bottom: 16px;
     }
 
-    .nav-links {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
+    .nav-links { display: flex; gap: 10px; flex-wrap: wrap; }
 
-    h1, h2 {
-      margin: 0 0 12px;
-      letter-spacing: 0.01em;
-    }
-
-    h1 {
-      font-size: 2rem;
-    }
-
-    h2 {
-      font-size: 1.2rem;
-    }
+    h1, h2 { margin: 0 0 12px; letter-spacing: 0.01em; }
+    h1 { font-size: 2rem; }
+    h2 { font-size: 1.2rem; }
 
     .card {
-      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)),
-        var(--card);
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)), var(--card);
       border-radius: 18px;
       padding: 18px;
       border: 1px solid var(--border);
@@ -157,13 +135,9 @@
       margin-top: 12px;
     }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
+    table { width: 100%; border-collapse: collapse; }
 
-    th,
-    td {
+    th, td {
       text-align: left;
       padding: 12px 10px;
       border-bottom: 1px solid var(--border);
@@ -179,9 +153,7 @@
       z-index: 1;
     }
 
-    tbody tr:hover {
-      background: rgba(255,255,255,0.03);
-    }
+    tbody tr:hover { background: rgba(255,255,255,0.03); }
 
     .result-win {
       color: #bbf7d0;
@@ -202,23 +174,13 @@
     }
 
     @media (max-width: 800px) {
-      .summary-grid {
-        grid-template-columns: 1fr 1fr;
-      }
-
-      .chart-wrap {
-        height: 320px;
-      }
-
-      h1 {
-        font-size: 1.7rem;
-      }
+      .summary-grid { grid-template-columns: 1fr 1fr; }
+      .chart-wrap { height: 320px; }
+      h1 { font-size: 1.7rem; }
     }
 
     @media (max-width: 520px) {
-      .summary-grid {
-        grid-template-columns: 1fr;
-      }
+      .summary-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -235,7 +197,7 @@
     <div class="card">
       <h2>Rating Over Time</h2>
       <div class="small">
-        This graph starts at the player’s initial baseline rating, then shows their public Rating after each game they played.
+        This graph starts at the player’s initial baseline rating, then shows their public Rating after each included game they played.
       </div>
       <div id="summaryGrid" class="summary-grid"></div>
       <div id="statusMessage" class="status">Loading player trend...</div>
@@ -278,8 +240,10 @@
       formatSigma,
     } from './ratings.js';
 
-    const SEASONAL_RANKING_STORAGE_KEY = 'gameDaySeasonalRankingEnabled';
+    const DEFAULT_SEASON_LENGTH_MONTHS = 6;
+    const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
     const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
+    const INCLUDE_LEAGUE_GAMES_STORAGE_KEY = 'gameDayIncludeLeagueGamesEnabled';
 
     const pageTitleEl = document.getElementById('pageTitle');
     const summaryGridEl = document.getElementById('summaryGrid');
@@ -321,29 +285,60 @@
       }
     }
 
+    function getUrlParams() {
+      return new URLSearchParams(window.location.search);
+    }
+
     function getUrlFlag(name) {
-      const params = new URLSearchParams(window.location.search);
-      const value = params.get(name);
+      const value = getUrlParams().get(name);
       return value === '1' || value === 'true';
     }
 
-    function loadSeasonalRankingEnabled() {
-      if (new URLSearchParams(window.location.search).has('seasonal')) {
-        return getUrlFlag('seasonal');
+    function loadSeasonLengthMonths() {
+      const params = getUrlParams();
+      const fromUrl = Number(params.get('seasonMonths'));
+
+      if (Number.isFinite(fromUrl) && fromUrl >= 1 && fromUrl <= 12) {
+        return Math.round(fromUrl);
       }
-      return localStorage.getItem(SEASONAL_RANKING_STORAGE_KEY) === 'true';
+
+      const raw = localStorage.getItem(SEASON_LENGTH_MONTHS_STORAGE_KEY);
+
+      if (raw === null) {
+        return DEFAULT_SEASON_LENGTH_MONTHS;
+      }
+
+      const saved = Number(raw);
+
+      if (!Number.isFinite(saved) || saved < 1 || saved > 12) {
+        return DEFAULT_SEASON_LENGTH_MONTHS;
+      }
+
+      return Math.round(saved);
+    }
+
+    function getSeasonalTaperDays() {
+      return Math.round(loadSeasonLengthMonths() * 30.4375);
     }
 
     function loadVolleyballAdjustedEnabled() {
-      if (new URLSearchParams(window.location.search).has('volleyballAdjusted')) {
+      if (getUrlParams().has('volleyballAdjusted')) {
         return getUrlFlag('volleyballAdjusted');
       }
-      return localStorage.getItem(VOLLEYBALL_ADJUSTED_STORAGE_KEY) === 'true';
+      const saved = localStorage.getItem(VOLLEYBALL_ADJUSTED_STORAGE_KEY);
+      if (saved === null) return true;
+      return saved === 'true';
+    }
+
+    function loadIncludeLeagueGamesEnabled() {
+      if (getUrlParams().has('includeLeagueGames')) {
+        return getUrlFlag('includeLeagueGames');
+      }
+      return localStorage.getItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY) === 'true';
     }
 
     function getPlayerIdFromUrl() {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('id');
+      return getUrlParams().get('id');
     }
 
     function findPlayer(players, playerId) {
@@ -378,20 +373,22 @@
       return `${date} #${index + 1}`;
     }
 
-    function getModeText(seasonal, volleyballAdjusted) {
-      const modes = [];
+    function getModeText({ volleyballAdjusted, includeLeagueGames, seasonLengthMonths }) {
+      const modes = [
+        `${seasonLengthMonths}-month seasonal ranking`
+      ];
 
-      if (seasonal) {
-        modes.push('Seasonal ranking');
-      } else {
-        modes.push('All-time ranking');
-      }
+      modes.push(
+        volleyballAdjusted
+          ? 'Volleyball-adjusted model'
+          : 'Standard OpenSkill model'
+      );
 
-      if (volleyballAdjusted) {
-        modes.push('Volleyball-adjusted model');
-      } else {
-        modes.push('Standard OpenSkill model');
-      }
+      modes.push(
+        includeLeagueGames
+          ? 'League games included'
+          : 'League games excluded'
+      );
 
       return modes.join(' + ');
     }
@@ -407,6 +404,10 @@
         parts.push(`VB update ${row.volleyballUpdateMultiplier.toFixed(2)}x`);
       } else {
         parts.push('Standard');
+      }
+
+      if (row.isLeagueGame) {
+        parts.push('League');
       }
 
       return parts.join(' | ');
@@ -495,7 +496,7 @@
               callbacks: {
                 afterLabel: function(context) {
                   if (context.dataIndex === 0) {
-                    return ['Initial baseline before first recorded game'];
+                    return ['Initial baseline before first included game'];
                   }
 
                   const row = timeline[context.dataIndex - 1];
@@ -547,7 +548,7 @@
         const tr = document.createElement('tr');
         const td = document.createElement('td');
         td.colSpan = 8;
-        td.innerHTML = '<div class="empty-state">No recorded games for this player.</div>';
+        td.innerHTML = '<div class="empty-state">No included games for this player.</div>';
         tr.appendChild(td);
         timelineTableBodyEl.appendChild(tr);
         return;
@@ -580,8 +581,10 @@
       const players = loadPlayers();
       const games = loadGames();
       const player = findPlayer(players, playerId);
-      const seasonal = loadSeasonalRankingEnabled();
+      const seasonLengthMonths = loadSeasonLengthMonths();
+      const seasonal = true;
       const volleyballAdjusted = loadVolleyballAdjustedEnabled();
+      const includeLeagueGames = loadIncludeLeagueGamesEnabled();
 
       if (!playerId || !player) {
         pageTitleEl.textContent = 'Player Not Found';
@@ -597,11 +600,15 @@
         games,
         playerId,
         seasonal,
-        volleyballAdjusted
+        volleyballAdjusted,
+        includeLeagueGames,
+        options: {
+          seasonalTaperDays: getSeasonalTaperDays()
+        }
       });
 
       if (timeline.length === 0) {
-        statusMessageEl.textContent = `${player.name} has no recorded games yet.`;
+        statusMessageEl.textContent = `${player.name} has no included games under the current model settings.`;
         renderSummary(timeline);
         renderTable(timeline);
         return;
@@ -612,11 +619,11 @@
 
       statusMessageEl.textContent = [
         `Player: ${player.name}`,
-        `Mode: ${getModeText(seasonal, volleyballAdjusted)}`,
+        `Mode: ${getModeText({ volleyballAdjusted, includeLeagueGames, seasonLengthMonths })}`,
         `Starting Rating: ${formatRating(first.displayRatingBefore)}`,
         `Current Rating: ${formatRating(latest.displayRatingAfter)}`,
         `Games included: ${timeline.length}`,
-        `Latest game: ${latest.date || 'Unknown'}`
+        `Latest included game: ${latest.date || 'Unknown'}`
       ].join('\n');
 
       renderSummary(timeline);

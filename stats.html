@@ -128,7 +128,7 @@
 
     .model-controls {
       display: grid;
-      grid-template-columns: minmax(240px, 1fr) auto;
+      grid-template-columns: minmax(240px, 1fr) minmax(220px, auto);
       gap: 14px;
       align-items: center;
       margin-top: 12px;
@@ -157,10 +157,9 @@
     }
 
     .toggle-row {
-      display: flex;
+      display: grid;
+      gap: 10px;
       align-items: center;
-      gap: 14px;
-      flex-wrap: wrap;
     }
 
     .toggle-row label {
@@ -405,11 +404,16 @@
             <input type="checkbox" id="volleyballAdjustedToggle" />
             Volleyball-adjusted model
           </label>
+
+          <label for="includeLeagueGamesToggle">
+            <input type="checkbox" id="includeLeagueGamesToggle" />
+            Include league games (beta)
+          </label>
         </div>
       </div>
 
       <div class="small" id="modelHelpText">
-        Seasonal ranking is always active here. The slider controls how long the season is before older games taper toward minimum impact. Volleyball-adjusted model reduces how strongly team size drives expected outcomes.
+        Seasonal ranking is always active here. The slider controls how long the season is before older games taper toward minimum impact. Volleyball-adjusted model reduces how strongly team size drives expected outcomes. League games are ignored unless included.
       </div>
 
       <div class="table-wrap" style="margin-top: 12px;">
@@ -489,6 +493,7 @@
     const DEFAULT_SEASON_LENGTH_MONTHS = 6;
     const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
     const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
+    const INCLUDE_LEAGUE_GAMES_STORAGE_KEY = 'gameDayIncludeLeagueGamesEnabled';
 
     const statsTableBody = document.getElementById('statsTableBody');
     const historyList = document.getElementById('historyList');
@@ -501,6 +506,7 @@
     const seasonLengthSliderEl = document.getElementById('seasonLengthSlider');
     const seasonLengthValueEl = document.getElementById('seasonLengthValue');
     const volleyballAdjustedToggleEl = document.getElementById('volleyballAdjustedToggle');
+    const includeLeagueGamesToggleEl = document.getElementById('includeLeagueGamesToggle');
     const rankingModeDescriptionEl = document.getElementById('rankingModeDescription');
     const historyModeDescriptionEl = document.getElementById('historyModeDescription');
 
@@ -554,21 +560,21 @@
       localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(games));
     }
 
-function loadSeasonLengthMonths() {
-  const raw = localStorage.getItem(SEASON_LENGTH_MONTHS_STORAGE_KEY);
+    function loadSeasonLengthMonths() {
+      const raw = localStorage.getItem(SEASON_LENGTH_MONTHS_STORAGE_KEY);
 
-  if (raw === null) {
-    return DEFAULT_SEASON_LENGTH_MONTHS;
-  }
+      if (raw === null) {
+        return DEFAULT_SEASON_LENGTH_MONTHS;
+      }
 
-  const saved = Number(raw);
+      const saved = Number(raw);
 
-  if (!Number.isFinite(saved) || saved < 1 || saved > 12) {
-    return DEFAULT_SEASON_LENGTH_MONTHS;
-  }
+      if (!Number.isFinite(saved) || saved < 1 || saved > 12) {
+        return DEFAULT_SEASON_LENGTH_MONTHS;
+      }
 
-  return Math.round(saved);
-}
+      return Math.round(saved);
+    }
 
     function saveSeasonLengthMonths(value) {
       localStorage.setItem(SEASON_LENGTH_MONTHS_STORAGE_KEY, String(value));
@@ -592,12 +598,24 @@ function loadSeasonLengthMonths() {
       localStorage.setItem(VOLLEYBALL_ADJUSTED_STORAGE_KEY, value ? 'true' : 'false');
     }
 
+    function loadIncludeLeagueGamesEnabled() {
+      return localStorage.getItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY) === 'true';
+    }
+
+    function saveIncludeLeagueGamesEnabled(value) {
+      localStorage.setItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY, value ? 'true' : 'false');
+    }
+
     function isSeasonalMode() {
       return true;
     }
 
     function isVolleyballAdjustedMode() {
       return volleyballAdjustedToggleEl.checked;
+    }
+
+    function isIncludeLeagueGamesMode() {
+      return includeLeagueGamesToggleEl.checked;
     }
 
     function getReplayResult() {
@@ -609,6 +627,7 @@ function loadSeasonLengthMonths() {
         games,
         seasonal: true,
         volleyballAdjusted: isVolleyballAdjustedMode(),
+        includeLeagueGames: isIncludeLeagueGamesMode(),
         options: {
           seasonalTaperDays: getSeasonalTaperDays()
         }
@@ -623,6 +642,11 @@ function loadSeasonLengthMonths() {
       if (isVolleyballAdjustedMode()) {
         modes.push('volleyball-adjusted expectation model');
       }
+
+      modes.push(isIncludeLeagueGamesMode()
+        ? 'league games included'
+        : 'league games excluded'
+      );
 
       rankingModeDescriptionEl.textContent =
         `Sorted by Rating, an elo-like transform of (mu - 3 × sigma), using ${modes.join(' + ')}.`;
@@ -652,6 +676,10 @@ function loadSeasonLengthMonths() {
 
       if (isVolleyballAdjustedMode()) {
         params.set('volleyballAdjusted', '1');
+      }
+
+      if (isIncludeLeagueGamesMode()) {
+        params.set('includeLeagueGames', '1');
       }
 
       const name = escapeHtml(player.name);
@@ -715,7 +743,7 @@ function loadSeasonLengthMonths() {
       if (historyData.length === 0) {
         const emptyState = document.createElement('div');
         emptyState.className = 'empty-state';
-        emptyState.textContent = 'No games recorded yet.';
+        emptyState.textContent = 'No games included in the current model.';
         historyList.appendChild(emptyState);
         return;
       }
@@ -1080,9 +1108,15 @@ function loadSeasonLengthMonths() {
       renderAll();
     });
 
+    includeLeagueGamesToggleEl.addEventListener('change', () => {
+      saveIncludeLeagueGamesEnabled(includeLeagueGamesToggleEl.checked);
+      renderAll();
+    });
+
     seasonLengthSliderEl.value = String(loadSeasonLengthMonths());
     seasonLengthValueEl.textContent = seasonLengthSliderEl.value;
     volleyballAdjustedToggleEl.checked = loadVolleyballAdjustedEnabled();
+    includeLeagueGamesToggleEl.checked = loadIncludeLeagueGamesEnabled();
 
     renderAll();
     maybeOfferDefaultDatabase();

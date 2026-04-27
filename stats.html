@@ -598,9 +598,11 @@
       localStorage.setItem(VOLLEYBALL_ADJUSTED_STORAGE_KEY, value ? 'true' : 'false');
     }
 
-    function loadIncludeLeagueGamesEnabled() {
-      return localStorage.getItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY) === 'true';
-    }
+function loadIncludeLeagueGamesEnabled() {
+  const saved = localStorage.getItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY);
+  if (saved === null) return true;
+  return saved === 'true';
+}
 
     function saveIncludeLeagueGamesEnabled(value) {
       localStorage.setItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY, value ? 'true' : 'false');
@@ -705,7 +707,7 @@
 
     function renderStats() {
       const result = getReplayResult();
-      const rows = result.standings;
+const rows = result.standings.filter(player => player.games > 0);
 
       statsTableBody.innerHTML = '';
 

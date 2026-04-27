@@ -48,8 +48,6 @@ export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   probabilityScale: 220,
   minWinProbability: 0.05,
   maxWinProbability: 0.95,
-
-  // Used only when volleyballAdjusted is applied to actual rating updates.
   minUpdateMultiplier: 0.35,
   maxUpdateMultiplier: 2.0,
 };
@@ -88,6 +86,21 @@ function sigmoid(value) {
 
 function getEffectiveVolleyballSize(players) {
   return Math.min(Array.isArray(players) ? players.length : 0, LEAGUE_TEAM_SIZE);
+}
+
+function getLeagueTeamPlayers() {
+  return LEAGUE_TEAM_MEMBER_IDS.map((id, index) => ({
+    id,
+    name: `${LEAGUE_TEAM_NAME} ${index + 1}`,
+  }));
+}
+
+function getBluePlayersForVolleyballModel(game) {
+  if (game?.isLeagueGame) {
+    return getLeagueTeamPlayers();
+  }
+
+  return Array.isArray(game?.blueTeam) ? game.blueTeam : [];
 }
 
 export function getMostRecentGameDate(gamesList) {
@@ -224,12 +237,6 @@ function getBlueTeamIds(game) {
 
 function buildTeamObjectsFromIds(ids, ratingMap) {
   return ids.map(id => ratingMap[id]);
-}
-
-function applyUpdatedTeam(ids, updatedTeam, ratingMap) {
-  ids.forEach((id, index) => {
-    ratingMap[id] = updatedTeam[index];
-  });
 }
 
 function findRatingEntry(entries, playerId) {
@@ -379,8 +386,6 @@ export function scoreVolleyballCandidateSplit({
     volleyballOptions: volleyballCfg,
   });
 
-  // Team-size correction is capped at 6 because only 6 players can be on court.
-  // This means 7v6, 8v6, etc. receive no extra size bonus beyond 6.
   const redEffectiveSize = getEffectiveVolleyballSize(redPlayers);
   const blueEffectiveSize = getEffectiveVolleyballSize(bluePlayers);
 
@@ -452,11 +457,7 @@ function getOpenSkillWinnerProbability(redTeam, blueTeam, winner) {
 
 function getVolleyballWinnerProbability(game, ratingMap, options = {}, volleyballOptions = {}) {
   const redPlayers = Array.isArray(game?.redTeam) ? game.redTeam : [];
-  const bluePlayers = Array.isArray(game?.blueTeam) ? game.blueTeam : [];
-
-  if (game?.isLeagueGame) {
-    return null;
-  }
+  const bluePlayers = getBluePlayersForVolleyballModel(game);
 
   const score = scoreVolleyballCandidateSplit({
     redPlayers,
@@ -503,7 +504,7 @@ function getVolleyballUpdateMultiplier({
   options = {},
   volleyballOptions = {},
 }) {
-  if (!game || game.isLeagueGame) {
+  if (!game) {
     return {
       multiplier: 1,
       openSkillWinnerProbability: null,
@@ -592,8 +593,8 @@ export function rateSingleGame(game, ratingMap, options = {}) {
         volleyballWinnerProbability: null,
       };
 
-const finalUpdateMultiplier =
-  marginFactor * seasonalWeight * adjustment.multiplier;
+  const finalUpdateMultiplier =
+    marginFactor * seasonalWeight * adjustment.multiplier;
 
   const outcomeScores = game?.winner === 'red'
     ? [1, 0]

@@ -75,9 +75,234 @@
     {
       "id": 1776129848272,
       "name": "DanaS"
+    },
+    {
+      "id": 1777043172446,
+      "name": "GabbyD"
     }
   ],
   "games": [
+    {
+      "id": 1777249604880,
+      "date": "2026-04-27",
+      "redTeam": [
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        },
+        {
+          "id": 1776129478177,
+          "name": "PeterA"
+        },
+        {
+          "id": 1776129662289,
+          "name": "ShivP"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1777043172446,
+          "name": "GabbyD"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1776129650814,
+          "name": "RichaP"
+        }
+      ],
+      "scoreRed": 23,
+      "scoreBlue": 25,
+      "winner": "blue",
+      "isLeagueGame": false,
+      "leagueOpponent": null
+    },
+    {
+      "id": 1777247904036,
+      "date": "2026-04-26",
+      "redTeam": [
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1777043172446,
+          "name": "GabbyD"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1776129478177,
+          "name": "PeterA"
+        },
+        {
+          "id": 1776129650814,
+          "name": "RichaP"
+        },
+        {
+          "id": 1776129662289,
+          "name": "ShivP"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 19,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null
+    },
+    {
+      "id": 1777246438350,
+      "date": "2026-04-26",
+      "redTeam": [
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        },
+        {
+          "id": 1776129650814,
+          "name": "RichaP"
+        },
+        {
+          "id": 1776129662289,
+          "name": "ShivP"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1777043172446,
+          "name": "GabbyD"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1776129478177,
+          "name": "PeterA"
+        }
+      ],
+      "scoreRed": 18,
+      "scoreBlue": 28,
+      "winner": "blue",
+      "isLeagueGame": false,
+      "leagueOpponent": null
+    },
+    {
+      "id": 1777245113897,
+      "date": "2026-04-26",
+      "redTeam": [
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1777043172446,
+          "name": "GabbyD"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        },
+        {
+          "id": 1776129662289,
+          "name": "ShivP"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1776129478177,
+          "name": "PeterA"
+        },
+        {
+          "id": 1776129650814,
+          "name": "RichaP"
+        }
+      ],
+      "scoreRed": 19,
+      "scoreBlue": 25,
+      "winner": "blue",
+      "isLeagueGame": false,
+      "leagueOpponent": null
+    },
+    {
+      "id": 1777243668176,
+      "date": "2026-04-26",
+      "redTeam": [
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1777043172446,
+          "name": "GabbyD"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        },
+        {
+          "id": 1776129650814,
+          "name": "RichaP"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1776129662289,
+          "name": "ShivP"
+        }
+      ],
+      "scoreRed": 23,
+      "scoreBlue": 25,
+      "winner": "blue",
+      "isLeagueGame": false,
+      "leagueOpponent": null
+    },
     {
       "id": 1776905309990,
       "date": "2026-04-23",

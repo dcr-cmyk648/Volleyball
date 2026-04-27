@@ -30,13 +30,14 @@ export const DEFAULT_RATING_OPTIONS = {
   useScoreMargin: true,
   maxMarginBonus: 0.25,
   marginScale: 20,
+  seasonalTaperDays: 180,
 };
 
 export const DISPLAY_RATING_BASE = 1500;
 export const DISPLAY_RATING_SCALE = 50;
 
 export const SEASONAL_FULL_WEIGHT_DAYS = 7;
-export const SEASONAL_TAPER_DAYS = 90;
+export const SEASONAL_TAPER_DAYS = 180;
 export const SEASONAL_MIN_WEIGHT = 0.05;
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
@@ -112,18 +113,27 @@ export function getMostRecentGameDate(gamesList) {
   return parsedDates.length ? parsedDates[parsedDates.length - 1] : null;
 }
 
-export function getSeasonalWeight(gameDateString, referenceDate = null) {
+export function getSeasonalWeight(
+  gameDateString,
+  referenceDate = null,
+  taperDays = SEASONAL_TAPER_DAYS
+) {
   const gameDate = parseDateString(gameDateString);
   if (!gameDate || !referenceDate) return 1;
+
+  const safeTaperDays = Math.max(
+    SEASONAL_FULL_WEIGHT_DAYS + 1,
+    Number(taperDays) || SEASONAL_TAPER_DAYS
+  );
 
   const ageDays = daysBetween(gameDate, referenceDate);
 
   if (ageDays <= SEASONAL_FULL_WEIGHT_DAYS) return 1;
-  if (ageDays >= SEASONAL_TAPER_DAYS) return SEASONAL_MIN_WEIGHT;
+  if (ageDays >= safeTaperDays) return SEASONAL_MIN_WEIGHT;
 
   const progress =
     (ageDays - SEASONAL_FULL_WEIGHT_DAYS) /
-    (SEASONAL_TAPER_DAYS - SEASONAL_FULL_WEIGHT_DAYS);
+    (safeTaperDays - SEASONAL_FULL_WEIGHT_DAYS);
 
   const eased = easeOutCubic(clamp(progress, 0, 1));
   return 1 - eased * (1 - SEASONAL_MIN_WEIGHT);
@@ -671,6 +681,10 @@ export function replayRatings({
   const ratingMap = {};
   const statsMap = {};
   const history = [];
+  const seasonalTaperDays =
+    typeof cfg.seasonalTaperDays === 'number'
+      ? cfg.seasonalTaperDays
+      : SEASONAL_TAPER_DAYS;
 
   players.forEach(player => {
     ratingMap[player.id] = makeInitialRating(cfg);
@@ -687,7 +701,7 @@ export function replayRatings({
 
   sortedGames.forEach(game => {
     const seasonalWeight = seasonal
-      ? getSeasonalWeight(game?.date, referenceDate)
+      ? getSeasonalWeight(game?.date, referenceDate, seasonalTaperDays)
       : 1;
 
     const historyEntry = rateSingleGame(game, ratingMap, {
@@ -804,6 +818,10 @@ export function getPlayerRatingTimeline({
   const cfg = mergeRatingOptions(options);
   const ratingMap = {};
   const timeline = [];
+  const seasonalTaperDays =
+    typeof cfg.seasonalTaperDays === 'number'
+      ? cfg.seasonalTaperDays
+      : SEASONAL_TAPER_DAYS;
 
   players.forEach(player => {
     ratingMap[player.id] = makeInitialRating(cfg);
@@ -821,7 +839,7 @@ export function getPlayerRatingTimeline({
     }
 
     const seasonalWeight = seasonal
-      ? getSeasonalWeight(game?.date, referenceDate)
+      ? getSeasonalWeight(game?.date, referenceDate, seasonalTaperDays)
       : 1;
 
     const result = rateSingleGame(game, ratingMap, {

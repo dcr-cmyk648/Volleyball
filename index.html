@@ -210,9 +210,9 @@
       gap: 10px;
     }
 
-.player-row {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+    .player-row {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr) auto;
       align-items: center;
       gap: 12px;
       padding: 12px;
@@ -479,6 +479,11 @@
   const DEFAULT_DB_SOURCE_PATH = './default_database';
   const DEFAULT_BALANCE_ATTEMPTS = 10;
 
+  const DEFAULT_SEASON_LENGTH_MONTHS = 6;
+  const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
+  const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
+  const INCLUDE_LEAGUE_GAMES_STORAGE_KEY = 'gameDayIncludeLeagueGamesEnabled';
+
   const playerListEl = document.getElementById('playerList');
   const redSummaryEl = document.getElementById('redSummary');
   const blueSummaryEl = document.getElementById('blueSummary');
@@ -540,6 +545,45 @@
 
   function saveGames() {
     localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(games));
+  }
+
+  function loadSeasonLengthMonths() {
+    const raw = localStorage.getItem(SEASON_LENGTH_MONTHS_STORAGE_KEY);
+    if (raw === null) return DEFAULT_SEASON_LENGTH_MONTHS;
+
+    const saved = Number(raw);
+    if (!Number.isFinite(saved) || saved < 1 || saved > 12) {
+      return DEFAULT_SEASON_LENGTH_MONTHS;
+    }
+
+    return Math.round(saved);
+  }
+
+  function getSeasonalTaperDays() {
+    return Math.round(loadSeasonLengthMonths() * 30.4375);
+  }
+
+  function loadVolleyballAdjustedEnabled() {
+    const saved = localStorage.getItem(VOLLEYBALL_ADJUSTED_STORAGE_KEY);
+    if (saved === null) return true;
+    return saved === 'true';
+  }
+
+  function loadIncludeLeagueGamesEnabled() {
+    return localStorage.getItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY) === 'true';
+  }
+
+  function getRatingData() {
+    return replayRatings({
+      players,
+      games,
+      seasonal: true,
+      volleyballAdjusted: loadVolleyballAdjustedEnabled(),
+      includeLeagueGames: loadIncludeLeagueGamesEnabled(),
+      options: {
+        seasonalTaperDays: getSeasonalTaperDays()
+      }
+    });
   }
 
   function buildPresenceState(playerList) {
@@ -770,7 +814,7 @@
     }
 
     const attempts = Number(balanceSliderEl.value);
-    const ratingData = replayRatings({ players, games });
+    const ratingData = getRatingData();
 
     let bestCandidate = null;
 
@@ -806,7 +850,7 @@
   }
 
   function updateBalanceStatus(candidate = null, attempts = null) {
-    const ratingData = replayRatings({ players, games });
+    const ratingData = getRatingData();
 
     if (isLeagueGameMode()) {
       const redTeam = getTeamPlayers('red');
@@ -821,6 +865,9 @@
 
       const lines = [
         'League game mode is on.',
+        `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
+        `Season length: ${loadSeasonLengthMonths()} months`,
+        `Volleyball-adjusted model: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
         `Red average Rating: ${formatDisplayedRating(redAvg)}`,
         `Blue Rating: ${formatDisplayedRating(league.rating)} (${LEAGUE_TEAM_NAME})`,
         `Blue mu: ${formatMu(league.mu)}`,
@@ -835,7 +882,12 @@
     const blueTeam = candidate ? candidate.blueTeam : getTeamPlayers('blue');
 
     if (redTeam.length === 0 && blueTeam.length === 0) {
-      balanceStatusEl.textContent = 'No team assignment yet.';
+      balanceStatusEl.textContent = [
+        'No team assignment yet.',
+        `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
+        `Season length: ${loadSeasonLengthMonths()} months`,
+        `Volleyball-adjusted model: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`
+      ].join('\n');
       return;
     }
 
@@ -850,6 +902,9 @@
 
     const lines = [
       `Balancing model: volleyball-adjusted`,
+      `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
+      `Season length: ${loadSeasonLengthMonths()} months`,
+      `Volleyball-adjusted ratings: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
       `Red average Rating: ${formatDisplayedRating(redAvg)}`,
       `Blue average Rating: ${formatDisplayedRating(blueAvg)}`,
       `Red strength: ${Math.round(score.redStrength)}`,

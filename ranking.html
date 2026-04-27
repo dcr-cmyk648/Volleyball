@@ -354,7 +354,7 @@
     <div class="section">
       <div class="section-header">
         <div class="section-number">5</div>
-        <h2>What are the checkboxes?</h2>
+        <h2>What are the checkboxes/sliders/other inteactive elements?</h2>
       </div>
 
       <p>
@@ -362,9 +362,10 @@
       </p>
       <p>
         I added the seasonal mode to support future mini-leagues where players can be ranked based primarily on their performance within a specific window, rather than relying heavily on historical performance.
-        Older games are not deleted, but their effect is tapered down. Very recent games count most (near-100% effect if within past 2 weeks). Games from roughly three months ago or older contribute much less.
+        Older games are not deleted, but their effect is tapered down. Very recent games count most (near-100% effect if within "season"). Games outside of the season window have a rapidly scaling penalty applied to their positive (or negative) impact.
       </p>
-      <p>The other volleyball-adjustment checkbox applies the team balance logic from the MAX algorithm to how openskill adjusts rankings after matches. The MAX algorithm has been shown to more consistently produce accurate results for team-based games where average skill is variable.</p>
+      <p>The volleyball-adjustment checkbox applies the team balance logic from the MAX algorithm to how openskill adjusts rankings after matches. The MAX algorithm has been shown to more consistently produce accurate results for team-based games where average skill is variable.</p>
+    <p>League team incorporation gives more data but add a lot of noise because the performance of other teams in the league is so variable. Still fun to see.</p>
     </div>
   </div>
 </body>

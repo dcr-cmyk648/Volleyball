@@ -104,6 +104,16 @@ function getBluePlayersForVolleyballModel(game) {
   return Array.isArray(game?.blueTeam) ? game.blueTeam : [];
 }
 
+function getIncludedGames(games, includeLeagueGames = true) {
+  const safeGames = Array.isArray(games) ? games : [];
+
+  if (includeLeagueGames) {
+    return safeGames;
+  }
+
+  return safeGames.filter(game => !game?.isLeagueGame);
+}
+
 export function getMostRecentGameDate(gamesList) {
   const parsedDates = gamesList
     .map(game => parseDateString(game?.date))
@@ -677,11 +687,13 @@ export function replayRatings({
   seasonal = false,
   volleyballAdjusted = false,
   volleyballOptions = {},
+  includeLeagueGames = true,
 } = {}) {
   const cfg = mergeRatingOptions(options);
   const ratingMap = {};
   const statsMap = {};
   const history = [];
+  const includedGames = getIncludedGames(games, includeLeagueGames);
   const seasonalTaperDays =
     typeof cfg.seasonalTaperDays === 'number'
       ? cfg.seasonalTaperDays
@@ -697,7 +709,7 @@ export function replayRatings({
     };
   });
 
-  const sortedGames = getGamesSortedOldestFirst(games);
+  const sortedGames = getGamesSortedOldestFirst(includedGames);
   const referenceDate = seasonal ? getMostRecentGameDate(sortedGames) : null;
 
   sortedGames.forEach(game => {
@@ -780,7 +792,7 @@ export function replayRatings({
     winrate: 0.5,
   };
 
-  games.forEach(game => {
+  includedGames.forEach(game => {
     if (game.isLeagueGame) {
       leagueTeam.games += 1;
       if (game.winner === 'blue') leagueTeam.wins += 1;
@@ -789,7 +801,10 @@ export function replayRatings({
 
   leagueTeam.winrate = leagueTeam.games > 0 ? leagueTeam.wins / leagueTeam.games : 0.5;
 
-  standings.push(leagueTeam);
+  if (includeLeagueGames && leagueTeam.games > 0) {
+    standings.push(leagueTeam);
+  }
+
   standings.sort((a, b) => {
     if (b.rating !== a.rating) return b.rating - a.rating;
     if (b.wins !== a.wins) return b.wins - a.wins;
@@ -804,6 +819,7 @@ export function replayRatings({
     history,
     leagueTeam,
     volleyballAdjusted,
+    includeLeagueGames,
   };
 }
 
@@ -815,10 +831,12 @@ export function getPlayerRatingTimeline({
   seasonal = false,
   volleyballAdjusted = false,
   volleyballOptions = {},
+  includeLeagueGames = true,
 } = {}) {
   const cfg = mergeRatingOptions(options);
   const ratingMap = {};
   const timeline = [];
+  const includedGames = getIncludedGames(games, includeLeagueGames);
   const seasonalTaperDays =
     typeof cfg.seasonalTaperDays === 'number'
       ? cfg.seasonalTaperDays
@@ -828,7 +846,7 @@ export function getPlayerRatingTimeline({
     ratingMap[player.id] = makeInitialRating(cfg);
   });
 
-  const sortedGames = getGamesSortedOldestFirst(games);
+  const sortedGames = getGamesSortedOldestFirst(includedGames);
   const referenceDate = seasonal ? getMostRecentGameDate(sortedGames) : null;
 
   sortedGames.forEach((game, chronologicalIndex) => {

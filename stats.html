@@ -126,12 +126,41 @@
       align-items: center;
     }
 
+    .model-controls {
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      margin-top: 12px;
+    }
+
+    .season-slider {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+      background: rgba(255,255,255,0.03);
+    }
+
+    .season-slider label {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .season-slider input[type="range"] {
+      width: 100%;
+      accent-color: #93c5fd;
+    }
+
     .toggle-row {
       display: flex;
       align-items: center;
       gap: 14px;
       flex-wrap: wrap;
-      margin-top: 10px;
     }
 
     .toggle-row label {
@@ -322,6 +351,7 @@
 
     @media (max-width: 750px) {
       .teams-grid { grid-template-columns: 1fr; }
+      .model-controls { grid-template-columns: 1fr; }
       h1 { font-size: 1.7rem; }
     }
   </style>
@@ -361,20 +391,25 @@
         Sorted by Rating, an elo-like transform of (mu - 3 × sigma).
       </div>
 
-      <div class="toggle-row">
-        <label for="seasonalToggle">
-          <input type="checkbox" id="seasonalToggle" />
-          Seasonal ranking
-        </label>
+      <div class="model-controls">
+        <div class="season-slider">
+          <label for="seasonLengthSlider">
+            <span>Season length</span>
+            <span><span id="seasonLengthValue">6</span> months</span>
+          </label>
+          <input type="range" id="seasonLengthSlider" min="1" max="12" value="6" />
+        </div>
 
-        <label for="volleyballAdjustedToggle">
-          <input type="checkbox" id="volleyballAdjustedToggle" />
-          Volleyball-adjusted model
-        </label>
+        <div class="toggle-row">
+          <label for="volleyballAdjustedToggle">
+            <input type="checkbox" id="volleyballAdjustedToggle" />
+            Volleyball-adjusted model
+          </label>
+        </div>
       </div>
 
       <div class="small" id="modelHelpText">
-        Seasonal ranking gives more weight to recent games. Volleyball-adjusted model reduces how strongly team size drives expected outcomes.
+        Seasonal ranking is always active here. The slider controls how long the season is before older games taper toward minimum impact. Volleyball-adjusted model reduces how strongly team size drives expected outcomes.
       </div>
 
       <div class="table-wrap" style="margin-top: 12px;">
@@ -451,7 +486,8 @@
     const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
     const DEFAULT_DB_SOURCE_PATH = './default_database';
     const LEAGUE_TEAM_SIZE = 6;
-    const SEASONAL_RANKING_STORAGE_KEY = 'gameDaySeasonalRankingEnabled';
+    const DEFAULT_SEASON_LENGTH_MONTHS = 6;
+    const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
     const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
 
     const statsTableBody = document.getElementById('statsTableBody');
@@ -462,7 +498,8 @@
     const deleteGameInput = document.getElementById('deleteGameInput');
     const deleteGameText = document.getElementById('deleteGameText');
     const loadDefaultDatabaseButtonEl = document.getElementById('loadDefaultDatabaseButton');
-    const seasonalToggleEl = document.getElementById('seasonalToggle');
+    const seasonLengthSliderEl = document.getElementById('seasonLengthSlider');
+    const seasonLengthValueEl = document.getElementById('seasonLengthValue');
     const volleyballAdjustedToggleEl = document.getElementById('volleyballAdjustedToggle');
     const rankingModeDescriptionEl = document.getElementById('rankingModeDescription');
     const historyModeDescriptionEl = document.getElementById('historyModeDescription');
@@ -517,14 +554,24 @@
       localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(games));
     }
 
-    function loadSeasonalRankingEnabled() {
-      const saved = localStorage.getItem(SEASONAL_RANKING_STORAGE_KEY);
-      if (saved === null) return true;
-      return saved === 'true';
+    function loadSeasonLengthMonths() {
+      const saved = Number(localStorage.getItem(SEASON_LENGTH_MONTHS_STORAGE_KEY));
+      if (Number.isFinite(saved)) {
+        return Math.min(12, Math.max(1, Math.round(saved)));
+      }
+      return DEFAULT_SEASON_LENGTH_MONTHS;
     }
 
-    function saveSeasonalRankingEnabled(value) {
-      localStorage.setItem(SEASONAL_RANKING_STORAGE_KEY, value ? 'true' : 'false');
+    function saveSeasonLengthMonths(value) {
+      localStorage.setItem(SEASON_LENGTH_MONTHS_STORAGE_KEY, String(value));
+    }
+
+    function getSeasonLengthMonths() {
+      return Number(seasonLengthSliderEl.value) || DEFAULT_SEASON_LENGTH_MONTHS;
+    }
+
+    function getSeasonalTaperDays() {
+      return Math.round(getSeasonLengthMonths() * 30.4375);
     }
 
     function loadVolleyballAdjustedEnabled() {
@@ -538,7 +585,7 @@
     }
 
     function isSeasonalMode() {
-      return seasonalToggleEl.checked;
+      return true;
     }
 
     function isVolleyballAdjustedMode() {
@@ -552,33 +599,28 @@
       return replayRatings({
         players,
         games,
-        seasonal: isSeasonalMode(),
-        volleyballAdjusted: isVolleyballAdjustedMode()
+        seasonal: true,
+        volleyballAdjusted: isVolleyballAdjustedMode(),
+        options: {
+          seasonalTaperDays: getSeasonalTaperDays()
+        }
       });
     }
 
     function updateModeDescriptions() {
-      const modes = [];
-
-      if (isSeasonalMode()) {
-        modes.push('seasonal recency weighting');
-      }
+      const modes = [
+        `${getSeasonLengthMonths()}-month seasonal recency weighting`
+      ];
 
       if (isVolleyballAdjustedMode()) {
         modes.push('volleyball-adjusted expectation model');
       }
 
-      if (modes.length) {
-        rankingModeDescriptionEl.textContent =
-          `Sorted by Rating, an elo-like transform of (mu - 3 × sigma), using ${modes.join(' + ')}.`;
-        historyModeDescriptionEl.textContent =
-          `Newest games at the top. Delete removes the game from history and updates all derived stats automatically. Active mode: ${modes.join(' + ')}.`;
-      } else {
-        rankingModeDescriptionEl.textContent =
-          'Sorted by Rating, an elo-like transform of (mu - 3 × sigma).';
-        historyModeDescriptionEl.textContent =
-          'Newest games at the top. Delete removes the game from history and updates all derived stats automatically.';
-      }
+      rankingModeDescriptionEl.textContent =
+        `Sorted by Rating, an elo-like transform of (mu - 3 × sigma), using ${modes.join(' + ')}.`;
+
+      historyModeDescriptionEl.textContent =
+        `Newest games at the top. Delete removes the game from history and updates all derived stats automatically. Active mode: ${modes.join(' + ')}.`;
     }
 
     function escapeHtml(value) {
@@ -597,10 +639,8 @@
 
       const params = new URLSearchParams();
       params.set('id', player.id);
-
-      if (isSeasonalMode()) {
-        params.set('seasonal', '1');
-      }
+      params.set('seasonal', '1');
+      params.set('seasonMonths', String(getSeasonLengthMonths()));
 
       if (isVolleyballAdjustedMode()) {
         params.set('volleyballAdjusted', '1');
@@ -1020,8 +1060,10 @@
       defaultDatabaseDialog.close();
     });
 
-    seasonalToggleEl.addEventListener('change', () => {
-      saveSeasonalRankingEnabled(seasonalToggleEl.checked);
+    seasonLengthSliderEl.addEventListener('input', () => {
+      const value = getSeasonLengthMonths();
+      seasonLengthValueEl.textContent = String(value);
+      saveSeasonLengthMonths(value);
       renderAll();
     });
 
@@ -1030,7 +1072,8 @@
       renderAll();
     });
 
-    seasonalToggleEl.checked = loadSeasonalRankingEnabled();
+    seasonLengthSliderEl.value = String(loadSeasonLengthMonths());
+    seasonLengthValueEl.textContent = seasonLengthSliderEl.value;
     volleyballAdjustedToggleEl.checked = loadVolleyballAdjustedEnabled();
 
     renderAll();

@@ -568,20 +568,14 @@ export function rateSingleGame(game, ratingMap, options = {}) {
   const redTeam = buildTeamObjectsFromIds(redIds, ratingMap);
   const blueTeam = buildTeamObjectsFromIds(blueIds, ratingMap);
 
-  const { modelScores, marginFactor } = buildBoundedModelScores(
+  const marginFactor = getScoreMarginFactor(
     game?.scoreRed,
     game?.scoreBlue,
-    game?.winner,
     cfg
   );
 
   const seasonalWeight =
     typeof cfg.seasonalWeight === 'number' ? cfg.seasonalWeight : 1;
-
-  const weightedModelScores = applySeasonalWeightToModelScores(
-    modelScores,
-    seasonalWeight
-  );
 
   const adjustment = volleyballAdjusted
     ? getVolleyballUpdateMultiplier({
@@ -598,35 +592,37 @@ export function rateSingleGame(game, ratingMap, options = {}) {
         volleyballWinnerProbability: null,
       };
 
+  const finalUpdateMultiplier =
+    marginFactor * seasonalWeight * volleyballUpdateMultiplier;
+
+  const outcomeScores = game?.winner === 'red'
+    ? [1, 0]
+    : [0, 1];
+
   const [updatedRedTeam, updatedBlueTeam] = rate(
     [redTeam, blueTeam],
     {
-      score: weightedModelScores,
+      score: outcomeScores,
     }
   );
 
-  if (volleyballAdjusted && adjustment.multiplier !== 1) {
-    applyUpdateMultiplier({
-      ids: redIds,
-      beforeEntries: redBefore,
-      updatedTeam: updatedRedTeam,
-      ratingMap,
-      multiplier: adjustment.multiplier,
-      options: cfg,
-    });
+  applyUpdateMultiplier({
+    ids: redIds,
+    beforeEntries: redBefore,
+    updatedTeam: updatedRedTeam,
+    ratingMap,
+    multiplier: finalUpdateMultiplier,
+    options: cfg,
+  });
 
-    applyUpdateMultiplier({
-      ids: blueIds,
-      beforeEntries: blueBefore,
-      updatedTeam: updatedBlueTeam,
-      ratingMap,
-      multiplier: adjustment.multiplier,
-      options: cfg,
-    });
-  } else {
-    applyUpdatedTeam(redIds, updatedRedTeam, ratingMap);
-    applyUpdatedTeam(blueIds, updatedBlueTeam, ratingMap);
-  }
+  applyUpdateMultiplier({
+    ids: blueIds,
+    beforeEntries: blueBefore,
+    updatedTeam: updatedBlueTeam,
+    ratingMap,
+    multiplier: finalUpdateMultiplier,
+    options: cfg,
+  });
 
   const redAfter = redIds.map(id => ({
     id,
@@ -648,6 +644,7 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     seasonalWeight,
     volleyballAdjusted,
     volleyballUpdateMultiplier: adjustment.multiplier,
+    finalUpdateMultiplier,
     openSkillWinnerProbability: adjustment.openSkillWinnerProbability,
     volleyballWinnerProbability: adjustment.volleyballWinnerProbability,
     before: {

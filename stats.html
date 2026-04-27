@@ -25,13 +25,9 @@
       --link: #93c5fd;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
-    html {
-      color-scheme: dark;
-    }
+    html { color-scheme: dark; }
 
     body {
       margin: 0;
@@ -43,10 +39,7 @@
       padding: 16px;
     }
 
-    .container {
-      max-width: 1100px;
-      margin: 0 auto;
-    }
+    .container { max-width: 1100px; margin: 0 auto; }
 
     .topbar {
       display: flex;
@@ -57,24 +50,11 @@
       margin-bottom: 16px;
     }
 
-    .nav-links {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
+    .nav-links { display: flex; gap: 10px; flex-wrap: wrap; }
 
-    h1, h2, h3 {
-      margin: 0 0 12px;
-      letter-spacing: 0.01em;
-    }
-
-    h1 {
-      font-size: 2rem;
-    }
-
-    h2 {
-      font-size: 1.2rem;
-    }
+    h1, h2, h3 { margin: 0 0 12px; letter-spacing: 0.01em; }
+    h1 { font-size: 2rem; }
+    h2 { font-size: 1.2rem; }
 
     .section-heading {
       display: flex;
@@ -86,8 +66,7 @@
     }
 
     .card {
-      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)),
-        var(--card);
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)), var(--card);
       border-radius: 18px;
       padding: 18px;
       border: 1px solid var(--border);
@@ -116,16 +95,8 @@
       opacity: 0.96;
     }
 
-    button.secondary {
-      background: var(--secondary);
-      color: var(--text);
-    }
-
-    button.ghost {
-      background: var(--ghost);
-      color: var(--text);
-      border-color: var(--border);
-    }
+    button.secondary { background: var(--secondary); color: var(--text); }
+    button.ghost { background: var(--ghost); color: var(--text); border-color: var(--border); }
 
     button.danger {
       background: rgba(239, 68, 68, 0.16);
@@ -145,9 +116,7 @@
       font-weight: 700;
     }
 
-    a.player-link:hover {
-      text-decoration: underline;
-    }
+    a.player-link:hover { text-decoration: underline; }
 
     .controls {
       display: flex;
@@ -187,6 +156,16 @@
       line-height: 1.45;
     }
 
+    .warning-red {
+      color: #fca5a5;
+      font-weight: 800;
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(248, 113, 113, 0.45);
+      background: rgba(248, 113, 113, 0.12);
+    }
+
     .status {
       margin-top: 12px;
       padding: 14px;
@@ -206,13 +185,9 @@
       background: rgba(255,255,255,0.02);
     }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
+    table { width: 100%; border-collapse: collapse; }
 
-    th,
-    td {
+    th, td {
       text-align: left;
       padding: 12px 10px;
       border-bottom: 1px solid var(--border);
@@ -228,9 +203,7 @@
       z-index: 1;
     }
 
-    tbody tr:hover {
-      background: rgba(255,255,255,0.03);
-    }
+    tbody tr:hover { background: rgba(255,255,255,0.03); }
 
     .history-list {
       max-height: 520px;
@@ -244,8 +217,7 @@
       border: 1px solid var(--border);
       border-radius: 16px;
       padding: 14px;
-      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)),
-        var(--card-2);
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)), var(--card-2);
     }
 
     .game-header {
@@ -271,13 +243,8 @@
       background: rgba(255,255,255,0.03);
     }
 
-    .team-box.red-team {
-      border-left: 5px solid var(--red);
-    }
-
-    .team-box.blue-team {
-      border-left: 5px solid var(--blue);
-    }
+    .team-box.red-team { border-left: 5px solid var(--red); }
+    .team-box.blue-team { border-left: 5px solid var(--blue); }
 
     .winner-badge {
       display: inline-block;
@@ -319,14 +286,9 @@
       color: var(--text);
     }
 
-    dialog::backdrop {
-      background: rgba(0, 0, 0, 0.55);
-    }
+    dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 
-    .dialog-content {
-      padding: 18px;
-      background: var(--card);
-    }
+    .dialog-content { padding: 18px; background: var(--card); }
 
     .field label {
       display: block;
@@ -359,13 +321,8 @@
     }
 
     @media (max-width: 750px) {
-      .teams-grid {
-        grid-template-columns: 1fr;
-      }
-
-      h1 {
-        font-size: 1.7rem;
-      }
+      .teams-grid { grid-template-columns: 1fr; }
+      h1 { font-size: 1.7rem; }
     }
   </style>
 </head>
@@ -384,7 +341,7 @@
       <div class="controls">
         <button id="exportDatabaseButton">Export Database</button>
         <button id="importDatabaseButton" class="secondary">Import Database</button>
-        <button id="loadDefaultDatabaseButton" class="ghost">Load Default Database</button>
+        <button id="loadDefaultDatabaseButton" class="ghost">Load newest stats from server</button>
         <input type="file" id="importFileInput" accept=".json" hidden />
       </div>
 
@@ -407,12 +364,12 @@
       <div class="toggle-row">
         <label for="seasonalToggle">
           <input type="checkbox" id="seasonalToggle" />
-          Seasonal ranking (beta)
+          Seasonal ranking
         </label>
 
         <label for="volleyballAdjustedToggle">
           <input type="checkbox" id="volleyballAdjustedToggle" />
-          Volleyball-adjusted model (beta)
+          Volleyball-adjusted model
         </label>
       </div>
 
@@ -464,13 +421,16 @@
 
   <dialog id="defaultDatabaseDialog">
     <div class="dialog-content">
-      <h2>Load Default Database?</h2>
+      <h2>Load newest stats from server?</h2>
       <div id="defaultDatabaseText" class="small">
-        A bundled default database is available.
+        A bundled server stats database is available.
       </div>
-      <div id="defaultDatabaseStatus" class="status">Checking default database...</div>
+      <div class="warning-red">
+        This will overwrite any local data.
+      </div>
+      <div id="defaultDatabaseStatus" class="status">Checking server stats...</div>
       <div class="dialog-actions">
-        <button id="confirmLoadDefaultDatabaseButton" class="success">Yes, Load Default Database</button>
+        <button id="confirmLoadDefaultDatabaseButton" class="success">Yes, load newest stats</button>
         <button id="declineLoadDefaultDatabaseButton" class="secondary">No</button>
       </div>
     </div>
@@ -558,7 +518,9 @@
     }
 
     function loadSeasonalRankingEnabled() {
-      return localStorage.getItem(SEASONAL_RANKING_STORAGE_KEY) === 'true';
+      const saved = localStorage.getItem(SEASONAL_RANKING_STORAGE_KEY);
+      if (saved === null) return true;
+      return saved === 'true';
     }
 
     function saveSeasonalRankingEnabled(value) {
@@ -566,7 +528,9 @@
     }
 
     function loadVolleyballAdjustedEnabled() {
-      return localStorage.getItem(VOLLEYBALL_ADJUSTED_STORAGE_KEY) === 'true';
+      const saved = localStorage.getItem(VOLLEYBALL_ADJUSTED_STORAGE_KEY);
+      if (saved === null) return true;
+      return saved === 'true';
     }
 
     function saveVolleyballAdjustedEnabled(value) {
@@ -927,13 +891,13 @@
     async function fetchDefaultDatabase() {
       const response = await fetch(DEFAULT_DB_SOURCE_PATH, { cache: 'no-store' });
       if (!response.ok) {
-        throw new Error('Could not load the default database file.');
+        throw new Error('Could not load the server stats file.');
       }
 
       const parsed = await response.json();
 
       if (!parsed || typeof parsed !== 'object') {
-        throw new Error('Default database file is invalid.');
+        throw new Error('Server stats file is invalid.');
       }
 
       const normalizedPlayers = normalizeImportedPlayers(
@@ -964,10 +928,10 @@
       defaultDatabaseDialogMode = mode;
 
       defaultDatabaseTextEl.textContent =
-        `The bundled default database includes games through ${meta.latestGameDate}.`;
+        `The server stats file includes games through ${meta.latestGameDate}.`;
 
       defaultDatabaseStatusEl.textContent =
-        `Default database has ${meta.players.length} players and ${meta.games.length} games.`;
+        `Server stats file has ${meta.players.length} players and ${meta.games.length} games.`;
 
       confirmLoadDefaultDatabaseButtonEl.disabled = false;
       defaultDatabaseDialog.showModal();
@@ -983,14 +947,14 @@
       }
 
       try {
-        defaultDatabaseStatusEl.textContent = 'Checking default database...';
+        defaultDatabaseStatusEl.textContent = 'Checking server stats...';
         confirmLoadDefaultDatabaseButtonEl.disabled = true;
         const meta = await prepareDefaultDatabaseMeta();
         openDefaultDatabaseDialog(meta, 'prompt');
       } catch {
         defaultDatabaseDialogMode = 'prompt';
-        defaultDatabaseTextEl.textContent = 'A bundled default database is available.';
-        defaultDatabaseStatusEl.textContent = 'Could not read the default database file.';
+        defaultDatabaseTextEl.textContent = 'A server stats file is available.';
+        defaultDatabaseStatusEl.textContent = 'Could not read the server stats file.';
         confirmLoadDefaultDatabaseButtonEl.disabled = true;
         defaultDatabaseDialog.showModal();
       }
@@ -998,14 +962,14 @@
 
     async function openManualDefaultDatabaseDialog() {
       try {
-        defaultDatabaseStatusEl.textContent = 'Checking default database...';
+        defaultDatabaseStatusEl.textContent = 'Checking server stats...';
         confirmLoadDefaultDatabaseButtonEl.disabled = true;
         const meta = await prepareDefaultDatabaseMeta();
         openDefaultDatabaseDialog(meta, 'manual');
       } catch {
         defaultDatabaseDialogMode = 'manual';
-        defaultDatabaseTextEl.textContent = 'A bundled default database is available.';
-        defaultDatabaseStatusEl.textContent = 'Could not read the default database file.';
+        defaultDatabaseTextEl.textContent = 'A server stats file is available.';
+        defaultDatabaseStatusEl.textContent = 'Could not read the server stats file.';
         confirmLoadDefaultDatabaseButtonEl.disabled = true;
         defaultDatabaseDialog.showModal();
       }
@@ -1019,7 +983,7 @@
       renderAll();
 
       databaseStatus.textContent =
-        `Loaded default database with ${meta.players.length} players and ${meta.games.length} games.`;
+        `Loaded newest stats from server with ${meta.players.length} players and ${meta.games.length} games.`;
     }
 
     document.getElementById('exportDatabaseButton').addEventListener('click', exportDatabase);
@@ -1039,12 +1003,12 @@
     confirmLoadDefaultDatabaseButtonEl.addEventListener('click', async () => {
       try {
         confirmLoadDefaultDatabaseButtonEl.disabled = true;
-        defaultDatabaseStatusEl.textContent = 'Loading default database...';
+        defaultDatabaseStatusEl.textContent = 'Loading newest stats from server...';
         await loadDefaultDatabaseIntoStorage();
         setPromptChoice('loaded');
         defaultDatabaseDialog.close();
       } catch {
-        defaultDatabaseStatusEl.textContent = 'Failed to load the default database.';
+        defaultDatabaseStatusEl.textContent = 'Failed to load newest stats from server.';
         confirmLoadDefaultDatabaseButtonEl.disabled = false;
       }
     });

@@ -554,13 +554,21 @@
       localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(games));
     }
 
-    function loadSeasonLengthMonths() {
-      const saved = Number(localStorage.getItem(SEASON_LENGTH_MONTHS_STORAGE_KEY));
-      if (Number.isFinite(saved)) {
-        return Math.min(12, Math.max(1, Math.round(saved)));
-      }
-      return DEFAULT_SEASON_LENGTH_MONTHS;
-    }
+function loadSeasonLengthMonths() {
+  const raw = localStorage.getItem(SEASON_LENGTH_MONTHS_STORAGE_KEY);
+
+  if (raw === null) {
+    return DEFAULT_SEASON_LENGTH_MONTHS;
+  }
+
+  const saved = Number(raw);
+
+  if (!Number.isFinite(saved) || saved < 1 || saved > 12) {
+    return DEFAULT_SEASON_LENGTH_MONTHS;
+  }
+
+  return Math.round(saved);
+}
 
     function saveSeasonLengthMonths(value) {
       localStorage.setItem(SEASON_LENGTH_MONTHS_STORAGE_KEY, String(value));

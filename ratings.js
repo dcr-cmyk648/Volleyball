@@ -592,8 +592,8 @@ export function rateSingleGame(game, ratingMap, options = {}) {
         volleyballWinnerProbability: null,
       };
 
-  const finalUpdateMultiplier =
-    marginFactor * seasonalWeight * volleyballUpdateMultiplier;
+const finalUpdateMultiplier =
+  marginFactor * seasonalWeight * adjustment.multiplier;
 
   const outcomeScores = game?.winner === 'red'
     ? [1, 0]

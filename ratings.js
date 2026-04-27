@@ -116,27 +116,28 @@ export function getMostRecentGameDate(gamesList) {
 export function getSeasonalWeight(
   gameDateString,
   referenceDate = null,
-  taperDays = SEASONAL_TAPER_DAYS
+  seasonDays = SEASONAL_TAPER_DAYS
 ) {
   const gameDate = parseDateString(gameDateString);
   if (!gameDate || !referenceDate) return 1;
 
-  const safeTaperDays = Math.max(
-    SEASONAL_FULL_WEIGHT_DAYS + 1,
-    Number(taperDays) || SEASONAL_TAPER_DAYS
-  );
-
+  const safeSeasonDays = Math.max(30, Number(seasonDays) || SEASONAL_TAPER_DAYS);
   const ageDays = daysBetween(gameDate, referenceDate);
 
-  if (ageDays <= SEASONAL_FULL_WEIGHT_DAYS) return 1;
-  if (ageDays >= safeTaperDays) return SEASONAL_MIN_WEIGHT;
+  const fullImpactDays = Math.max(
+    SEASONAL_FULL_WEIGHT_DAYS,
+    safeSeasonDays - 30
+  );
 
-  const progress =
-    (ageDays - SEASONAL_FULL_WEIGHT_DAYS) /
-    (safeTaperDays - SEASONAL_FULL_WEIGHT_DAYS);
+  if (ageDays <= fullImpactDays) return 1;
 
-  const eased = easeOutCubic(clamp(progress, 0, 1));
-  return 1 - eased * (1 - SEASONAL_MIN_WEIGHT);
+  const inflectionPoint = safeSeasonDays;
+  const steepness = 0.12;
+
+  const logistic =
+    1 / (1 + Math.exp(steepness * (ageDays - inflectionPoint)));
+
+  return SEASONAL_MIN_WEIGHT + logistic * (1 - SEASONAL_MIN_WEIGHT);
 }
 
 export function mergeRatingOptions(overrides = {}) {

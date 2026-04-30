@@ -325,7 +325,7 @@
       ],
       "blueTeam": [],
       "scoreRed": 25,
-      "scoreBlue": 14,
+      "scoreBlue": 12,
       "winner": "red",
       "isLeagueGame": true,
       "leagueOpponent": {

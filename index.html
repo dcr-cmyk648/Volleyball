@@ -24,13 +24,9 @@
       --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
-    html {
-      color-scheme: dark;
-    }
+    html { color-scheme: dark; }
 
     body {
       margin: 0;
@@ -42,10 +38,7 @@
       padding: 16px;
     }
 
-    .container {
-      max-width: 960px;
-      margin: 0 auto;
-    }
+    .container { max-width: 960px; margin: 0 auto; }
 
     .topbar {
       display: flex;
@@ -56,28 +49,14 @@
       margin-bottom: 16px;
     }
 
-    .nav-links {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
+    .nav-links { display: flex; gap: 10px; flex-wrap: wrap; }
 
-    h1, h2, h3 {
-      margin: 0 0 12px;
-      letter-spacing: 0.01em;
-    }
-
-    h1 {
-      font-size: 2rem;
-    }
-
-    h2 {
-      font-size: 1.2rem;
-    }
+    h1, h2, h3 { margin: 0 0 12px; letter-spacing: 0.01em; }
+    h1 { font-size: 2rem; }
+    h2 { font-size: 1.2rem; }
 
     .card {
-      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)),
-        var(--card);
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)), var(--card);
       border-radius: 18px;
       padding: 18px;
       border: 1px solid var(--border);
@@ -107,16 +86,8 @@
       opacity: 0.96;
     }
 
-    button.secondary {
-      background: var(--secondary);
-      color: var(--text);
-    }
-
-    button.ghost {
-      background: var(--ghost);
-      color: var(--text);
-      border-color: var(--border);
-    }
+    button.secondary { background: var(--secondary); color: var(--text); }
+    button.ghost { background: var(--ghost); color: var(--text); border-color: var(--border); }
 
     button.red-button {
       background: rgba(248, 113, 113, 0.16);
@@ -143,39 +114,43 @@
       margin-bottom: 14px;
     }
 
-    .slider-row {
-      margin: 12px 0 6px;
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 14px;
     }
 
-    .slider-row label,
-    .checkbox-row label {
+    .select-row label,
+    .slider-row label {
       display: block;
       font-size: 14px;
       color: var(--muted);
       margin-bottom: 8px;
     }
 
+    .select-row select {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #0f172a;
+      color: var(--text);
+      outline: none;
+    }
+
+    .select-row select:focus {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
+    }
+
+    .slider-row {
+      margin: 12px 0 6px;
+    }
+
     .slider-row input[type="range"] {
       width: 100%;
-      accent-color: #93c5fd;
-    }
-
-    .checkbox-row {
-      margin-bottom: 12px;
-    }
-
-    .checkbox-row label {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 0;
-      color: var(--text);
-      cursor: pointer;
-    }
-
-    .checkbox-row input[type="checkbox"] {
-      width: 18px;
-      height: 18px;
       accent-color: #93c5fd;
     }
 
@@ -235,21 +210,11 @@
       transition: opacity 0.12s ease;
     }
 
-    .player-name:hover {
-      opacity: 0.88;
-    }
+    .player-name:hover { opacity: 0.88; }
 
-    .player-name.none {
-      color: var(--text);
-    }
-
-    .player-name.red {
-      color: var(--red);
-    }
-
-    .player-name.blue {
-      color: var(--blue);
-    }
+    .player-name.none { color: var(--text); }
+    .player-name.red { color: var(--red); }
+    .player-name.blue { color: var(--blue); }
 
     .tag {
       font-size: 12px;
@@ -276,13 +241,8 @@
       background: var(--card-2);
     }
 
-    .summary-box.red-box {
-      border-left: 5px solid var(--red);
-    }
-
-    .summary-box.blue-box {
-      border-left: 5px solid var(--blue);
-    }
+    .summary-box.red-box { border-left: 5px solid var(--red); }
+    .summary-box.blue-box { border-left: 5px solid var(--blue); }
 
     .score-grid {
       display: grid;
@@ -332,9 +292,7 @@
       color: var(--text);
     }
 
-    dialog::backdrop {
-      background: rgba(0, 0, 0, 0.55);
-    }
+    dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 
     .dialog-content {
       padding: 18px;
@@ -350,13 +308,12 @@
 
     @media (max-width: 700px) {
       .summary-grid,
-      .score-grid {
+      .score-grid,
+      .settings-grid {
         grid-template-columns: 1fr;
       }
 
-      h1 {
-        font-size: 1.7rem;
-      }
+      h1 { font-size: 1.7rem; }
     }
   </style>
 </head>
@@ -372,6 +329,25 @@
 
     <div class="card">
       <h2>Available Players</h2>
+
+      <div class="settings-grid">
+        <div class="select-row">
+          <label for="leagueLevelSelect">League level</label>
+          <select id="leagueLevelSelect">
+            <option value="">N/A</option>
+            <option value="rec">Rec</option>
+            <option value="intermediate">Intermediate</option>
+          </select>
+        </div>
+
+        <div class="select-row">
+          <label for="courtTypeSelect">Court type</label>
+          <select id="courtTypeSelect">
+            <option value="indoor">Indoor</option>
+            <option value="sand">Sand</option>
+          </select>
+        </div>
+      </div>
 
       <div class="controls">
         <button id="assignTeamsButton">Assign Teams</button>
@@ -405,19 +381,12 @@
       </div>
 
       <div class="small">
-        Check the players who are present. Tap a present player's name to cycle: none → red → blue.
+        Check the players who are present. Tap a present player's name to cycle: none → red → blue. If a league level is selected, all present players are assigned to Red against League Team.
       </div>
     </div>
 
     <div class="card">
       <h2>Record Game</h2>
-
-      <div class="checkbox-row">
-        <label for="leagueGameCheckbox">
-          <input type="checkbox" id="leagueGameCheckbox" />
-          This is a league game
-        </label>
-      </div>
 
       <div class="score-grid">
         <div class="field">
@@ -494,7 +463,8 @@
   const balanceValueEl = document.getElementById('balanceValue');
   const redScoreEl = document.getElementById('redScore');
   const blueScoreEl = document.getElementById('blueScore');
-  const leagueGameCheckboxEl = document.getElementById('leagueGameCheckbox');
+  const leagueLevelSelectEl = document.getElementById('leagueLevelSelect');
+  const courtTypeSelectEl = document.getElementById('courtTypeSelect');
   const toggleUnselectedButtonEl = document.getElementById('toggleUnselectedButton');
   const assignTeamsButtonEl = document.getElementById('assignTeamsButton');
 
@@ -570,7 +540,9 @@
   }
 
   function loadIncludeLeagueGamesEnabled() {
-    return localStorage.getItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY) === 'true';
+    const saved = localStorage.getItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY);
+    if (saved === null) return true;
+    return saved === 'true';
   }
 
   function getRatingData() {
@@ -617,7 +589,8 @@
       blueScore: blueScoreEl.value,
       hideUnselectedPlayers,
       balanceAttempts: Number(balanceSliderEl.value),
-      leagueGame: leagueGameCheckboxEl.checked
+      leagueLevel: getLeagueLevel(),
+      courtType: getCourtType()
     };
 
     localStorage.setItem(PAGE_STATE_KEY, JSON.stringify(payload));
@@ -634,7 +607,16 @@
     redScoreEl.value = typeof saved.redScore === 'string' ? saved.redScore : '';
     blueScoreEl.value = typeof saved.blueScore === 'string' ? saved.blueScore : '';
     hideUnselectedPlayers = Boolean(saved.hideUnselectedPlayers);
-    leagueGameCheckboxEl.checked = Boolean(saved.leagueGame);
+
+    if (saved.leagueLevel === 'rec' || saved.leagueLevel === 'intermediate') {
+      leagueLevelSelectEl.value = saved.leagueLevel;
+    } else if (saved.leagueGame === true) {
+      leagueLevelSelectEl.value = 'rec';
+    } else {
+      leagueLevelSelectEl.value = '';
+    }
+
+    courtTypeSelectEl.value = saved.courtType === 'sand' ? 'sand' : 'indoor';
 
     if (typeof saved.balanceAttempts === 'number' && !Number.isNaN(saved.balanceAttempts)) {
       balanceSliderEl.value = String(saved.balanceAttempts);
@@ -683,8 +665,41 @@
     errorMessageEl.textContent = message;
   }
 
+  function getLeagueLevel() {
+    return leagueLevelSelectEl.value;
+  }
+
+  function getCourtType() {
+    return courtTypeSelectEl.value === 'sand' ? 'sand' : 'indoor';
+  }
+
   function isLeagueGameMode() {
-    return leagueGameCheckboxEl.checked;
+    return getLeagueLevel() !== '';
+  }
+
+  function getLeagueLevelLabel() {
+    if (getLeagueLevel() === 'intermediate') return 'Intermediate';
+    if (getLeagueLevel() === 'rec') return 'Rec';
+    return 'N/A';
+  }
+
+  function getCourtTypeLabel() {
+    return getCourtType() === 'sand' ? 'Sand' : 'Indoor';
+  }
+
+  function assignPresentPlayersToRedForLeagueGame() {
+    if (!isLeagueGameMode()) return;
+
+    players.forEach(player => {
+      const state = getPlayerState(player.id);
+      if (state.present) {
+        state.team = 'red';
+        state.lockedTeam = '';
+      } else {
+        state.team = '';
+        state.lockedTeam = '';
+      }
+    });
   }
 
   function nextTeam(currentTeam) {
@@ -803,7 +818,10 @@
     clearError();
 
     if (isLeagueGameMode()) {
-      setError('Assign Teams is unavailable for league games.');
+      assignPresentPlayersToRedForLeagueGame();
+      savePageState();
+      renderPlayers();
+      updateBalanceStatus();
       return;
     }
 
@@ -856,7 +874,7 @@
       const redTeam = getTeamPlayers('red');
 
       if (redTeam.length === 0) {
-        balanceStatusEl.textContent = 'League game mode: select at least 1 red-team player.';
+        balanceStatusEl.textContent = `${getLeagueLevelLabel()} league mode is on. Mark players present to assign them to Red.`;
         return;
       }
 
@@ -864,7 +882,8 @@
       const league = ratingData.leagueTeam;
 
       const lines = [
-        'League game mode is on.',
+        `${getLeagueLevelLabel()} league mode is on.`,
+        `Court type: ${getCourtTypeLabel()}`,
         `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
         `Season length: ${loadSeasonLengthMonths()} months`,
         `Volleyball-adjusted model: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
@@ -884,6 +903,7 @@
     if (redTeam.length === 0 && blueTeam.length === 0) {
       balanceStatusEl.textContent = [
         'No team assignment yet.',
+        `Court type: ${getCourtTypeLabel()}`,
         `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
         `Season length: ${loadSeasonLengthMonths()} months`,
         `Volleyball-adjusted model: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`
@@ -902,6 +922,7 @@
 
     const lines = [
       `Balancing model: volleyball-adjusted`,
+      `Court type: ${getCourtTypeLabel()}`,
       `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
       `Season length: ${loadSeasonLengthMonths()} months`,
       `Volleyball-adjusted ratings: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
@@ -994,7 +1015,9 @@
     const scoreError = validateScoreAgainstWinner(scoreRed, scoreBlue, winner);
     if (scoreError) return { error: scoreError };
 
-    return {
+    const isLeagueGame = isLeagueGameMode();
+
+    const record = {
       id: Date.now(),
       date: new Date().toISOString().slice(0, 10),
       redTeam: redTeam.map(player => ({ id: player.id, name: player.name })),
@@ -1002,8 +1025,8 @@
       scoreRed,
       scoreBlue,
       winner,
-      isLeagueGame: isLeagueGameMode(),
-      leagueOpponent: isLeagueGameMode()
+      isLeagueGame,
+      leagueOpponent: isLeagueGame
         ? {
             id: LEAGUE_TEAM_ID,
             name: LEAGUE_TEAM_NAME,
@@ -1011,6 +1034,16 @@
           }
         : null
     };
+
+    if (isLeagueGame && getLeagueLevel() === 'intermediate') {
+      record.level = 'intermediate';
+    }
+
+    if (getCourtType() === 'sand') {
+      record.courtType = 'sand';
+    }
+
+    return record;
   }
 
   function recordGame(winner) {
@@ -1064,8 +1097,15 @@
   function markAllPresent() {
     clearError();
     players.forEach(player => {
-      getPlayerState(player.id).present = true;
+      const state = getPlayerState(player.id);
+      state.present = true;
+
+      if (isLeagueGameMode()) {
+        state.team = 'red';
+        state.lockedTeam = '';
+      }
     });
+
     savePageState();
     renderPlayers();
     updateBalanceStatus();
@@ -1083,7 +1123,9 @@
   }
 
   function updateLeagueModeUI() {
-    assignTeamsButtonEl.disabled = isLeagueGameMode();
+    assignTeamsButtonEl.textContent = isLeagueGameMode()
+      ? 'Assign Present to Red'
+      : 'Assign Teams';
   }
 
   function toggleUnselectedPlayers() {
@@ -1113,10 +1155,18 @@
       ? `Blue: ${LEAGUE_TEAM_NAME}`
       : `Blue: ${(latest.blueTeam || []).map(player => player.name).join(', ') || '(none)'}`;
 
+    const levelText = isLeagueGame
+      ? `League level: ${latest.level === 'intermediate' ? 'Intermediate' : 'Rec'}`
+      : 'League level: N/A';
+
+    const courtText = `Court type: ${latest.courtType === 'sand' ? 'Sand' : 'Indoor'}`;
+
     latestGameEl.textContent = [
       `Latest record: ${latest.date}`,
       `Winner: ${latest.winner === 'red' ? 'Red' : 'Blue'}`,
       isLeagueGame ? 'Game type: League game' : 'Game type: Standard game',
+      levelText,
+      courtText,
       `Red: ${(latest.redTeam || []).map(player => player.name).join(', ') || '(none)'}`,
       blueLine,
       scoreText,
@@ -1128,6 +1178,10 @@
     players = loadPlayers();
     games = loadGames();
     syncPresenceState();
+
+    if (isLeagueGameMode()) {
+      assignPresentPlayersToRedForLeagueGame();
+    }
 
     playerListEl.innerHTML = '';
 
@@ -1166,10 +1220,15 @@
         checkbox.addEventListener('change', () => {
           clearError();
           state.present = checkbox.checked;
+
           if (!state.present) {
             state.team = '';
             state.lockedTeam = '';
+          } else if (isLeagueGameMode()) {
+            state.team = 'red';
+            state.lockedTeam = '';
           }
+
           savePageState();
           renderPlayers();
           updateBalanceStatus();
@@ -1185,7 +1244,7 @@
           if (!state.present) return;
 
           if (isLeagueGameMode()) {
-            state.team = state.team === 'red' ? '' : 'red';
+            state.team = 'red';
           } else {
             state.team = nextTeam(state.team);
           }
@@ -1312,6 +1371,8 @@
         scoreBlue: typeof game.scoreBlue === 'undefined' ? null : game.scoreBlue,
         winner: game.winner === 'blue' ? 'blue' : 'red',
         isLeagueGame: Boolean(game.isLeagueGame),
+        level: game.level === 'intermediate' ? 'intermediate' : undefined,
+        courtType: game.courtType === 'sand' ? 'sand' : undefined,
         leagueOpponent: game.isLeagueGame
           ? {
               id: game.leagueOpponent?.id || LEAGUE_TEAM_ID,
@@ -1319,7 +1380,12 @@
               size: Number(game.leagueOpponent?.size) || LEAGUE_TEAM_SIZE
             }
           : null
-      }));
+      }))
+      .map(game => {
+        if (typeof game.level === 'undefined') delete game.level;
+        if (typeof game.courtType === 'undefined') delete game.courtType;
+        return game;
+      });
   }
 
   function getLatestGameDate(gamesList) {
@@ -1417,7 +1483,8 @@
     redScoreEl.value = '';
     blueScoreEl.value = '';
     balanceSliderEl.value = String(DEFAULT_BALANCE_ATTEMPTS);
-    leagueGameCheckboxEl.checked = false;
+    leagueLevelSelectEl.value = '';
+    courtTypeSelectEl.value = 'indoor';
 
     savePageState();
     setPromptChoice('loaded');
@@ -1436,21 +1503,21 @@
   redScoreEl.addEventListener('input', savePageState);
   blueScoreEl.addEventListener('input', savePageState);
 
-  leagueGameCheckboxEl.addEventListener('change', () => {
+  leagueLevelSelectEl.addEventListener('change', () => {
     clearError();
 
     if (isLeagueGameMode()) {
-      players.forEach(player => {
-        const state = getPlayerState(player.id);
-        if (state.team === 'blue') {
-          state.team = '';
-        }
-        state.lockedTeam = '';
-      });
+      assignPresentPlayersToRedForLeagueGame();
     }
 
     savePageState();
     renderPlayers();
+    updateBalanceStatus();
+  });
+
+  courtTypeSelectEl.addEventListener('change', () => {
+    clearError();
+    savePageState();
     updateBalanceStatus();
   });
 
@@ -1482,6 +1549,10 @@
 
   restorePageState();
   syncPresenceState();
+
+  if (isLeagueGameMode()) {
+    assignPresentPlayersToRedForLeagueGame();
+  }
 
   balanceValueEl.textContent = balanceSliderEl.value;
   updateToggleButton();

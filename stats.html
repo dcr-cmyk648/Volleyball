@@ -26,7 +26,6 @@
     }
 
     * { box-sizing: border-box; }
-
     html { color-scheme: dark; }
 
     body {
@@ -413,7 +412,7 @@
       </div>
 
       <div class="small" id="modelHelpText">
-        Seasonal ranking is always active here. The slider controls how long the season is before older games taper toward minimum impact. Volleyball-adjusted model reduces how strongly team size drives expected outcomes. League games are ignored unless included.
+        Seasonal ranking is always active here. The slider controls how long the season is before older games taper toward minimum impact. Volleyball-adjusted model reduces how strongly team size drives expected outcomes. League games are separated by inferred league context.
       </div>
 
       <div class="table-wrap" style="margin-top: 12px;">
@@ -421,7 +420,7 @@
           <thead>
             <tr>
               <th>#</th>
-              <th>Player (click name for score graph)</th>
+              <th>Player / League Team (click name for score graph)</th>
               <th>Rating</th>
               <th>Games</th>
               <th>Wins</th>
@@ -598,18 +597,14 @@
       localStorage.setItem(VOLLEYBALL_ADJUSTED_STORAGE_KEY, value ? 'true' : 'false');
     }
 
-function loadIncludeLeagueGamesEnabled() {
-  const saved = localStorage.getItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY);
-  if (saved === null) return true;
-  return saved === 'true';
-}
+    function loadIncludeLeagueGamesEnabled() {
+      const saved = localStorage.getItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY);
+      if (saved === null) return true;
+      return saved === 'true';
+    }
 
     function saveIncludeLeagueGamesEnabled(value) {
       localStorage.setItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY, value ? 'true' : 'false');
-    }
-
-    function isSeasonalMode() {
-      return true;
     }
 
     function isVolleyballAdjustedMode() {
@@ -646,7 +641,7 @@ function loadIncludeLeagueGamesEnabled() {
       }
 
       modes.push(isIncludeLeagueGamesMode()
-        ? 'league games included'
+        ? 'league games included by context'
         : 'league games excluded'
       );
 
@@ -667,10 +662,6 @@ function loadIncludeLeagueGamesEnabled() {
     }
 
     function formatPlayerNameCell(player) {
-      if (player.id === LEAGUE_TEAM_ID) {
-        return escapeHtml(player.name);
-      }
-
       const params = new URLSearchParams();
       params.set('id', player.id);
       params.set('seasonal', '1');
@@ -686,6 +677,16 @@ function loadIncludeLeagueGamesEnabled() {
 
       const name = escapeHtml(player.name);
       return `<a href="trend.html?${params.toString()}" class="player-link">${name}</a>`;
+    }
+
+    function getLeagueContextName(game, entry = null) {
+      if (entry?.leagueContext?.name) return entry.leagueContext.name;
+
+      if (!game?.isLeagueGame) return '';
+
+      const level = game.level === 'intermediate' ? 'Intermediate' : 'Rec';
+      const court = game.courtType === 'sand' ? 'Sand' : 'Indoor';
+      return `${level} League ${court}`;
     }
 
     function formatScore(game) {
@@ -707,7 +708,7 @@ function loadIncludeLeagueGamesEnabled() {
 
     function renderStats() {
       const result = getReplayResult();
-const rows = result.standings.filter(player => player.games > 0);
+      const rows = result.standings.filter(player => player.games > 0);
 
       statsTableBody.innerHTML = '';
 
@@ -715,7 +716,7 @@ const rows = result.standings.filter(player => player.games > 0);
         const tr = document.createElement('tr');
         const td = document.createElement('td');
         td.colSpan = 7;
-        td.innerHTML = '<div class="empty-state">No players found.</div>';
+        td.innerHTML = '<div class="empty-state">No players or league teams found for the current model.</div>';
         tr.appendChild(td);
         statsTableBody.appendChild(tr);
         return;
@@ -754,6 +755,7 @@ const rows = result.standings.filter(player => player.games > 0);
         const game = entry.game;
         const winnerClass = game.winner === 'red' ? 'red' : 'blue';
         const winnerText = game.winner === 'red' ? 'Red Team' : 'Blue Team';
+        const leagueContextName = getLeagueContextName(game, entry);
 
         const redNames = entry.before.red.map((p, i) => {
           const after = entry.after.red[i];
@@ -763,7 +765,7 @@ const rows = result.standings.filter(player => player.games > 0);
         }).join(', ') || '(none)';
 
         const blueNames = game.isLeagueGame
-          ? `${LEAGUE_TEAM_NAME} (${formatDisplayedRating(averageDisplayedRating(entry.before.blue))} → ${formatDisplayedRating(averageDisplayedRating(entry.after.blue))})`
+          ? `${leagueContextName} (${formatDisplayedRating(averageDisplayedRating(entry.before.blue))} → ${formatDisplayedRating(averageDisplayedRating(entry.after.blue))})`
           : entry.before.blue.map((p, i) => {
               const after = entry.after.blue[i];
               const name =
@@ -778,6 +780,9 @@ const rows = result.standings.filter(player => player.games > 0);
         if (entry.volleyballAdjusted) {
           modeBits.push(`Volleyball update: ${entry.volleyballUpdateMultiplier.toFixed(2)}x`);
         }
+        if (game.isLeagueGame) {
+          modeBits.push(leagueContextName);
+        }
 
         const card = document.createElement('div');
         card.className = 'game-card';
@@ -787,7 +792,7 @@ const rows = result.standings.filter(player => player.games > 0);
             <div>
               <strong>${game.date || 'Unknown date'}</strong><br>
               <span class="winner-badge ${winnerClass}">${winnerText} win</span>
-              ${game.isLeagueGame ? '<div class="small">League game</div>' : ''}
+              ${game.isLeagueGame ? `<div class="small">${escapeHtml(leagueContextName)}</div>` : ''}
             </div>
             <div>
               <button class="danger" data-game-id="${game.id}">Delete</button>
@@ -799,7 +804,7 @@ const rows = result.standings.filter(player => player.games > 0);
               <div>${redNames}</div>
             </div>
             <div class="team-box blue-team">
-              <strong>${game.isLeagueGame ? LEAGUE_TEAM_NAME : 'Blue Team'}</strong>
+              <strong>${game.isLeagueGame ? escapeHtml(leagueContextName) : 'Blue Team'}</strong>
               <div>${blueNames}</div>
             </div>
           </div>
@@ -851,23 +856,35 @@ const rows = result.standings.filter(player => player.games > 0);
     function normalizeImportedGames(games) {
       return games
         .filter(game => game && typeof game === 'object')
-        .map((game, index) => ({
-          id: game.id ?? (Date.now() + index),
-          date: game.date ?? '',
-          redTeam: Array.isArray(game.redTeam) ? game.redTeam : [],
-          blueTeam: Array.isArray(game.blueTeam) ? game.blueTeam : [],
-          scoreRed: typeof game.scoreRed === 'undefined' ? null : game.scoreRed,
-          scoreBlue: typeof game.scoreBlue === 'undefined' ? null : game.scoreBlue,
-          winner: game.winner === 'blue' ? 'blue' : 'red',
-          isLeagueGame: Boolean(game.isLeagueGame),
-          leagueOpponent: game.isLeagueGame
-            ? {
-                id: game.leagueOpponent?.id || LEAGUE_TEAM_ID,
-                name: game.leagueOpponent?.name || LEAGUE_TEAM_NAME,
-                size: Number(game.leagueOpponent?.size) || LEAGUE_TEAM_SIZE
-              }
-            : null
-        }));
+        .map((game, index) => {
+          const normalized = {
+            id: game.id ?? (Date.now() + index),
+            date: game.date ?? '',
+            redTeam: Array.isArray(game.redTeam) ? game.redTeam : [],
+            blueTeam: Array.isArray(game.blueTeam) ? game.blueTeam : [],
+            scoreRed: typeof game.scoreRed === 'undefined' ? null : game.scoreRed,
+            scoreBlue: typeof game.scoreBlue === 'undefined' ? null : game.scoreBlue,
+            winner: game.winner === 'blue' ? 'blue' : 'red',
+            isLeagueGame: Boolean(game.isLeagueGame),
+            leagueOpponent: game.isLeagueGame
+              ? {
+                  id: game.leagueOpponent?.id || LEAGUE_TEAM_ID,
+                  name: game.leagueOpponent?.name || LEAGUE_TEAM_NAME,
+                  size: Number(game.leagueOpponent?.size) || LEAGUE_TEAM_SIZE
+                }
+              : null
+          };
+
+          if (game.level === 'intermediate') {
+            normalized.level = 'intermediate';
+          }
+
+          if (game.courtType === 'sand') {
+            normalized.courtType = 'sand';
+          }
+
+          return normalized;
+        });
     }
 
     function importDatabaseFromFile(file) {

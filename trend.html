@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Player Rating Trend</title>
+  <title>Rating Trend</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root {
@@ -187,7 +187,7 @@
 <body>
   <div class="container">
     <div class="topbar">
-      <h1 id="pageTitle">Player Rating Trend</h1>
+      <h1 id="pageTitle">Rating Trend</h1>
       <div class="nav-links">
         <a href="stats.html" class="button-link">Back to Stats</a>
         <a href="index.html" class="button-link">Main Page</a>
@@ -197,10 +197,10 @@
     <div class="card">
       <h2>Rating Over Time</h2>
       <div class="small">
-        This graph starts at the player’s initial baseline rating, then shows their public Rating after each included game they played.
+        This graph starts at the initial baseline rating, then shows the public Rating after each included game.
       </div>
       <div id="summaryGrid" class="summary-grid"></div>
-      <div id="statusMessage" class="status">Loading player trend...</div>
+      <div id="statusMessage" class="status">Loading trend...</div>
       <div class="chart-wrap">
         <canvas id="ratingChart"></canvas>
       </div>
@@ -236,6 +236,7 @@
       PLAYER_STORAGE_KEY,
       GAME_STORAGE_KEY,
       getPlayerRatingTimeline,
+      getLeagueContextById,
       formatMu,
       formatSigma,
     } from './ratings.js';
@@ -325,6 +326,7 @@
       if (getUrlParams().has('volleyballAdjusted')) {
         return getUrlFlag('volleyballAdjusted');
       }
+
       const saved = localStorage.getItem(VOLLEYBALL_ADJUSTED_STORAGE_KEY);
       if (saved === null) return true;
       return saved === 'true';
@@ -334,7 +336,10 @@
       if (getUrlParams().has('includeLeagueGames')) {
         return getUrlFlag('includeLeagueGames');
       }
-      return localStorage.getItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY) === 'true';
+
+      const saved = localStorage.getItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY);
+      if (saved === null) return true;
+      return saved === 'true';
     }
 
     function getPlayerIdFromUrl() {
@@ -362,7 +367,8 @@
       return `Red ${row.scoreRed} - Blue ${row.scoreBlue}`;
     }
 
-    function formatSide(side) {
+    function formatSide(side, isLeagueContext) {
+      if (isLeagueContext) return 'League Team';
       if (side === 'red') return 'Red';
       if (side === 'blue') return 'Blue';
       return '';
@@ -386,11 +392,17 @@
 
       modes.push(
         includeLeagueGames
-          ? 'League games included'
+          ? 'League games included by context'
           : 'League games excluded'
       );
 
       return modes.join(' + ');
+    }
+
+    function getLeagueContextName(row) {
+      if (row?.leagueContext?.name) return row.leagueContext.name;
+      if (!row?.isLeagueGame) return '';
+      return 'League Team';
     }
 
     function getModelCell(row) {
@@ -407,7 +419,7 @@
       }
 
       if (row.isLeagueGame) {
-        parts.push('League');
+        parts.push(getLeagueContextName(row));
       }
 
       return parts.join(' | ');
@@ -446,7 +458,7 @@
       });
     }
 
-    function renderChart(timeline) {
+    function renderChart(timeline, entityName) {
       if (chart) {
         chart.destroy();
       }
@@ -471,7 +483,7 @@
           labels,
           datasets: [
             {
-              label: 'Rating',
+              label: `${entityName} Rating`,
               data,
               tension: 0.25,
               pointRadius: 4,
@@ -506,7 +518,7 @@
 
                   return [
                     `Result: ${result}`,
-                    `Side: ${formatSide(row.side)}`,
+                    `Side: ${formatSide(row.side, Boolean(row.leagueContext && row.side === 'blue'))}`,
                     `Score: ${score}`,
                     `Rating: ${formatRating(row.displayRatingBefore)} → ${formatRating(row.displayRatingAfter)}`,
                     `Mu: ${formatMu(row.muBefore)} → ${formatMu(row.muAfter)}`,
@@ -541,14 +553,14 @@
       });
     }
 
-    function renderTable(timeline) {
+    function renderTable(timeline, isLeagueContext) {
       timelineTableBodyEl.innerHTML = '';
 
       if (timeline.length === 0) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
         td.colSpan = 8;
-        td.innerHTML = '<div class="empty-state">No included games for this player.</div>';
+        td.innerHTML = '<div class="empty-state">No included games for this rating.</div>';
         tr.appendChild(td);
         timelineTableBodyEl.appendChild(tr);
         return;
@@ -564,7 +576,7 @@
         tr.innerHTML = `
           <td>${row.date || 'Unknown'}</td>
           <td><span class="${resultClass}">${resultText}</span></td>
-          <td>${formatSide(row.side)}</td>
+          <td>${formatSide(row.side, isLeagueContext)}</td>
           <td>${formatScore(row)}</td>
           <td>${formatRating(row.displayRatingBefore)} → ${formatRating(row.displayRatingAfter)}</td>
           <td>${formatMu(row.muBefore)} → ${formatMu(row.muAfter)}</td>
@@ -581,19 +593,22 @@
       const players = loadPlayers();
       const games = loadGames();
       const player = findPlayer(players, playerId);
+      const leagueContext = getLeagueContextById(playerId);
+      const entity = player || leagueContext;
+      const isLeagueContext = Boolean(leagueContext);
       const seasonLengthMonths = loadSeasonLengthMonths();
       const seasonal = true;
       const volleyballAdjusted = loadVolleyballAdjustedEnabled();
       const includeLeagueGames = loadIncludeLeagueGamesEnabled();
 
-      if (!playerId || !player) {
-        pageTitleEl.textContent = 'Player Not Found';
-        statusMessageEl.textContent = 'Could not find that player. Go back to Stats and choose a player from the standings.';
-        renderTable([]);
+      if (!playerId || !entity) {
+        pageTitleEl.textContent = 'Rating Not Found';
+        statusMessageEl.textContent = 'Could not find that player or league context. Go back to Stats and choose a name from the standings.';
+        renderTable([], false);
         return;
       }
 
-      pageTitleEl.textContent = `${player.name} Rating Trend`;
+      pageTitleEl.textContent = `${entity.name} Rating Trend`;
 
       const timeline = getPlayerRatingTimeline({
         players,
@@ -608,9 +623,9 @@
       });
 
       if (timeline.length === 0) {
-        statusMessageEl.textContent = `${player.name} has no included games under the current model settings.`;
+        statusMessageEl.textContent = `${entity.name} has no included games under the current model settings.`;
         renderSummary(timeline);
-        renderTable(timeline);
+        renderTable(timeline, isLeagueContext);
         return;
       }
 
@@ -618,7 +633,7 @@
       const latest = timeline[timeline.length - 1];
 
       statusMessageEl.textContent = [
-        `Player: ${player.name}`,
+        `${isLeagueContext ? 'League context' : 'Player'}: ${entity.name}`,
         `Mode: ${getModeText({ volleyballAdjusted, includeLeagueGames, seasonLengthMonths })}`,
         `Starting Rating: ${formatRating(first.displayRatingBefore)}`,
         `Current Rating: ${formatRating(latest.displayRatingAfter)}`,
@@ -627,8 +642,8 @@
       ].join('\n');
 
       renderSummary(timeline);
-      renderChart(timeline);
-      renderTable(timeline);
+      renderChart(timeline, entity.name);
+      renderTable(timeline, isLeagueContext);
     }
 
     renderPage();

@@ -215,20 +215,28 @@ export function getSeasonalWeight(
   const safeSeasonDays = Math.max(30, Number(seasonDays) || SEASONAL_TAPER_DAYS);
   const ageDays = daysBetween(gameDate, referenceDate);
 
-  const fullImpactDays = Math.max(
-    SEASONAL_FULL_WEIGHT_DAYS,
+  if (ageDays <= SEASONAL_FULL_WEIGHT_DAYS) return 1;
+
+  const inflectionPoint = Math.max(
+    SEASONAL_FULL_WEIGHT_DAYS + 1,
     safeSeasonDays - 30
   );
 
-  if (ageDays <= fullImpactDays) return 1;
-
-  const inflectionPoint = safeSeasonDays;
-  const steepness = 0.12;
+  const steepness = 6 / Math.max(14, safeSeasonDays);
 
   const logistic =
     1 / (1 + Math.exp(steepness * (ageDays - inflectionPoint)));
 
-  return SEASONAL_MIN_WEIGHT + logistic * (1 - SEASONAL_MIN_WEIGHT);
+  const normalizedAtRecent =
+    1 / (1 + Math.exp(steepness * (SEASONAL_FULL_WEIGHT_DAYS - inflectionPoint)));
+
+  const scaled = logistic / normalizedAtRecent;
+
+  return clamp(
+    SEASONAL_MIN_WEIGHT + scaled * (1 - SEASONAL_MIN_WEIGHT),
+    SEASONAL_MIN_WEIGHT,
+    1
+  );
 }
 
 export function mergeRatingOptions(overrides = {}) {

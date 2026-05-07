@@ -83,6 +83,138 @@
   ],
   "games": [
     {
+      "id": 1778112972843,
+      "date": "2026-05-07",
+      "redTeam": [
+        {
+          "id": 1776129491729,
+          "name": "AlexS"
+        },
+        {
+          "id": 1776129589991,
+          "name": "DesiD"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1776129552665,
+          "name": "KianM"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        },
+        {
+          "id": 1776129478177,
+          "name": "PeterA"
+        }
+      ],
+      "blueTeam": [],
+      "scoreRed": 10,
+      "scoreBlue": 15,
+      "winner": "blue",
+      "isLeagueGame": true,
+      "leagueOpponent": {
+        "id": "league_team",
+        "name": "League Team",
+        "size": 6
+      }
+    },
+    {
+      "id": 1778112296116,
+      "date": "2026-05-07",
+      "redTeam": [
+        {
+          "id": 1776129491729,
+          "name": "AlexS"
+        },
+        {
+          "id": 1776129589991,
+          "name": "DesiD"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1776129552665,
+          "name": "KianM"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        },
+        {
+          "id": 1776129478177,
+          "name": "PeterA"
+        }
+      ],
+      "blueTeam": [],
+      "scoreRed": 14,
+      "scoreBlue": 25,
+      "winner": "blue",
+      "isLeagueGame": true,
+      "leagueOpponent": {
+        "id": "league_team",
+        "name": "League Team",
+        "size": 6
+      }
+    },
+    {
+      "id": 1778111356198,
+      "date": "2026-05-06",
+      "redTeam": [
+        {
+          "id": 1776129491729,
+          "name": "AlexS"
+        },
+        {
+          "id": 1776129589991,
+          "name": "DesiD"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1776129552665,
+          "name": "KianM"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        },
+        {
+          "id": 1776129478177,
+          "name": "PeterA"
+        }
+      ],
+      "blueTeam": [],
+      "scoreRed": 25,
+      "scoreBlue": 20,
+      "winner": "red",
+      "isLeagueGame": true,
+      "leagueOpponent": {
+        "id": "league_team",
+        "name": "League Team",
+        "size": 6
+      }
+    },
+    {
       "id": 1777511497874,
       "date": "2026-04-30",
       "redTeam": [
@@ -325,7 +457,7 @@
       ],
       "blueTeam": [],
       "scoreRed": 25,
-      "scoreBlue": 12,
+      "scoreBlue": 14,
       "winner": "red",
       "isLeagueGame": true,
       "leagueOpponent": {

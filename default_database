@@ -86,15 +86,15 @@
     },
     {
       "id": 1778459118360,
-      "name": "Seanæç"
+      "name": "SeanSPARC"
     },
     {
       "id": 1778460331511,
-      "name": "Jasonæç"
+      "name": "JasonSPARC"
     },
     {
       "id": 1778460338950,
-      "name": "Christianæç"
+      "name": "ChristianSPARC"
     }
   ],
   "games": [
@@ -104,7 +104,7 @@
       "redTeam": [
         {
           "id": 1778460338950,
-          "name": "Christianæç"
+          "name": "ChristianSPARC"
         },
         {
           "id": 1,
@@ -116,7 +116,7 @@
         },
         {
           "id": 1778459118360,
-          "name": "Seanæç"
+          "name": "SeanSPARC"
         }
       ],
       "blueTeam": [
@@ -130,7 +130,7 @@
         },
         {
           "id": 1778460331511,
-          "name": "Jasonæç"
+          "name": "JasonSPARC"
         },
         {
           "id": 1775922113430,
@@ -153,7 +153,7 @@
         },
         {
           "id": 1778460331511,
-          "name": "Jasonæç"
+          "name": "JasonSPARC"
         },
         {
           "id": 1776129685139,
@@ -167,7 +167,7 @@
       "blueTeam": [
         {
           "id": 1778460338950,
-          "name": "Christianæç"
+          "name": "ChristianSPARC"
         },
         {
           "id": 1,
@@ -179,7 +179,7 @@
         },
         {
           "id": 1778459118360,
-          "name": "Seanæç"
+          "name": "SeanSPARC"
         }
       ],
       "scoreRed": 25,
@@ -198,7 +198,7 @@
         },
         {
           "id": 1778460338950,
-          "name": "Christianæç"
+          "name": "ChristianSPARC"
         },
         {
           "id": 1778458288452,
@@ -216,7 +216,7 @@
         },
         {
           "id": 1778460331511,
-          "name": "Jasonæç"
+          "name": "JasonSPARC"
         },
         {
           "id": 1776129685139,
@@ -224,7 +224,7 @@
         },
         {
           "id": 1778459118360,
-          "name": "Seanæç"
+          "name": "SeanSPARC"
         }
       ],
       "scoreRed": 22,

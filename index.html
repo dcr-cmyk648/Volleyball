@@ -795,23 +795,23 @@
     });
   }
 
-  function getVisiblePlayers() {
-    const normalizedQuery = playerSearchQuery.trim().toLowerCase();
+function getVisiblePlayers() {
+  const normalizedQuery = playerSearchQuery.trim().toLowerCase();
 
-    return players.filter(player => {
-      const state = getPlayerState(player.id);
+  return players.filter(player => {
+    const state = getPlayerState(player.id);
 
-      if (hideUnselectedPlayers && !state.present) {
-        return false;
-      }
+    if (!normalizedQuery && hideUnselectedPlayers && !state.present) {
+      return false;
+    }
 
-      if (normalizedQuery && !player.name.toLowerCase().includes(normalizedQuery)) {
-        return false;
-      }
+    if (normalizedQuery && !player.name.toLowerCase().includes(normalizedQuery)) {
+      return false;
+    }
 
-      return true;
-    });
-  }
+    return true;
+  });
+}
 
   function shuffleArray(input) {
     const arr = [...input];

@@ -125,6 +125,19 @@
       align-items: center;
     }
 
+    .server-stats-control {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .server-stats-date {
+      font-size: 12px;
+      color: var(--muted);
+      padding-left: 2px;
+      line-height: 1.35;
+    }
+
     .model-controls {
       display: grid;
       grid-template-columns: minmax(240px, 1fr) minmax(220px, auto);
@@ -369,7 +382,10 @@
       <div class="controls">
         <button id="exportDatabaseButton">Export Database</button>
         <button id="importDatabaseButton" class="secondary">Import Database</button>
-        <button id="loadDefaultDatabaseButton" class="ghost">Load newest stats from server</button>
+        <div class="server-stats-control">
+          <button id="loadDefaultDatabaseButton" class="ghost">Load newest stats from server</button>
+          <div id="serverStatsDate" class="server-stats-date">Checking server date...</div>
+        </div>
         <input type="file" id="importFileInput" accept=".json" hidden />
       </div>
 
@@ -502,6 +518,7 @@
     const deleteGameInput = document.getElementById('deleteGameInput');
     const deleteGameText = document.getElementById('deleteGameText');
     const loadDefaultDatabaseButtonEl = document.getElementById('loadDefaultDatabaseButton');
+    const serverStatsDateEl = document.getElementById('serverStatsDate');
     const seasonLengthSliderEl = document.getElementById('seasonLengthSlider');
     const seasonLengthValueEl = document.getElementById('seasonLengthValue');
     const volleyballAdjustedToggleEl = document.getElementById('volleyballAdjustedToggle');
@@ -983,6 +1000,17 @@
       return latest || 'unknown date';
     }
 
+    function updateServerStatsDate(meta) {
+      if (!serverStatsDateEl) return;
+
+      if (!meta || !meta.latestGameDate || meta.latestGameDate === 'unknown date') {
+        serverStatsDateEl.textContent = 'Server date unavailable';
+        return;
+      }
+
+      serverStatsDateEl.textContent = `Newest server game: ${meta.latestGameDate}`;
+    }
+
     async function fetchDefaultDatabase() {
       const response = await fetch(DEFAULT_DB_SOURCE_PATH, { cache: 'no-store' });
       if (!response.ok) {
@@ -1012,10 +1040,12 @@
 
     async function prepareDefaultDatabaseMeta() {
       if (defaultDatabaseMeta) {
+        updateServerStatsDate(defaultDatabaseMeta);
         return defaultDatabaseMeta;
       }
 
       defaultDatabaseMeta = await fetchDefaultDatabase();
+      updateServerStatsDate(defaultDatabaseMeta);
       return defaultDatabaseMeta;
     }
 
@@ -1051,6 +1081,7 @@
         defaultDatabaseTextEl.textContent = 'A server stats file is available.';
         defaultDatabaseStatusEl.textContent = 'Could not read the server stats file.';
         confirmLoadDefaultDatabaseButtonEl.disabled = true;
+        if (serverStatsDateEl) serverStatsDateEl.textContent = 'Server date unavailable';
         defaultDatabaseDialog.showModal();
       }
     }
@@ -1066,6 +1097,7 @@
         defaultDatabaseTextEl.textContent = 'A server stats file is available.';
         defaultDatabaseStatusEl.textContent = 'Could not read the server stats file.';
         confirmLoadDefaultDatabaseButtonEl.disabled = true;
+        if (serverStatsDateEl) serverStatsDateEl.textContent = 'Server date unavailable';
         defaultDatabaseDialog.showModal();
       }
     }
@@ -1138,6 +1170,11 @@
     includeLeagueGamesToggleEl.checked = loadIncludeLeagueGamesEnabled();
 
     renderAll();
+
+    prepareDefaultDatabaseMeta().catch(() => {
+      if (serverStatsDateEl) serverStatsDateEl.textContent = 'Server date unavailable';
+    });
+
     maybeOfferDefaultDatabase();
   </script>
 </body>

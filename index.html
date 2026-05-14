@@ -122,14 +122,17 @@
     }
 
     .select-row label,
-    .slider-row label {
+    .slider-row label,
+    .field label,
+    .search-row label {
       display: block;
       font-size: 14px;
       color: var(--muted);
       margin-bottom: 8px;
     }
 
-    .select-row select {
+    .select-row select,
+    .search-row input {
       width: 100%;
       padding: 12px;
       font-size: 16px;
@@ -140,7 +143,8 @@
       outline: none;
     }
 
-    .select-row select:focus {
+    .select-row select:focus,
+    .search-row input:focus {
       border-color: #60a5fa;
       box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
     }
@@ -152,6 +156,38 @@
     .slider-row input[type="range"] {
       width: 100%;
       accent-color: #93c5fd;
+    }
+
+    .checkbox-row {
+      margin-top: 10px;
+      margin-bottom: 12px;
+    }
+
+    .checkbox-row label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .checkbox-row input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #93c5fd;
+    }
+
+    .selected-count {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.45;
     }
 
     .small {
@@ -183,6 +219,9 @@
       display: grid;
       grid-template-columns: 1fr;
       gap: 10px;
+      max-height: 720px;
+      overflow-y: auto;
+      padding-right: 4px;
     }
 
     .player-row {
@@ -194,6 +233,7 @@
       border: 1px solid var(--border);
       border-radius: 14px;
       background: rgba(255, 255, 255, 0.03);
+      min-height: 52px;
     }
 
     .player-row input[type="checkbox"] {
@@ -249,13 +289,6 @@
       grid-template-columns: 1fr 1fr;
       gap: 12px;
       margin-bottom: 12px;
-    }
-
-    .field label {
-      display: block;
-      font-size: 14px;
-      margin-bottom: 6px;
-      color: var(--muted);
     }
 
     .field input {
@@ -364,8 +397,21 @@
         <input type="range" id="balanceSlider" min="1" max="50" value="10" />
       </div>
 
+      <div class="checkbox-row">
+        <label for="forceTwoChangesCheckbox">
+          <input type="checkbox" id="forceTwoChangesCheckbox" />
+          Force at least two player changes
+        </label>
+      </div>
+
+      <div id="selectedCount" class="selected-count">Selected players: 0</div>
       <div id="balanceStatus" class="status">No team assignment yet.</div>
       <div id="errorMessage" class="error"></div>
+
+      <div class="search-row" style="margin-top: 14px;">
+        <label for="playerSearchInput">Search players</label>
+        <input type="search" id="playerSearchInput" placeholder="Start typing a name..." autocomplete="off" />
+      </div>
 
       <div id="playerList" class="player-list" style="margin-top: 14px;"></div>
 
@@ -457,10 +503,13 @@
   const redSummaryEl = document.getElementById('redSummary');
   const blueSummaryEl = document.getElementById('blueSummary');
   const balanceStatusEl = document.getElementById('balanceStatus');
+  const selectedCountEl = document.getElementById('selectedCount');
   const latestGameEl = document.getElementById('latestGame');
   const errorMessageEl = document.getElementById('errorMessage');
   const balanceSliderEl = document.getElementById('balanceSlider');
   const balanceValueEl = document.getElementById('balanceValue');
+  const forceTwoChangesCheckboxEl = document.getElementById('forceTwoChangesCheckbox');
+  const playerSearchInputEl = document.getElementById('playerSearchInput');
   const redScoreEl = document.getElementById('redScore');
   const blueScoreEl = document.getElementById('blueScore');
   const leagueLevelSelectEl = document.getElementById('leagueLevelSelect');
@@ -478,6 +527,7 @@
   let games = loadGames();
   let presenceState = buildPresenceState(players);
   let hideUnselectedPlayers = false;
+  let playerSearchQuery = '';
   let defaultDatabaseMeta = null;
 
   function loadPlayers() {
@@ -589,6 +639,8 @@
       blueScore: blueScoreEl.value,
       hideUnselectedPlayers,
       balanceAttempts: Number(balanceSliderEl.value),
+      forceTwoChanges: forceTwoChangesCheckboxEl.checked,
+      playerSearchQuery,
       leagueLevel: getLeagueLevel(),
       courtType: getCourtType()
     };
@@ -607,6 +659,18 @@
     redScoreEl.value = typeof saved.redScore === 'string' ? saved.redScore : '';
     blueScoreEl.value = typeof saved.blueScore === 'string' ? saved.blueScore : '';
     hideUnselectedPlayers = Boolean(saved.hideUnselectedPlayers);
+
+    if (typeof saved.forceTwoChanges === 'boolean') {
+      forceTwoChangesCheckboxEl.checked = saved.forceTwoChanges;
+    } else {
+      forceTwoChangesCheckboxEl.checked = true;
+    }
+
+    playerSearchQuery = typeof saved.playerSearchQuery === 'string'
+      ? saved.playerSearchQuery
+      : '';
+
+    playerSearchInputEl.value = playerSearchQuery;
 
     if (saved.leagueLevel === 'rec' || saved.leagueLevel === 'intermediate') {
       leagueLevelSelectEl.value = saved.leagueLevel;
@@ -731,6 +795,24 @@
     });
   }
 
+  function getVisiblePlayers() {
+    const normalizedQuery = playerSearchQuery.trim().toLowerCase();
+
+    return players.filter(player => {
+      const state = getPlayerState(player.id);
+
+      if (hideUnselectedPlayers && !state.present) {
+        return false;
+      }
+
+      if (normalizedQuery && !player.name.toLowerCase().includes(normalizedQuery)) {
+        return false;
+      }
+
+      return true;
+    });
+  }
+
   function shuffleArray(input) {
     const arr = [...input];
     for (let i = arr.length - 1; i > 0; i -= 1) {
@@ -750,6 +832,66 @@
     const ratedPlayers = getPlayerRatingsForList(teamPlayers, ratingMap);
     const total = ratedPlayers.reduce((sum, player) => sum + player.rating, 0);
     return total / ratedPlayers.length;
+  }
+
+  function getPlayerIdSet(teamPlayers) {
+    return new Set(teamPlayers.map(player => String(player.id)));
+  }
+
+  function countDifferentPlayers(teamA, teamB) {
+    const idsA = getPlayerIdSet(teamA);
+    const idsB = getPlayerIdSet(teamB);
+    let different = 0;
+
+    idsA.forEach(id => {
+      if (!idsB.has(id)) different += 1;
+    });
+
+    idsB.forEach(id => {
+      if (!idsA.has(id)) different += 1;
+    });
+
+    return different;
+  }
+
+  function getLatestGameForSimilarityConstraint() {
+    if (!games.length) return null;
+
+    const latest = games[0];
+    if (!latest || latest.isLeagueGame) return null;
+
+    return latest;
+  }
+
+  function getPreviousTeamsForSimilarityConstraint() {
+    const latest = getLatestGameForSimilarityConstraint();
+    if (!latest) return null;
+
+    const previousRed = Array.isArray(latest.redTeam) ? latest.redTeam : [];
+    const previousBlue = Array.isArray(latest.blueTeam) ? latest.blueTeam : [];
+
+    if (previousRed.length === 0 || previousBlue.length === 0) return null;
+
+    return {
+      redTeam: previousRed,
+      blueTeam: previousBlue,
+      date: latest.date || ''
+    };
+  }
+
+  function candidateHasEnoughPlayerChanges(candidate, previousTeams) {
+    if (!previousTeams) return true;
+
+    return (
+      countDifferentPlayers(candidate.redTeam, previousTeams.redTeam) >= 2 &&
+      countDifferentPlayers(candidate.redTeam, previousTeams.blueTeam) >= 2 &&
+      countDifferentPlayers(candidate.blueTeam, previousTeams.redTeam) >= 2 &&
+      countDifferentPlayers(candidate.blueTeam, previousTeams.blueTeam) >= 2
+    );
+  }
+
+  function shouldForceTwoChanges() {
+    return forceTwoChangesCheckboxEl.checked && !isLeagueGameMode();
   }
 
   function buildCandidateTeams(presentPlayers, ratingMap) {
@@ -833,10 +975,18 @@
 
     const attempts = Number(balanceSliderEl.value);
     const ratingData = getRatingData();
+    const previousTeams = shouldForceTwoChanges()
+      ? getPreviousTeamsForSimilarityConstraint()
+      : null;
 
     let bestCandidate = null;
+    let validCandidatesFound = 0;
+    let rawAttempts = 0;
+    const maxRawAttempts = Math.max(100, attempts * 100);
 
-    for (let i = 0; i < attempts; i += 1) {
+    while (validCandidatesFound < attempts && rawAttempts < maxRawAttempts) {
+      rawAttempts += 1;
+
       const candidate = buildCandidateTeams(presentPlayers, ratingData.ratingMap);
 
       if (candidate.error) {
@@ -844,9 +994,20 @@
         return;
       }
 
+      if (previousTeams && !candidateHasEnoughPlayerChanges(candidate, previousTeams)) {
+        continue;
+      }
+
+      validCandidatesFound += 1;
+
       if (!bestCandidate || candidate.fairness > bestCandidate.fairness) {
         bestCandidate = candidate;
       }
+    }
+
+    if (!bestCandidate || validCandidatesFound < attempts) {
+      setError('Unable to balance teams. Consider increasing balance strength or allowing more similar teams.');
+      return;
     }
 
     players.forEach(player => {
@@ -864,10 +1025,25 @@
 
     savePageState();
     renderPlayers();
-    updateBalanceStatus(bestCandidate, attempts);
+    updateBalanceStatus(bestCandidate, validCandidatesFound, rawAttempts, Boolean(previousTeams));
   }
 
-  function updateBalanceStatus(candidate = null, attempts = null) {
+  function updateSelectedCount() {
+    const selected = getPresentPlayers();
+    const redTeam = getTeamPlayers('red');
+    const blueTeam = getTeamPlayers('blue');
+
+    if (isLeagueGameMode()) {
+      selectedCountEl.textContent =
+        `Selected players: ${selected.length}\nRed: ${redTeam.length} | League Team`;
+      return;
+    }
+
+    selectedCountEl.textContent =
+      `Selected players: ${selected.length}\nRed: ${redTeam.length} | Blue: ${blueTeam.length}`;
+  }
+
+  function updateBalanceStatus(candidate = null, attempts = null, rawAttempts = null, usedSimilarityConstraint = false) {
     const ratingData = getRatingData();
 
     if (isLeagueGameMode()) {
@@ -906,7 +1082,8 @@
         `Court type: ${getCourtTypeLabel()}`,
         `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
         `Season length: ${loadSeasonLengthMonths()} months`,
-        `Volleyball-adjusted model: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`
+        `Volleyball-adjusted model: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
+        `Similarity rule: ${forceTwoChangesCheckboxEl.checked ? 'on' : 'off'}`
       ].join('\n');
       return;
     }
@@ -926,6 +1103,7 @@
       `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
       `Season length: ${loadSeasonLengthMonths()} months`,
       `Volleyball-adjusted ratings: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
+      `Similarity rule: ${forceTwoChangesCheckboxEl.checked ? 'on' : 'off'}`,
       `Red average Rating: ${formatDisplayedRating(redAvg)}`,
       `Blue average Rating: ${formatDisplayedRating(blueAvg)}`,
       `Red strength: ${Math.round(score.redStrength)}`,
@@ -942,7 +1120,11 @@
     }
 
     if (attempts !== null) {
-      lines.unshift(`Selected best split from ${attempts} candidate team assignments.`);
+      if (usedSimilarityConstraint && rawAttempts !== null) {
+        lines.unshift(`Selected best split from ${attempts} valid candidate assignments after ${rawAttempts} total attempts.`);
+      } else {
+        lines.unshift(`Selected best split from ${attempts} candidate team assignments.`);
+      }
     }
 
     balanceStatusEl.textContent = lines.join('\n');
@@ -1126,6 +1308,8 @@
     assignTeamsButtonEl.textContent = isLeagueGameMode()
       ? 'Assign Present to Red'
       : 'Assign Teams';
+
+    forceTwoChangesCheckboxEl.disabled = isLeagueGameMode();
   }
 
   function toggleUnselectedPlayers() {
@@ -1192,20 +1376,25 @@
       playerListEl.appendChild(emptyState);
       redSummaryEl.textContent = '0 players';
       blueSummaryEl.textContent = isLeagueGameMode() ? `${LEAGUE_TEAM_NAME} (${LEAGUE_TEAM_SIZE} players)` : '0 players';
+      updateSelectedCount();
       renderLatestGame();
       return;
     }
 
-    const visiblePlayers = hideUnselectedPlayers
-      ? players.filter(player => getPlayerState(player.id).present)
-      : players;
+    const visiblePlayers = getVisiblePlayers();
 
     if (visiblePlayers.length === 0) {
       const emptyState = document.createElement('div');
       emptyState.className = 'empty-state';
-      emptyState.textContent = hideUnselectedPlayers
-        ? 'No players are currently selected.'
-        : 'No players found. Add players in Player Management first.';
+
+      if (playerSearchQuery.trim()) {
+        emptyState.textContent = 'No players match your search.';
+      } else if (hideUnselectedPlayers) {
+        emptyState.textContent = 'No players are currently selected.';
+      } else {
+        emptyState.textContent = 'No players found. Add players in Player Management first.';
+      }
+
       playerListEl.appendChild(emptyState);
     } else {
       visiblePlayers.forEach(player => {
@@ -1318,6 +1507,7 @@
         : '0 players';
     }
 
+    updateSelectedCount();
     updateLeagueModeUI();
     renderLatestGame();
     updateToggleButton();
@@ -1479,10 +1669,13 @@
     players = loadPlayers();
     games = loadGames();
     hideUnselectedPlayers = false;
+    playerSearchQuery = '';
+    playerSearchInputEl.value = '';
 
     redScoreEl.value = '';
     blueScoreEl.value = '';
     balanceSliderEl.value = String(DEFAULT_BALANCE_ATTEMPTS);
+    forceTwoChangesCheckboxEl.checked = true;
     leagueLevelSelectEl.value = '';
     courtTypeSelectEl.value = 'indoor';
 
@@ -1498,6 +1691,18 @@
   balanceSliderEl.addEventListener('input', () => {
     balanceValueEl.textContent = balanceSliderEl.value;
     savePageState();
+  });
+
+  forceTwoChangesCheckboxEl.addEventListener('change', () => {
+    clearError();
+    savePageState();
+    updateBalanceStatus();
+  });
+
+  playerSearchInputEl.addEventListener('input', () => {
+    playerSearchQuery = playerSearchInputEl.value;
+    savePageState();
+    renderPlayers();
   });
 
   redScoreEl.addEventListener('input', savePageState);
@@ -1546,6 +1751,8 @@
     setPromptChoice('declined');
     defaultDatabaseDialog.close();
   });
+
+  forceTwoChangesCheckboxEl.checked = true;
 
   restorePageState();
   syncPresenceState();

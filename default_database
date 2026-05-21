@@ -95,9 +95,477 @@
     {
       "id": 1778460338950,
       "name": "ChristianSPARC"
+    },
+    {
+      "id": 1779374330346,
+      "name": "BenT"
+    },
+    {
+      "id": 1779374341064,
+      "name": "GraceE"
+    },
+    {
+      "id": 1779374349425,
+      "name": "JillE"
+    },
+    {
+      "id": 1779374360511,
+      "name": "HollyC"
+    },
+    {
+      "id": 1779374369042,
+      "name": "TheoT"
+    },
+    {
+      "id": 1779374381928,
+      "name": "JoeM"
+    },
+    {
+      "id": 1779374388880,
+      "name": "JacobA"
+    },
+    {
+      "id": 1779374397268,
+      "name": "AlexaY"
+    },
+    {
+      "id": 1779374404323,
+      "name": "RyanF"
+    },
+    {
+      "id": 1779374429041,
+      "name": "ClaudiaS"
+    },
+    {
+      "id": 1779374440749,
+      "name": "NinaF"
+    },
+    {
+      "id": 1779374449371,
+      "name": "MarkiA"
     }
   ],
   "games": [
+    {
+      "id": 1779375059591,
+      "date": "2026-05-21",
+      "redTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1779374388880,
+          "name": "JacobA"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1776129685139,
+          "name": "JoshR"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        },
+        {
+          "id": 1779374369042,
+          "name": "TheoT"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374330346,
+          "name": "BenT"
+        },
+        {
+          "id": 1779374429041,
+          "name": "ClaudiaS"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1776031804546,
+          "name": "KellieM"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 23,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "courtType": "sand"
+    },
+    {
+      "id": 1779375042902,
+      "date": "2026-05-21",
+      "redTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1779374388880,
+          "name": "JacobA"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1776129685139,
+          "name": "JoshR"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        },
+        {
+          "id": 1779374369042,
+          "name": "TheoT"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374330346,
+          "name": "BenT"
+        },
+        {
+          "id": 1779374429041,
+          "name": "ClaudiaS"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1776031804546,
+          "name": "KellieM"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        }
+      ],
+      "scoreRed": 26,
+      "scoreBlue": 24,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "courtType": "sand"
+    },
+    {
+      "id": 1779374959251,
+      "date": "2026-05-21",
+      "redTeam": [
+        {
+          "id": 1779374330346,
+          "name": "BenT"
+        },
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1779374341064,
+          "name": "GraceE"
+        },
+        {
+          "id": 1776129685139,
+          "name": "JoshR"
+        },
+        {
+          "id": 1779374404323,
+          "name": "RyanF"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374429041,
+          "name": "ClaudiaS"
+        },
+        {
+          "id": 1779374388880,
+          "name": "JacobA"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1776031804546,
+          "name": "KellieM"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 22,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "courtType": "sand"
+    },
+    {
+      "id": 1779374793931,
+      "date": "2026-05-21",
+      "redTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1779374349425,
+          "name": "JillE"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374429041,
+          "name": "ClaudiaS"
+        },
+        {
+          "id": 1779374388880,
+          "name": "JacobA"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1776031804546,
+          "name": "KellieM"
+        }
+      ],
+      "scoreRed": null,
+      "scoreBlue": null,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "courtType": "sand"
+    },
+    {
+      "id": 1779374745953,
+      "date": "2026-05-21",
+      "redTeam": [
+        {
+          "id": 1779374360511,
+          "name": "HollyC"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        },
+        {
+          "id": 1779374369042,
+          "name": "TheoT"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374429041,
+          "name": "ClaudiaS"
+        },
+        {
+          "id": 1779374388880,
+          "name": "JacobA"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1776031804546,
+          "name": "KellieM"
+        }
+      ],
+      "scoreRed": null,
+      "scoreBlue": null,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "courtType": "sand"
+    },
+    {
+      "id": 1779374674866,
+      "date": "2026-05-21",
+      "redTeam": [
+        {
+          "id": 1779374360511,
+          "name": "HollyC"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        },
+        {
+          "id": 1779374369042,
+          "name": "TheoT"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1779374349425,
+          "name": "JillE"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        }
+      ],
+      "scoreRed": null,
+      "scoreBlue": null,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "courtType": "sand"
+    },
+    {
+      "id": 1779374601800,
+      "date": "2026-05-21",
+      "redTeam": [
+        {
+          "id": 1779374330346,
+          "name": "BenT"
+        },
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1779374341064,
+          "name": "GraceE"
+        },
+        {
+          "id": 1776129685139,
+          "name": "JoshR"
+        },
+        {
+          "id": 1779374404323,
+          "name": "RyanF"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374360511,
+          "name": "HollyC"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        },
+        {
+          "id": 1779374369042,
+          "name": "TheoT"
+        }
+      ],
+      "scoreRed": 22,
+      "scoreBlue": 25,
+      "winner": "blue",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "courtType": "sand"
+    },
+    {
+      "id": 1779374544146,
+      "date": "2026-05-21",
+      "redTeam": [
+        {
+          "id": 1779374330346,
+          "name": "BenT"
+        },
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1779374341064,
+          "name": "GraceE"
+        },
+        {
+          "id": 1776129685139,
+          "name": "JoshR"
+        },
+        {
+          "id": 1779374404323,
+          "name": "RyanF"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1779374349425,
+          "name": "JillE"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 14,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "courtType": "sand"
+    },
     {
       "id": 1778464391840,
       "date": "2026-05-11",

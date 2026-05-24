@@ -15,6 +15,8 @@
       --border: #243041;
       --red: #f87171;
       --blue: #60a5fa;
+      --green: #4ade80;
+      --yellow: #facc15;
       --button: #334155;
       --button-text: #f3f4f6;
       --secondary: #475569;
@@ -225,6 +227,11 @@
       background: rgba(255,255,255,0.02);
     }
 
+    .standings-wrap {
+      max-height: 520px;
+      overflow-y: auto;
+    }
+
     table { width: 100%; border-collapse: collapse; }
 
     th, td {
@@ -285,6 +292,8 @@
 
     .team-box.red-team { border-left: 5px solid var(--red); }
     .team-box.blue-team { border-left: 5px solid var(--blue); }
+    .team-box.green-team { border-left: 5px solid var(--green); }
+    .team-box.yellow-team { border-left: 5px solid var(--yellow); }
 
     .winner-badge {
       display: inline-block;
@@ -306,6 +315,30 @@
       color: #bfdbfe;
       border-color: rgba(96, 165, 250, 0.35);
       background: rgba(96, 165, 250, 0.12);
+    }
+
+    .winner-badge.green {
+      color: #bbf7d0;
+      border-color: rgba(74, 222, 128, 0.35);
+      background: rgba(74, 222, 128, 0.12);
+    }
+
+    .winner-badge.yellow {
+      color: #fef08a;
+      border-color: rgba(250, 204, 21, 0.35);
+      background: rgba(250, 204, 21, 0.12);
+    }
+
+    .meta-pill {
+      display: inline-block;
+      margin-top: 6px;
+      margin-right: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 8px;
+      background: rgba(255,255,255,0.03);
     }
 
     .empty-state {
@@ -431,7 +464,7 @@
         Seasonal ranking is always active here. The slider controls how long the season is before older games taper toward minimum impact. Volleyball-adjusted model reduces how strongly team size drives expected outcomes. League games are separated by inferred league context.
       </div>
 
-      <div class="table-wrap" style="margin-top: 12px;">
+      <div class="table-wrap standings-wrap" style="margin-top: 12px;">
         <table>
           <thead>
             <tr>
@@ -446,6 +479,9 @@
           </thead>
           <tbody id="statsTableBody"></tbody>
         </table>
+      </div>
+      <div class="small">
+        Standings scroll after roughly 10 rows to keep the page compact.
       </div>
     </div>
 
@@ -509,6 +545,14 @@
     const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
     const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
     const INCLUDE_LEAGUE_GAMES_STORAGE_KEY = 'gameDayIncludeLeagueGamesEnabled';
+
+    const TEAM_COLORS = ['red', 'blue', 'green', 'yellow'];
+    const TEAM_LABELS = {
+      red: 'Red',
+      blue: 'Blue',
+      green: 'Green',
+      yellow: 'Yellow'
+    };
 
     const statsTableBody = document.getElementById('statsTableBody');
     const historyList = document.getElementById('historyList');
@@ -696,17 +740,58 @@
       return `<a href="trend.html?${params.toString()}" class="player-link">${name}</a>`;
     }
 
+    function getCourtTypeLabel(game) {
+      return game?.courtType === 'sand' ? 'Sand' : 'Indoor';
+    }
+
     function getLeagueContextName(game, entry = null) {
       if (entry?.leagueContext?.name) return entry.leagueContext.name;
 
       if (!game?.isLeagueGame) return '';
 
       const level = game.level === 'intermediate' ? 'Intermediate' : 'Rec';
-      const court = game.courtType === 'sand' ? 'Sand' : 'Indoor';
+      const court = getCourtTypeLabel(game);
       return `${level} League ${court}`;
     }
 
+    function getDisplayColorForSide(game, side) {
+      if (side === 'red' && TEAM_COLORS.includes(game?.displayWinnerColor)) {
+        return game.displayWinnerColor;
+      }
+
+      if (side === 'blue' && TEAM_COLORS.includes(game?.displayLoserColor)) {
+        return game.displayLoserColor;
+      }
+
+      return side === 'blue' ? 'blue' : 'red';
+    }
+
+    function getDisplayLabelForSide(game, side) {
+      const color = getDisplayColorForSide(game, side);
+      return `${TEAM_LABELS[color] || TEAM_LABELS[side] || side} Team`;
+    }
+
+    function getWinnerDisplayColor(game) {
+      if (game?.winner === 'red') return getDisplayColorForSide(game, 'red');
+      return getDisplayColorForSide(game, 'blue');
+    }
+
+    function getWinnerDisplayLabel(game) {
+      return getDisplayLabelForSide(game, game?.winner === 'blue' ? 'blue' : 'red');
+    }
+
+    function getLoserSide(game) {
+      return game?.winner === 'blue' ? 'red' : 'blue';
+    }
+
+    function getLoserDisplayLabel(game) {
+      return getDisplayLabelForSide(game, getLoserSide(game));
+    }
+
     function formatScore(game) {
+      const winnerLabel = getWinnerDisplayLabel(game);
+      const loserLabel = getLoserDisplayLabel(game);
+
       if (
         game.scoreRed === null ||
         game.scoreBlue === null ||
@@ -715,7 +800,12 @@
       ) {
         return 'Score: none';
       }
-      return `Score: Red ${game.scoreRed} - Blue ${game.scoreBlue}`;
+
+      if (game.winner === 'blue') {
+        return `Score: ${winnerLabel} ${game.scoreBlue} - ${loserLabel} ${game.scoreRed}`;
+      }
+
+      return `Score: ${winnerLabel} ${game.scoreRed} - ${loserLabel} ${game.scoreBlue}`;
     }
 
     function averageDisplayedRating(entries) {
@@ -770,9 +860,16 @@
 
       historyData.forEach(entry => {
         const game = entry.game;
-        const winnerClass = game.winner === 'red' ? 'red' : 'blue';
-        const winnerText = game.winner === 'red' ? 'Red Team' : 'Blue Team';
+        const winnerDisplayColor = getWinnerDisplayColor(game);
+        const winnerText = getWinnerDisplayLabel(game);
+        const redDisplayColor = getDisplayColorForSide(game, 'red');
+        const blueDisplayColor = getDisplayColorForSide(game, 'blue');
+        const redDisplayLabel = getDisplayLabelForSide(game, 'red');
+        const blueDisplayLabel = game.isLeagueGame
+          ? getLeagueContextName(game, entry)
+          : getDisplayLabelForSide(game, 'blue');
         const leagueContextName = getLeagueContextName(game, entry);
+        const courtTypeText = `Court type: ${getCourtTypeLabel(game)}`;
 
         const redNames = entry.before.red.map((p, i) => {
           const after = entry.after.red[i];
@@ -790,15 +887,22 @@
               return `${name} (${formatDisplayedRating(p.rating)} → ${formatDisplayedRating(after.rating)})`;
             }).join(', ') || '(none)';
 
-        const modeBits = [];
+        const modeBits = [courtTypeText];
+
         if (entry.seasonalWeight !== 1) {
           modeBits.push(`Seasonal weight: ${entry.seasonalWeight.toFixed(2)}x`);
         }
+
         if (entry.volleyballAdjusted) {
           modeBits.push(`Volleyball update: ${entry.volleyballUpdateMultiplier.toFixed(2)}x`);
         }
+
         if (game.isLeagueGame) {
           modeBits.push(leagueContextName);
+        }
+
+        if (game.displayWinnerColor || game.displayLoserColor) {
+          modeBits.push(`Displayed matchup: ${getDisplayLabelForSide(game, 'red')} vs ${getDisplayLabelForSide(game, 'blue')}`);
         }
 
         const card = document.createElement('div');
@@ -808,26 +912,29 @@
           <div class="game-header">
             <div>
               <strong>${game.date || 'Unknown date'}</strong><br>
-              <span class="winner-badge ${winnerClass}">${winnerText} win</span>
-              ${game.isLeagueGame ? `<div class="small">${escapeHtml(leagueContextName)}</div>` : ''}
+              <span class="winner-badge ${winnerDisplayColor}">${escapeHtml(winnerText)} win</span>
+              <div>
+                <span class="meta-pill">${escapeHtml(courtTypeText)}</span>
+                ${game.isLeagueGame ? `<span class="meta-pill">${escapeHtml(leagueContextName)}</span>` : ''}
+              </div>
             </div>
             <div>
               <button class="danger" data-game-id="${game.id}">Delete</button>
             </div>
           </div>
           <div class="teams-grid">
-            <div class="team-box red-team">
-              <strong>Red Team</strong>
-              <div>${redNames}</div>
+            <div class="team-box ${redDisplayColor}-team">
+              <strong>${escapeHtml(redDisplayLabel)}</strong>
+              <div>${escapeHtml(redNames)}</div>
             </div>
-            <div class="team-box blue-team">
-              <strong>${game.isLeagueGame ? escapeHtml(leagueContextName) : 'Blue Team'}</strong>
-              <div>${blueNames}</div>
+            <div class="team-box ${blueDisplayColor}-team">
+              <strong>${escapeHtml(blueDisplayLabel)}</strong>
+              <div>${escapeHtml(blueNames)}</div>
             </div>
           </div>
-          <div class="small">${formatScore(game)}</div>
+          <div class="small">${escapeHtml(formatScore(game))}</div>
           <div class="small">Margin factor: ${entry.marginFactor.toFixed(2)}x</div>
-          ${modeBits.length ? `<div class="small">${modeBits.join(' | ')}</div>` : ''}
+          ${modeBits.length ? `<div class="small">${modeBits.map(escapeHtml).join(' | ')}</div>` : ''}
         `;
 
         const deleteButton = card.querySelector('button[data-game-id]');
@@ -898,6 +1005,14 @@
 
           if (game.courtType === 'sand') {
             normalized.courtType = 'sand';
+          }
+
+          if (TEAM_COLORS.includes(game.displayWinnerColor)) {
+            normalized.displayWinnerColor = game.displayWinnerColor;
+          }
+
+          if (TEAM_COLORS.includes(game.displayLoserColor)) {
+            normalized.displayLoserColor = game.displayLoserColor;
           }
 
           return normalized;

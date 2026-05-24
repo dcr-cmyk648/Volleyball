@@ -15,6 +15,8 @@
       --border: #243041;
       --red: #f87171;
       --blue: #60a5fa;
+      --green: #4ade80;
+      --yellow: #facc15;
       --button: #334155;
       --button-text: #f3f4f6;
       --secondary: #475569;
@@ -86,6 +88,12 @@
       opacity: 0.96;
     }
 
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+    }
+
     button.secondary { background: var(--secondary); color: var(--text); }
     button.ghost { background: var(--ghost); color: var(--text); border-color: var(--border); }
 
@@ -99,6 +107,18 @@
       background: rgba(96, 165, 250, 0.16);
       color: #bfdbfe;
       border-color: rgba(96, 165, 250, 0.35);
+    }
+
+    button.green-button {
+      background: rgba(74, 222, 128, 0.16);
+      color: #bbf7d0;
+      border-color: rgba(74, 222, 128, 0.35);
+    }
+
+    button.yellow-button {
+      background: rgba(250, 204, 21, 0.16);
+      color: #fef08a;
+      border-color: rgba(250, 204, 21, 0.35);
     }
 
     button.success {
@@ -170,6 +190,7 @@
       cursor: pointer;
       font-size: 14px;
       color: var(--text);
+      margin-bottom: 8px;
     }
 
     .checkbox-row input[type="checkbox"] {
@@ -188,6 +209,7 @@
       font-size: 14px;
       font-weight: 700;
       line-height: 1.45;
+      white-space: pre-wrap;
     }
 
     .small {
@@ -255,6 +277,8 @@
     .player-name.none { color: var(--text); }
     .player-name.red { color: var(--red); }
     .player-name.blue { color: var(--blue); }
+    .player-name.green { color: var(--green); }
+    .player-name.yellow { color: var(--yellow); }
 
     .tag {
       font-size: 12px;
@@ -274,6 +298,10 @@
       margin-top: 14px;
     }
 
+    .summary-grid.four-team-summary {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
     .summary-box {
       padding: 14px;
       border-radius: 16px;
@@ -283,6 +311,8 @@
 
     .summary-box.red-box { border-left: 5px solid var(--red); }
     .summary-box.blue-box { border-left: 5px solid var(--blue); }
+    .summary-box.green-box { border-left: 5px solid var(--green); }
+    .summary-box.yellow-box { border-left: 5px solid var(--yellow); }
 
     .score-grid {
       display: grid;
@@ -315,11 +345,32 @@
       background: rgba(255,255,255,0.03);
     }
 
+    .hidden {
+      display: none !important;
+    }
+
+    .confirmation-summary {
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      white-space: pre-wrap;
+      font-size: 14px;
+      line-height: 1.55;
+      color: var(--text);
+    }
+
+    .loser-options {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
     dialog {
       border: 1px solid var(--border);
       border-radius: 18px;
       padding: 0;
-      width: min(92vw, 460px);
+      width: min(92vw, 560px);
       box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
       background: var(--card);
       color: var(--text);
@@ -341,6 +392,7 @@
 
     @media (max-width: 700px) {
       .summary-grid,
+      .summary-grid.four-team-summary,
       .score-grid,
       .settings-grid {
         grid-template-columns: 1fr;
@@ -394,10 +446,15 @@
         <label for="balanceSlider">
           Balance strength: <span id="balanceValue">10</span> candidate team splits
         </label>
-        <input type="range" id="balanceSlider" min="1" max="50" value="10" />
+        <input type="range" id="balanceSlider" min="1" max="100" value="10" />
       </div>
 
       <div class="checkbox-row">
+        <label for="fourTeamModeCheckbox">
+          <input type="checkbox" id="fourTeamModeCheckbox" />
+          Assign 4 teams instead of 2
+        </label>
+
         <label for="forceTwoChangesCheckbox">
           <input type="checkbox" id="forceTwoChangesCheckbox" />
           Force at least two player changes
@@ -415,7 +472,7 @@
 
       <div id="playerList" class="player-list" style="margin-top: 14px;"></div>
 
-      <div class="summary-grid">
+      <div id="summaryGrid" class="summary-grid">
         <div class="summary-box red-box">
           <strong>Red Team</strong>
           <div id="redSummary">0 players</div>
@@ -424,10 +481,18 @@
           <strong>Blue Team</strong>
           <div id="blueSummary">0 players</div>
         </div>
+        <div id="greenSummaryBox" class="summary-box green-box hidden">
+          <strong>Green Team</strong>
+          <div id="greenSummary">0 players</div>
+        </div>
+        <div id="yellowSummaryBox" class="summary-box yellow-box hidden">
+          <strong>Yellow Team</strong>
+          <div id="yellowSummary">0 players</div>
+        </div>
       </div>
 
       <div class="small">
-        Check the players who are present. Tap a present player's name to cycle: none → red → blue. If a league level is selected, all present players are assigned to Red against League Team.
+        Check the players who are present. Tap a present player's name to cycle team colors. If a league level is selected, all present players are assigned to Red against League Team.
       </div>
     </div>
 
@@ -436,27 +501,51 @@
 
       <div class="score-grid">
         <div class="field">
-          <label for="redScore">Red score (optional)</label>
+          <label id="redScoreLabel" for="redScore">Red score (optional)</label>
           <input type="number" id="redScore" min="0" inputmode="numeric" />
         </div>
         <div class="field">
-          <label for="blueScore">Blue score (optional)</label>
+          <label id="blueScoreLabel" for="blueScore">Blue score (optional)</label>
           <input type="number" id="blueScore" min="0" inputmode="numeric" />
         </div>
       </div>
 
-      <div class="controls">
+      <div id="recordButtons" class="controls">
         <button id="recordRedWinButton" class="red-button">Red Team Win</button>
         <button id="recordBlueWinButton" class="blue-button">Blue Team Win</button>
+        <button id="recordGreenWinButton" class="green-button hidden">Green Team Win</button>
+        <button id="recordYellowWinButton" class="yellow-button hidden">Yellow Team Win</button>
       </div>
 
       <div class="small">
-        If scores are blank, they are saved as none. If scores are entered, they must match the winner button pressed.
+        Scores are optional. Every game opens a confirmation popup before being saved.
       </div>
 
       <div id="latestGame" class="status">No games recorded yet.</div>
     </div>
   </div>
+
+  <dialog id="loserTeamDialog">
+    <div class="dialog-content">
+      <h2>Select Losing Team</h2>
+      <div id="loserTeamText" class="small">Choose the team that lost this game.</div>
+      <div id="loserTeamOptions" class="loser-options"></div>
+      <div class="dialog-actions">
+        <button id="cancelLoserTeamButton" class="secondary">Cancel</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="confirmGameDialog">
+    <div class="dialog-content">
+      <h2>Confirm Game</h2>
+      <div id="confirmGameSummary" class="confirmation-summary"></div>
+      <div class="dialog-actions">
+        <button id="confirmGameButton" class="success">Confirm and Save</button>
+        <button id="cancelConfirmGameButton" class="secondary">Cancel</button>
+      </div>
+    </div>
+  </dialog>
 
   <dialog id="defaultDatabaseDialog">
     <div class="dialog-content">
@@ -476,6 +565,7 @@
   import {
     replayRatings,
     scoreVolleyballCandidateSplit,
+    getVolleyballTeamStrength,
     getPlayerRatingsForList,
     formatDisplayedRating,
     formatMu,
@@ -499,23 +589,55 @@
   const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
   const INCLUDE_LEAGUE_GAMES_STORAGE_KEY = 'gameDayIncludeLeagueGamesEnabled';
 
+  const TEAM_COLORS = ['red', 'blue', 'green', 'yellow'];
+  const STANDARD_TEAM_COLORS = ['red', 'blue'];
+  const TEAM_LABELS = {
+    red: 'Red',
+    blue: 'Blue',
+    green: 'Green',
+    yellow: 'Yellow'
+  };
+
   const playerListEl = document.getElementById('playerList');
+  const summaryGridEl = document.getElementById('summaryGrid');
   const redSummaryEl = document.getElementById('redSummary');
   const blueSummaryEl = document.getElementById('blueSummary');
+  const greenSummaryEl = document.getElementById('greenSummary');
+  const yellowSummaryEl = document.getElementById('yellowSummary');
+  const greenSummaryBoxEl = document.getElementById('greenSummaryBox');
+  const yellowSummaryBoxEl = document.getElementById('yellowSummaryBox');
   const balanceStatusEl = document.getElementById('balanceStatus');
   const selectedCountEl = document.getElementById('selectedCount');
   const latestGameEl = document.getElementById('latestGame');
   const errorMessageEl = document.getElementById('errorMessage');
   const balanceSliderEl = document.getElementById('balanceSlider');
   const balanceValueEl = document.getElementById('balanceValue');
+  const fourTeamModeCheckboxEl = document.getElementById('fourTeamModeCheckbox');
   const forceTwoChangesCheckboxEl = document.getElementById('forceTwoChangesCheckbox');
   const playerSearchInputEl = document.getElementById('playerSearchInput');
   const redScoreEl = document.getElementById('redScore');
   const blueScoreEl = document.getElementById('blueScore');
+  const redScoreLabelEl = document.getElementById('redScoreLabel');
+  const blueScoreLabelEl = document.getElementById('blueScoreLabel');
   const leagueLevelSelectEl = document.getElementById('leagueLevelSelect');
   const courtTypeSelectEl = document.getElementById('courtTypeSelect');
   const toggleUnselectedButtonEl = document.getElementById('toggleUnselectedButton');
   const assignTeamsButtonEl = document.getElementById('assignTeamsButton');
+
+  const recordRedWinButtonEl = document.getElementById('recordRedWinButton');
+  const recordBlueWinButtonEl = document.getElementById('recordBlueWinButton');
+  const recordGreenWinButtonEl = document.getElementById('recordGreenWinButton');
+  const recordYellowWinButtonEl = document.getElementById('recordYellowWinButton');
+
+  const loserTeamDialog = document.getElementById('loserTeamDialog');
+  const loserTeamTextEl = document.getElementById('loserTeamText');
+  const loserTeamOptionsEl = document.getElementById('loserTeamOptions');
+  const cancelLoserTeamButtonEl = document.getElementById('cancelLoserTeamButton');
+
+  const confirmGameDialog = document.getElementById('confirmGameDialog');
+  const confirmGameSummaryEl = document.getElementById('confirmGameSummary');
+  const confirmGameButtonEl = document.getElementById('confirmGameButton');
+  const cancelConfirmGameButtonEl = document.getElementById('cancelConfirmGameButton');
 
   const defaultDatabaseDialog = document.getElementById('defaultDatabaseDialog');
   const defaultDatabaseTextEl = document.getElementById('defaultDatabaseText');
@@ -529,6 +651,7 @@
   let hideUnselectedPlayers = false;
   let playerSearchQuery = '';
   let defaultDatabaseMeta = null;
+  let pendingRecord = null;
 
   function loadPlayers() {
     const saved = localStorage.getItem(PLAYER_STORAGE_KEY);
@@ -639,6 +762,7 @@
       blueScore: blueScoreEl.value,
       hideUnselectedPlayers,
       balanceAttempts: Number(balanceSliderEl.value),
+      fourTeamMode: fourTeamModeCheckboxEl.checked,
       forceTwoChanges: forceTwoChangesCheckboxEl.checked,
       playerSearchQuery,
       leagueLevel: getLeagueLevel(),
@@ -659,6 +783,7 @@
     redScoreEl.value = typeof saved.redScore === 'string' ? saved.redScore : '';
     blueScoreEl.value = typeof saved.blueScore === 'string' ? saved.blueScore : '';
     hideUnselectedPlayers = Boolean(saved.hideUnselectedPlayers);
+    fourTeamModeCheckboxEl.checked = Boolean(saved.fourTeamMode);
 
     if (typeof saved.forceTwoChanges === 'boolean') {
       forceTwoChangesCheckboxEl.checked = saved.forceTwoChanges;
@@ -683,7 +808,7 @@
     courtTypeSelectEl.value = saved.courtType === 'sand' ? 'sand' : 'indoor';
 
     if (typeof saved.balanceAttempts === 'number' && !Number.isNaN(saved.balanceAttempts)) {
-      balanceSliderEl.value = String(saved.balanceAttempts);
+      balanceSliderEl.value = String(Math.min(100, Math.max(1, saved.balanceAttempts)));
     }
   }
 
@@ -693,11 +818,13 @@
 
     Object.keys(presenceState).forEach(id => {
       if (validIds.has(String(id))) {
+        const team = TEAM_COLORS.includes(presenceState[id]?.team)
+          ? presenceState[id].team
+          : '';
+
         nextState[id] = {
           present: Boolean(presenceState[id]?.present),
-          team: presenceState[id]?.team === 'red' || presenceState[id]?.team === 'blue'
-            ? presenceState[id].team
-            : '',
+          team,
           lockedTeam: presenceState[id]?.lockedTeam === 'red' || presenceState[id]?.lockedTeam === 'blue'
             ? presenceState[id].lockedTeam
             : ''
@@ -741,6 +868,10 @@
     return getLeagueLevel() !== '';
   }
 
+  function isFourTeamMode() {
+    return fourTeamModeCheckboxEl.checked && !isLeagueGameMode();
+  }
+
   function getLeagueLevelLabel() {
     if (getLeagueLevel() === 'intermediate') return 'Intermediate';
     if (getLeagueLevel() === 'rec') return 'Rec';
@@ -749,6 +880,12 @@
 
   function getCourtTypeLabel() {
     return getCourtType() === 'sand' ? 'Sand' : 'Indoor';
+  }
+
+  function getActiveTeamColors() {
+    if (isLeagueGameMode()) return ['red'];
+    if (isFourTeamMode()) return TEAM_COLORS;
+    return STANDARD_TEAM_COLORS;
   }
 
   function assignPresentPlayersToRedForLeagueGame() {
@@ -767,9 +904,18 @@
   }
 
   function nextTeam(currentTeam) {
-    if (currentTeam === '') return 'red';
-    if (currentTeam === 'red') return 'blue';
-    return '';
+    const colors = getActiveTeamColors();
+
+    if (colors.length === 1) {
+      return currentTeam === 'red' ? '' : 'red';
+    }
+
+    if (!currentTeam) return colors[0];
+
+    const index = colors.indexOf(currentTeam);
+    if (index === -1 || index === colors.length - 1) return '';
+
+    return colors[index + 1];
   }
 
   function nextLockedTeam(currentLockedTeam) {
@@ -795,23 +941,23 @@
     });
   }
 
-function getVisiblePlayers() {
-  const normalizedQuery = playerSearchQuery.trim().toLowerCase();
+  function getVisiblePlayers() {
+    const normalizedQuery = playerSearchQuery.trim().toLowerCase();
 
-  return players.filter(player => {
-    const state = getPlayerState(player.id);
+    return players.filter(player => {
+      const state = getPlayerState(player.id);
 
-    if (!normalizedQuery && hideUnselectedPlayers && !state.present) {
-      return false;
-    }
+      if (!normalizedQuery && hideUnselectedPlayers && !state.present) {
+        return false;
+      }
 
-    if (normalizedQuery && !player.name.toLowerCase().includes(normalizedQuery)) {
-      return false;
-    }
+      if (normalizedQuery && !player.name.toLowerCase().includes(normalizedQuery)) {
+        return false;
+      }
 
-    return true;
-  });
-}
+      return true;
+    });
+  }
 
   function shuffleArray(input) {
     const arr = [...input];
@@ -891,7 +1037,7 @@ function getVisiblePlayers() {
   }
 
   function shouldForceTwoChanges() {
-    return forceTwoChangesCheckboxEl.checked && !isLeagueGameMode();
+    return forceTwoChangesCheckboxEl.checked && !isLeagueGameMode() && !isFourTeamMode();
   }
 
   function buildCandidateTeams(presentPlayers, ratingMap) {
@@ -956,6 +1102,116 @@ function getVisiblePlayers() {
     };
   }
 
+  function getFourTeamTargetSizes(totalPlayers) {
+    const baseSize = Math.floor(totalPlayers / 4);
+    const remainder = totalPlayers % 4;
+
+    return TEAM_COLORS.map((color, index) => baseSize + (index < remainder ? 1 : 0));
+  }
+
+  function getAveragePairwiseDifference(values) {
+    const diffs = [];
+
+    for (let i = 0; i < values.length; i += 1) {
+      for (let j = i + 1; j < values.length; j += 1) {
+        diffs.push(Math.abs(values[i] - values[j]));
+      }
+    }
+
+    if (!diffs.length) return 0;
+    return diffs.reduce((sum, value) => sum + value, 0) / diffs.length;
+  }
+
+  function buildFourTeamCandidate(presentPlayers, ratingMap) {
+    const shuffled = shuffleArray(presentPlayers);
+    const targetSizes = getFourTeamTargetSizes(presentPlayers.length);
+    const teamsByColor = {};
+    let cursor = 0;
+
+    TEAM_COLORS.forEach((color, index) => {
+      const size = targetSizes[index];
+      teamsByColor[color] = shuffled.slice(cursor, cursor + size);
+      cursor += size;
+    });
+
+    const strengthsByColor = {};
+    const averageRatingsByColor = {};
+
+    TEAM_COLORS.forEach(color => {
+      const strength = getVolleyballTeamStrength({
+        players: teamsByColor[color],
+        ratingMap
+      });
+
+      strengthsByColor[color] = strength.strength;
+      averageRatingsByColor[color] = getAverageDisplayedRating(teamsByColor[color], ratingMap);
+    });
+
+    const strengths = TEAM_COLORS.map(color => strengthsByColor[color]);
+    const maxStrength = Math.max(...strengths);
+    const minStrength = Math.min(...strengths);
+    const spread = maxStrength - minStrength;
+    const averagePairwiseDifference = getAveragePairwiseDifference(strengths);
+
+    return {
+      teamsByColor,
+      strengthsByColor,
+      averageRatingsByColor,
+      spread,
+      averagePairwiseDifference,
+      maxStrength,
+      minStrength
+    };
+  }
+
+  function isBetterFourTeamCandidate(candidate, bestCandidate) {
+    if (!bestCandidate) return true;
+    if (candidate.spread !== bestCandidate.spread) {
+      return candidate.spread < bestCandidate.spread;
+    }
+    return candidate.averagePairwiseDifference < bestCandidate.averagePairwiseDifference;
+  }
+
+  function assignFourBalancedTeams() {
+    const presentPlayers = getPresentPlayers();
+
+    if (presentPlayers.length < 8) {
+      setError('At least 8 players must be marked present for 4-team mode.');
+      return;
+    }
+
+    const attempts = Number(balanceSliderEl.value);
+    const ratingData = getRatingData();
+    let bestCandidate = null;
+
+    for (let i = 0; i < attempts; i += 1) {
+      const candidate = buildFourTeamCandidate(presentPlayers, ratingData.ratingMap);
+
+      if (isBetterFourTeamCandidate(candidate, bestCandidate)) {
+        bestCandidate = candidate;
+      }
+    }
+
+    players.forEach(player => {
+      const state = getPlayerState(player.id);
+      if (state.present) {
+        state.team = '';
+        state.lockedTeam = '';
+      }
+    });
+
+    TEAM_COLORS.forEach(color => {
+      bestCandidate.teamsByColor[color].forEach(player => {
+        presenceState[player.id].team = color;
+        presenceState[player.id].lockedTeam = '';
+      });
+    });
+
+    savePageState();
+    renderPlayers();
+    updateBalanceStatus(bestCandidate, attempts);
+  }
+
   function assignBalancedTeams() {
     clearError();
 
@@ -964,6 +1220,11 @@ function getVisiblePlayers() {
       savePageState();
       renderPlayers();
       updateBalanceStatus();
+      return;
+    }
+
+    if (isFourTeamMode()) {
+      assignFourBalancedTeams();
       return;
     }
 
@@ -1032,10 +1293,18 @@ function getVisiblePlayers() {
     const selected = getPresentPlayers();
     const redTeam = getTeamPlayers('red');
     const blueTeam = getTeamPlayers('blue');
+    const greenTeam = getTeamPlayers('green');
+    const yellowTeam = getTeamPlayers('yellow');
 
     if (isLeagueGameMode()) {
       selectedCountEl.textContent =
         `Selected players: ${selected.length}\nRed: ${redTeam.length} | League Team`;
+      return;
+    }
+
+    if (isFourTeamMode()) {
+      selectedCountEl.textContent =
+        `Selected players: ${selected.length}\nRed: ${redTeam.length} | Blue: ${blueTeam.length} | Green: ${greenTeam.length} | Yellow: ${yellowTeam.length}`;
       return;
     }
 
@@ -1068,6 +1337,65 @@ function getVisiblePlayers() {
         `Blue mu: ${formatMu(league.mu)}`,
         `Blue sigma: ${formatSigma(league.sigma)}`
       ];
+
+      balanceStatusEl.textContent = lines.join('\n');
+      return;
+    }
+
+    if (isFourTeamMode()) {
+      const teamsByColor = {};
+      const strengthsByColor = {};
+      const averagesByColor = {};
+
+      TEAM_COLORS.forEach(color => {
+        const teamPlayers = candidate?.teamsByColor?.[color] || getTeamPlayers(color);
+        teamsByColor[color] = teamPlayers;
+
+        const strength = getVolleyballTeamStrength({
+          players: teamPlayers,
+          ratingMap: ratingData.ratingMap
+        });
+
+        strengthsByColor[color] = strength.strength;
+        averagesByColor[color] = getAverageDisplayedRating(teamPlayers, ratingData.ratingMap);
+      });
+
+      const allEmpty = TEAM_COLORS.every(color => teamsByColor[color].length === 0);
+
+      if (allEmpty) {
+        balanceStatusEl.textContent = [
+          'No team assignment yet.',
+          '4-team mode is on.',
+          `Court type: ${getCourtTypeLabel()}`,
+          `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
+          `Season length: ${loadSeasonLengthMonths()} months`,
+          `Volleyball-adjusted model: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`
+        ].join('\n');
+        return;
+      }
+
+      const strengths = TEAM_COLORS.map(color => strengthsByColor[color]);
+      const spread = candidate?.spread ?? (Math.max(...strengths) - Math.min(...strengths));
+      const averagePairwiseDifference =
+        candidate?.averagePairwiseDifference ?? getAveragePairwiseDifference(strengths);
+
+      const lines = [
+        'Balancing model: 4-team volleyball-adjusted',
+        `Court type: ${getCourtTypeLabel()}`,
+        `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
+        `Season length: ${loadSeasonLengthMonths()} months`,
+        `Volleyball-adjusted ratings: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
+        `Team strength spread: ${Math.round(spread)}`,
+        `Average pairwise difference: ${Math.round(averagePairwiseDifference)}`,
+        `Red average Rating: ${formatDisplayedRating(averagesByColor.red)} | Strength: ${Math.round(strengthsByColor.red)}`,
+        `Blue average Rating: ${formatDisplayedRating(averagesByColor.blue)} | Strength: ${Math.round(strengthsByColor.blue)}`,
+        `Green average Rating: ${formatDisplayedRating(averagesByColor.green)} | Strength: ${Math.round(strengthsByColor.green)}`,
+        `Yellow average Rating: ${formatDisplayedRating(averagesByColor.yellow)} | Strength: ${Math.round(strengthsByColor.yellow)}`
+      ];
+
+      if (attempts !== null) {
+        lines.unshift(`Selected best 4-team split from ${attempts} candidate assignments.`);
+      }
 
       balanceStatusEl.textContent = lines.join('\n');
       return;
@@ -1130,7 +1458,62 @@ function getVisiblePlayers() {
     balanceStatusEl.textContent = lines.join('\n');
   }
 
-  function validateTeamSetup() {
+  function validateScorePair(scoreA, scoreB, requireAGreater = false) {
+    if (scoreA === null && scoreB === null) {
+      return null;
+    }
+
+    if (scoreA === null || scoreB === null) {
+      return 'Enter both scores or leave both blank.';
+    }
+
+    if (Number.isNaN(scoreA) || Number.isNaN(scoreB)) {
+      return 'Scores must be valid numbers.';
+    }
+
+    if (scoreA === scoreB) {
+      return 'Scores cannot be tied.';
+    }
+
+    if (requireAGreater && scoreA <= scoreB) {
+      return 'Scores contradict the selected winner.';
+    }
+
+    return null;
+  }
+
+  function validateScoreAgainstWinner(scoreRed, scoreBlue, winner) {
+    const baseError = validateScorePair(scoreRed, scoreBlue, false);
+    if (baseError) return baseError;
+
+    if (scoreRed === null && scoreBlue === null) {
+      return null;
+    }
+
+    if (winner === 'red' && scoreRed <= scoreBlue) {
+      return 'Scores contradict the selected winner.';
+    }
+
+    if (winner === 'blue' && scoreBlue <= scoreRed) {
+      return 'Scores contradict the selected winner.';
+    }
+
+    return null;
+  }
+
+  function parseOptionalScore(value) {
+    return value === '' ? null : Number(value);
+  }
+
+  function getPlainTeamPlayers(color) {
+    return getTeamPlayers(color).map(player => ({ id: player.id, name: player.name }));
+  }
+
+  function getTeamNames(color) {
+    return getTeamPlayers(color).map(player => player.name);
+  }
+
+  function validateStandardTeamSetup() {
     const redTeam = getTeamPlayers('red');
     const blueTeam = getTeamPlayers('blue');
 
@@ -1152,49 +1535,57 @@ function getVisiblePlayers() {
     return null;
   }
 
-  function parseOptionalScore(value) {
-    return value === '' ? null : Number(value);
-  }
-
-  function validateScoreAgainstWinner(scoreRed, scoreBlue, winner) {
-    if (scoreRed === null && scoreBlue === null) {
-      return null;
+  function validateFourTeamMatchSetup(winnerColor, loserColor) {
+    if (!TEAM_COLORS.includes(winnerColor) || !TEAM_COLORS.includes(loserColor)) {
+      return 'Choose a valid winner and loser.';
     }
 
-    if (scoreRed === null || scoreBlue === null) {
-      return 'Enter both scores or leave both blank.';
+    if (winnerColor === loserColor) {
+      return 'Winner and loser cannot be the same team.';
     }
 
-    if (Number.isNaN(scoreRed) || Number.isNaN(scoreBlue)) {
-      return 'Scores must be valid numbers.';
+    if (getTeamPlayers(winnerColor).length === 0) {
+      return `${TEAM_LABELS[winnerColor]} team has no players.`;
     }
 
-    if (scoreRed === scoreBlue) {
-      return 'Scores cannot be tied.';
-    }
-
-    if (winner === 'red' && scoreRed <= scoreBlue) {
-      return 'Scores contradict the selected winner.';
-    }
-
-    if (winner === 'blue' && scoreBlue <= scoreRed) {
-      return 'Scores contradict the selected winner.';
+    if (getTeamPlayers(loserColor).length === 0) {
+      return `${TEAM_LABELS[loserColor]} team has no players.`;
     }
 
     return null;
   }
 
-  function buildGameRecord(winner) {
-    const teamError = validateTeamSetup();
+  function buildGameRecordFromColors(winnerColor, loserColor = null) {
+    const scoreA = parseOptionalScore(redScoreEl.value);
+    const scoreB = parseOptionalScore(blueScoreEl.value);
+
+    if (isFourTeamMode()) {
+      const teamError = validateFourTeamMatchSetup(winnerColor, loserColor);
+      if (teamError) return { error: teamError };
+
+      const scoreError = validateScorePair(scoreA, scoreB, true);
+      if (scoreError) return { error: scoreError };
+
+      return {
+        id: Date.now(),
+        date: new Date().toISOString().slice(0, 10),
+        redTeam: getPlainTeamPlayers(winnerColor),
+        blueTeam: getPlainTeamPlayers(loserColor),
+        scoreRed: scoreA,
+        scoreBlue: scoreB,
+        winner: 'red',
+        isLeagueGame: false,
+        leagueOpponent: null,
+        displayWinnerColor: winnerColor,
+        displayLoserColor: loserColor
+      };
+    }
+
+    const teamError = validateStandardTeamSetup();
     if (teamError) return { error: teamError };
 
-    const redTeam = getTeamPlayers('red');
-    const blueTeam = isLeagueGameMode() ? [] : getTeamPlayers('blue');
-
-    const scoreRed = parseOptionalScore(redScoreEl.value);
-    const scoreBlue = parseOptionalScore(blueScoreEl.value);
-
-    const scoreError = validateScoreAgainstWinner(scoreRed, scoreBlue, winner);
+    const winner = winnerColor === 'blue' ? 'blue' : 'red';
+    const scoreError = validateScoreAgainstWinner(scoreA, scoreB, winner);
     if (scoreError) return { error: scoreError };
 
     const isLeagueGame = isLeagueGameMode();
@@ -1202,10 +1593,10 @@ function getVisiblePlayers() {
     const record = {
       id: Date.now(),
       date: new Date().toISOString().slice(0, 10),
-      redTeam: redTeam.map(player => ({ id: player.id, name: player.name })),
-      blueTeam: blueTeam.map(player => ({ id: player.id, name: player.name })),
-      scoreRed,
-      scoreBlue,
+      redTeam: getPlainTeamPlayers('red'),
+      blueTeam: isLeagueGame ? [] : getPlainTeamPlayers('blue'),
+      scoreRed: scoreA,
+      scoreBlue: scoreB,
       winner,
       isLeagueGame,
       leagueOpponent: isLeagueGame
@@ -1228,25 +1619,145 @@ function getVisiblePlayers() {
     return record;
   }
 
-  function recordGame(winner) {
-    clearError();
+  function formatTeamForConfirmation(label, playersList) {
+    const names = playersList.map(player => player.name).join(', ') || '(none)';
+    return `${label}: ${names}`;
+  }
 
-    const record = buildGameRecord(winner);
-    if (record.error) {
-      setError(record.error);
-      return;
+  function getRecordDisplayWinner(record) {
+    if (record.displayWinnerColor) {
+      return `${TEAM_LABELS[record.displayWinnerColor]} Team`;
     }
 
-    games.unshift(record);
+    return record.winner === 'red' ? 'Red Team' : 'Blue Team';
+  }
+
+  function getRecordDisplayLoser(record) {
+    if (record.displayLoserColor) {
+      return `${TEAM_LABELS[record.displayLoserColor]} Team`;
+    }
+
+    return record.winner === 'red' ? 'Blue Team' : 'Red Team';
+  }
+
+  function buildConfirmationSummary(record) {
+    const winnerLabel = getRecordDisplayWinner(record);
+    const loserLabel = getRecordDisplayLoser(record);
+
+    const winnerPlayers = record.redTeam;
+    const loserPlayers = record.blueTeam;
+
+    const scoreText =
+      record.scoreRed === null || record.scoreBlue === null
+        ? 'Score: none'
+        : `Score: ${winnerLabel} ${record.scoreRed} - ${loserLabel} ${record.scoreBlue}`;
+
+    const savedMapping = record.displayWinnerColor
+      ? [
+          '',
+          'Saved rating matchup:',
+          `redTeam = ${winnerLabel}`,
+          `blueTeam = ${loserLabel}`,
+          `winner = red`
+        ].join('\n')
+      : '';
+
+    const contextLines = [];
+
+    if (record.isLeagueGame) {
+      contextLines.push(`League level: ${record.level === 'intermediate' ? 'Intermediate' : 'Rec'}`);
+      contextLines.push(`Court type: ${record.courtType === 'sand' ? 'Sand' : 'Indoor'}`);
+    } else {
+      contextLines.push(`Court type: ${record.courtType === 'sand' ? 'Sand' : 'Indoor'}`);
+    }
+
+    return [
+      `Winner: ${winnerLabel}`,
+      `Loser: ${loserLabel}`,
+      scoreText,
+      '',
+      formatTeamForConfirmation(winnerLabel, winnerPlayers),
+      record.isLeagueGame
+        ? `${loserLabel}: ${LEAGUE_TEAM_NAME}`
+        : formatTeamForConfirmation(loserLabel, loserPlayers),
+      '',
+      ...contextLines,
+      savedMapping
+    ].filter(line => line !== null && typeof line !== 'undefined').join('\n');
+  }
+
+  function openConfirmGameDialog(record) {
+    pendingRecord = record;
+    confirmGameSummaryEl.textContent = buildConfirmationSummary(record);
+    confirmGameDialog.showModal();
+  }
+
+  function closeConfirmGameDialog() {
+    pendingRecord = null;
+    confirmGameDialog.close();
+  }
+
+  function savePendingGame() {
+    if (!pendingRecord) return;
+
+    games.unshift(pendingRecord);
     saveGames();
-    renderLatestGame();
 
     redScoreEl.value = '';
     blueScoreEl.value = '';
     savePageState();
 
+    closeConfirmGameDialog();
+    renderLatestGame();
+    renderPlayers();
+    updateBalanceStatus();
     clearError();
-    alert('Game recorded.');
+  }
+
+  function handleWinButton(winnerColor) {
+    clearError();
+
+    if (isFourTeamMode()) {
+      openLoserTeamDialog(winnerColor);
+      return;
+    }
+
+    const record = buildGameRecordFromColors(winnerColor);
+    if (record.error) {
+      setError(record.error);
+      return;
+    }
+
+    openConfirmGameDialog(record);
+  }
+
+  function openLoserTeamDialog(winnerColor) {
+    loserTeamOptionsEl.innerHTML = '';
+    loserTeamTextEl.textContent = `${TEAM_LABELS[winnerColor]} Team won. Which team lost?`;
+
+    TEAM_COLORS
+      .filter(color => color !== winnerColor)
+      .forEach(color => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `${color}-button`;
+        button.textContent = `${TEAM_LABELS[color]} Team Lost`;
+        button.addEventListener('click', () => {
+          loserTeamDialog.close();
+
+          const record = buildGameRecordFromColors(winnerColor, color);
+          if (record.error) {
+            setError(record.error);
+            return;
+          }
+
+          openConfirmGameDialog(record);
+        });
+
+        loserTeamOptionsEl.appendChild(button);
+      });
+
+    loserTeamDialog.showModal();
   }
 
   function clearPresentSelections() {
@@ -1304,12 +1815,33 @@ function getVisiblePlayers() {
       : 'Hide Unselected Players';
   }
 
-  function updateLeagueModeUI() {
+  function updateModeUI() {
     assignTeamsButtonEl.textContent = isLeagueGameMode()
       ? 'Assign Present to Red'
-      : 'Assign Teams';
+      : isFourTeamMode()
+        ? 'Assign 4 Teams'
+        : 'Assign Teams';
 
-    forceTwoChangesCheckboxEl.disabled = isLeagueGameMode();
+    forceTwoChangesCheckboxEl.disabled = isLeagueGameMode() || isFourTeamMode();
+    fourTeamModeCheckboxEl.disabled = isLeagueGameMode();
+
+    greenSummaryBoxEl.classList.toggle('hidden', !isFourTeamMode());
+    yellowSummaryBoxEl.classList.toggle('hidden', !isFourTeamMode());
+    summaryGridEl.classList.toggle('four-team-summary', isFourTeamMode());
+
+    recordGreenWinButtonEl.classList.toggle('hidden', !isFourTeamMode());
+    recordYellowWinButtonEl.classList.toggle('hidden', !isFourTeamMode());
+
+    recordRedWinButtonEl.textContent = isFourTeamMode() ? 'Red Team Win' : 'Red Team Win';
+    recordBlueWinButtonEl.textContent = isFourTeamMode() ? 'Blue Team Win' : 'Blue Team Win';
+
+    if (isFourTeamMode()) {
+      redScoreLabelEl.textContent = 'Winning team score (optional)';
+      blueScoreLabelEl.textContent = 'Losing team score (optional)';
+    } else {
+      redScoreLabelEl.textContent = 'Red score (optional)';
+      blueScoreLabelEl.textContent = 'Blue score (optional)';
+    }
   }
 
   function toggleUnselectedPlayers() {
@@ -1329,15 +1861,18 @@ function getVisiblePlayers() {
 
     const latest = games[0];
     const isLeagueGame = Boolean(latest.isLeagueGame);
+    const winnerLabel = getRecordDisplayWinner(latest);
+    const loserLabel = getRecordDisplayLoser(latest);
+
     const scoreText =
       latest.scoreRed === null || latest.scoreBlue === null
         ? 'Score: none'
-        : `Score: Red ${latest.scoreRed} - Blue ${latest.scoreBlue}`;
+        : `Score: ${winnerLabel} ${latest.scoreRed} - ${loserLabel} ${latest.scoreBlue}`;
 
     const marginFactor = getScoreMarginFactor(latest.scoreRed, latest.scoreBlue);
     const blueLine = isLeagueGame
-      ? `Blue: ${LEAGUE_TEAM_NAME}`
-      : `Blue: ${(latest.blueTeam || []).map(player => player.name).join(', ') || '(none)'}`;
+      ? `${loserLabel}: ${LEAGUE_TEAM_NAME}`
+      : `${loserLabel}: ${(latest.blueTeam || []).map(player => player.name).join(', ') || '(none)'}`;
 
     const levelText = isLeagueGame
       ? `League level: ${latest.level === 'intermediate' ? 'Intermediate' : 'Rec'}`
@@ -1347,11 +1882,11 @@ function getVisiblePlayers() {
 
     latestGameEl.textContent = [
       `Latest record: ${latest.date}`,
-      `Winner: ${latest.winner === 'red' ? 'Red' : 'Blue'}`,
+      `Winner: ${winnerLabel}`,
       isLeagueGame ? 'Game type: League game' : 'Game type: Standard game',
       levelText,
       courtText,
-      `Red: ${(latest.redTeam || []).map(player => player.name).join(', ') || '(none)'}`,
+      `${winnerLabel}: ${(latest.redTeam || []).map(player => player.name).join(', ') || '(none)'}`,
       blueLine,
       scoreText,
       `Margin factor: ${marginFactor.toFixed(2)}x`
@@ -1376,7 +1911,10 @@ function getVisiblePlayers() {
       playerListEl.appendChild(emptyState);
       redSummaryEl.textContent = '0 players';
       blueSummaryEl.textContent = isLeagueGameMode() ? `${LEAGUE_TEAM_NAME} (${LEAGUE_TEAM_SIZE} players)` : '0 players';
+      greenSummaryEl.textContent = '0 players';
+      yellowSummaryEl.textContent = '0 players';
       updateSelectedCount();
+      updateModeUI();
       renderLatestGame();
       return;
     }
@@ -1446,7 +1984,12 @@ function getVisiblePlayers() {
         const sub = document.createElement('div');
         sub.className = 'small';
         sub.style.marginTop = '4px';
-        sub.textContent = state.lockedTeam ? getLockedTeamLabel(state.lockedTeam) : 'No lock';
+
+        if (isFourTeamMode()) {
+          sub.textContent = 'Locks ignored in 4-team mode';
+        } else {
+          sub.textContent = state.lockedTeam ? getLockedTeamLabel(state.lockedTeam) : 'No lock';
+        }
 
         middle.appendChild(name);
         middle.appendChild(sub);
@@ -1462,10 +2005,10 @@ function getVisiblePlayers() {
         lockButton.style.padding = '6px 10px';
         lockButton.style.fontSize = '12px';
         lockButton.textContent = getLockedTeamLabel(state.lockedTeam);
-        lockButton.disabled = !state.present || isLeagueGameMode();
+        lockButton.disabled = !state.present || isLeagueGameMode() || isFourTeamMode();
         lockButton.addEventListener('click', () => {
           clearError();
-          if (!state.present || isLeagueGameMode()) return;
+          if (!state.present || isLeagueGameMode() || isFourTeamMode()) return;
 
           state.lockedTeam = nextLockedTeam(state.lockedTeam);
 
@@ -1492,8 +2035,10 @@ function getVisiblePlayers() {
       });
     }
 
-    const redPlayers = getTeamPlayers('red').map(player => player.name);
-    const bluePlayers = getTeamPlayers('blue').map(player => player.name);
+    const redPlayers = getTeamNames('red');
+    const bluePlayers = getTeamNames('blue');
+    const greenPlayers = getTeamNames('green');
+    const yellowPlayers = getTeamNames('yellow');
 
     redSummaryEl.textContent = redPlayers.length
       ? `${redPlayers.length} players: ${redPlayers.join(', ')}`
@@ -1507,8 +2052,16 @@ function getVisiblePlayers() {
         : '0 players';
     }
 
+    greenSummaryEl.textContent = greenPlayers.length
+      ? `${greenPlayers.length} players: ${greenPlayers.join(', ')}`
+      : '0 players';
+
+    yellowSummaryEl.textContent = yellowPlayers.length
+      ? `${yellowPlayers.length} players: ${yellowPlayers.join(', ')}`
+      : '0 players';
+
     updateSelectedCount();
-    updateLeagueModeUI();
+    updateModeUI();
     renderLatestGame();
     updateToggleButton();
   }
@@ -1563,6 +2116,8 @@ function getVisiblePlayers() {
         isLeagueGame: Boolean(game.isLeagueGame),
         level: game.level === 'intermediate' ? 'intermediate' : undefined,
         courtType: game.courtType === 'sand' ? 'sand' : undefined,
+        displayWinnerColor: TEAM_COLORS.includes(game.displayWinnerColor) ? game.displayWinnerColor : undefined,
+        displayLoserColor: TEAM_COLORS.includes(game.displayLoserColor) ? game.displayLoserColor : undefined,
         leagueOpponent: game.isLeagueGame
           ? {
               id: game.leagueOpponent?.id || LEAGUE_TEAM_ID,
@@ -1574,6 +2129,8 @@ function getVisiblePlayers() {
       .map(game => {
         if (typeof game.level === 'undefined') delete game.level;
         if (typeof game.courtType === 'undefined') delete game.courtType;
+        if (typeof game.displayWinnerColor === 'undefined') delete game.displayWinnerColor;
+        if (typeof game.displayLoserColor === 'undefined') delete game.displayLoserColor;
         return game;
       });
   }
@@ -1675,6 +2232,7 @@ function getVisiblePlayers() {
     redScoreEl.value = '';
     blueScoreEl.value = '';
     balanceSliderEl.value = String(DEFAULT_BALANCE_ATTEMPTS);
+    fourTeamModeCheckboxEl.checked = false;
     forceTwoChangesCheckboxEl.checked = true;
     leagueLevelSelectEl.value = '';
     courtTypeSelectEl.value = 'indoor';
@@ -1691,6 +2249,13 @@ function getVisiblePlayers() {
   balanceSliderEl.addEventListener('input', () => {
     balanceValueEl.textContent = balanceSliderEl.value;
     savePageState();
+  });
+
+  fourTeamModeCheckboxEl.addEventListener('change', () => {
+    clearError();
+    savePageState();
+    renderPlayers();
+    updateBalanceStatus();
   });
 
   forceTwoChangesCheckboxEl.addEventListener('change', () => {
@@ -1712,6 +2277,7 @@ function getVisiblePlayers() {
     clearError();
 
     if (isLeagueGameMode()) {
+      fourTeamModeCheckboxEl.checked = false;
       assignPresentPlayersToRedForLeagueGame();
     }
 
@@ -1730,9 +2296,20 @@ function getVisiblePlayers() {
   document.getElementById('clearTeamsButton').addEventListener('click', clearTeams);
   document.getElementById('selectAllButton').addEventListener('click', markAllPresent);
   document.getElementById('clearPresentButton').addEventListener('click', clearPresent);
-  document.getElementById('recordRedWinButton').addEventListener('click', () => recordGame('red'));
-  document.getElementById('recordBlueWinButton').addEventListener('click', () => recordGame('blue'));
+
+  recordRedWinButtonEl.addEventListener('click', () => handleWinButton('red'));
+  recordBlueWinButtonEl.addEventListener('click', () => handleWinButton('blue'));
+  recordGreenWinButtonEl.addEventListener('click', () => handleWinButton('green'));
+  recordYellowWinButtonEl.addEventListener('click', () => handleWinButton('yellow'));
+
   toggleUnselectedButtonEl.addEventListener('click', toggleUnselectedPlayers);
+
+  cancelLoserTeamButtonEl.addEventListener('click', () => {
+    loserTeamDialog.close();
+  });
+
+  confirmGameButtonEl.addEventListener('click', savePendingGame);
+  cancelConfirmGameButtonEl.addEventListener('click', closeConfirmGameDialog);
 
   confirmLoadDefaultDatabaseButtonEl.addEventListener('click', async () => {
     try {
@@ -1752,17 +2329,20 @@ function getVisiblePlayers() {
     defaultDatabaseDialog.close();
   });
 
+  fourTeamModeCheckboxEl.checked = false;
   forceTwoChangesCheckboxEl.checked = true;
 
   restorePageState();
   syncPresenceState();
 
   if (isLeagueGameMode()) {
+    fourTeamModeCheckboxEl.checked = false;
     assignPresentPlayersToRedForLeagueGame();
   }
 
   balanceValueEl.textContent = balanceSliderEl.value;
   updateToggleButton();
+  updateModeUI();
   renderPlayers();
   updateBalanceStatus();
   maybeOfferDefaultDatabase();

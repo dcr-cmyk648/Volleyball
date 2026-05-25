@@ -132,6 +132,7 @@
       gap: 10px;
       flex-wrap: wrap;
       margin-bottom: 14px;
+      align-items: center;
     }
 
     .settings-grid {
@@ -197,6 +198,28 @@
       width: 18px;
       height: 18px;
       accent-color: #93c5fd;
+    }
+
+    .group-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 8px 0 12px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.03);
+    }
+
+    .group-controls strong {
+      font-size: 14px;
+    }
+
+    .group-count {
+      min-width: 34px;
+      text-align: center;
+      font-weight: 800;
     }
 
     .selected-count {
@@ -289,6 +312,12 @@
       min-width: 72px;
       text-align: center;
       background: rgba(255,255,255,0.03);
+    }
+
+    .group-tag {
+      color: #dbeafe;
+      border-color: rgba(147, 197, 253, 0.35);
+      background: rgba(147, 197, 253, 0.12);
     }
 
     .summary-grid {
@@ -459,6 +488,19 @@
           <input type="checkbox" id="forceTwoChangesCheckbox" />
           Force at least two player changes
         </label>
+
+        <label for="groupingCheckbox">
+          <input type="checkbox" id="groupingCheckbox" />
+          Allow grouping
+        </label>
+      </div>
+
+      <div id="groupControls" class="group-controls hidden">
+        <strong>Groups</strong>
+        <button id="decreaseGroupCountButton" class="ghost" type="button">−</button>
+        <span id="groupCountValue" class="group-count">1</span>
+        <button id="increaseGroupCountButton" class="ghost" type="button">+</button>
+        <span class="small" style="margin-top: 0;">Players in the same group stay together, but the algorithm chooses their team.</span>
       </div>
 
       <div id="selectedCount" class="selected-count">Selected players: 0</div>
@@ -492,7 +534,7 @@
       </div>
 
       <div class="small">
-        Check the players who are present. Tap a present player's name to cycle team colors. If a league level is selected, all present players are assigned to Red against League Team.
+        Check the players who are present. Tap a present player's name to cycle team colors manually. If grouping is enabled, use the group button to keep players together during balancing.
       </div>
     </div>
 
@@ -598,6 +640,9 @@
     yellow: 'Yellow'
   };
 
+  const MIN_GROUP_COUNT = 1;
+  const MAX_GROUP_COUNT = 8;
+
   const playerListEl = document.getElementById('playerList');
   const summaryGridEl = document.getElementById('summaryGrid');
   const redSummaryEl = document.getElementById('redSummary');
@@ -614,6 +659,11 @@
   const balanceValueEl = document.getElementById('balanceValue');
   const fourTeamModeCheckboxEl = document.getElementById('fourTeamModeCheckbox');
   const forceTwoChangesCheckboxEl = document.getElementById('forceTwoChangesCheckbox');
+  const groupingCheckboxEl = document.getElementById('groupingCheckbox');
+  const groupControlsEl = document.getElementById('groupControls');
+  const groupCountValueEl = document.getElementById('groupCountValue');
+  const decreaseGroupCountButtonEl = document.getElementById('decreaseGroupCountButton');
+  const increaseGroupCountButtonEl = document.getElementById('increaseGroupCountButton');
   const playerSearchInputEl = document.getElementById('playerSearchInput');
   const redScoreEl = document.getElementById('redScore');
   const blueScoreEl = document.getElementById('blueScore');
@@ -650,6 +700,8 @@
   let presenceState = buildPresenceState(players);
   let hideUnselectedPlayers = false;
   let playerSearchQuery = '';
+  let groupingEnabled = false;
+  let groupCount = MIN_GROUP_COUNT;
   let defaultDatabaseMeta = null;
   let pendingRecord = null;
 
@@ -737,6 +789,7 @@
       state[player.id] = {
         present: false,
         team: '',
+        group: null,
         lockedTeam: ''
       };
     });
@@ -764,6 +817,8 @@
       balanceAttempts: Number(balanceSliderEl.value),
       fourTeamMode: fourTeamModeCheckboxEl.checked,
       forceTwoChanges: forceTwoChangesCheckboxEl.checked,
+      groupingEnabled,
+      groupCount,
       playerSearchQuery,
       leagueLevel: getLeagueLevel(),
       courtType: getCourtType()
@@ -791,6 +846,14 @@
       forceTwoChangesCheckboxEl.checked = true;
     }
 
+    groupingEnabled = Boolean(saved.groupingEnabled);
+    groupingCheckboxEl.checked = groupingEnabled;
+
+    const savedGroupCount = Number(saved.groupCount);
+    groupCount = Number.isFinite(savedGroupCount)
+      ? Math.min(MAX_GROUP_COUNT, Math.max(MIN_GROUP_COUNT, Math.round(savedGroupCount)))
+      : MIN_GROUP_COUNT;
+
     playerSearchQuery = typeof saved.playerSearchQuery === 'string'
       ? saved.playerSearchQuery
       : '';
@@ -812,6 +875,13 @@
     }
   }
 
+  function normalizeGroupValue(value) {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed)) return null;
+    if (parsed < 1 || parsed > groupCount) return null;
+    return parsed;
+  }
+
   function syncPresenceState() {
     const validIds = new Set(players.map(player => String(player.id)));
     const nextState = {};
@@ -825,16 +895,15 @@
         nextState[id] = {
           present: Boolean(presenceState[id]?.present),
           team,
-          lockedTeam: presenceState[id]?.lockedTeam === 'red' || presenceState[id]?.lockedTeam === 'blue'
-            ? presenceState[id].lockedTeam
-            : ''
+          group: normalizeGroupValue(presenceState[id]?.group),
+          lockedTeam: ''
         };
       }
     });
 
     players.forEach(player => {
       if (!nextState[player.id]) {
-        nextState[player.id] = { present: false, team: '', lockedTeam: '' };
+        nextState[player.id] = { present: false, team: '', group: null, lockedTeam: '' };
       }
     });
 
@@ -843,7 +912,7 @@
 
   function getPlayerState(playerId) {
     if (!presenceState[playerId]) {
-      presenceState[playerId] = { present: false, team: '', lockedTeam: '' };
+      presenceState[playerId] = { present: false, team: '', group: null, lockedTeam: '' };
     }
     return presenceState[playerId];
   }
@@ -872,6 +941,10 @@
     return fourTeamModeCheckboxEl.checked && !isLeagueGameMode();
   }
 
+  function isGroupingActive() {
+    return groupingEnabled && !isLeagueGameMode();
+  }
+
   function getLeagueLevelLabel() {
     if (getLeagueLevel() === 'intermediate') return 'Intermediate';
     if (getLeagueLevel() === 'rec') return 'Rec';
@@ -895,10 +968,8 @@
       const state = getPlayerState(player.id);
       if (state.present) {
         state.team = 'red';
-        state.lockedTeam = '';
       } else {
         state.team = '';
-        state.lockedTeam = '';
       }
     });
   }
@@ -918,16 +989,20 @@
     return colors[index + 1];
   }
 
-  function nextLockedTeam(currentLockedTeam) {
-    if (currentLockedTeam === '') return 'red';
-    if (currentLockedTeam === 'red') return 'blue';
-    return '';
+  function nextGroup(currentGroup) {
+    if (!isGroupingActive()) return null;
+
+    const current = normalizeGroupValue(currentGroup);
+
+    if (current === null) return 1;
+    if (current >= groupCount) return null;
+
+    return current + 1;
   }
 
-  function getLockedTeamLabel(lockedTeam) {
-    if (lockedTeam === 'red') return '🔒 Red';
-    if (lockedTeam === 'blue') return '🔒 Blue';
-    return 'No Lock';
+  function getGroupLabel(group) {
+    const normalized = normalizeGroupValue(group);
+    return normalized ? `Group ${normalized}` : 'No Group';
   }
 
   function getPresentPlayers() {
@@ -1040,43 +1115,112 @@
     return forceTwoChangesCheckboxEl.checked && !isLeagueGameMode() && !isFourTeamMode();
   }
 
-  function buildCandidateTeams(presentPlayers, ratingMap) {
-    const lockedRed = [];
-    const lockedBlue = [];
-    const unlocked = [];
+  function buildPlayerUnits(presentPlayers) {
+    if (!isGroupingActive()) {
+      return presentPlayers.map(player => ({
+        id: `single_${player.id}`,
+        group: null,
+        players: [player]
+      }));
+    }
+
+    const grouped = new Map();
+    const units = [];
 
     presentPlayers.forEach(player => {
-      const state = getPlayerState(player.id);
-      if (state.lockedTeam === 'red') {
-        lockedRed.push(player);
-      } else if (state.lockedTeam === 'blue') {
-        lockedBlue.push(player);
-      } else {
-        unlocked.push(player);
+      const group = normalizeGroupValue(getPlayerState(player.id).group);
+
+      if (!group) {
+        units.push({
+          id: `single_${player.id}`,
+          group: null,
+          players: [player]
+        });
+        return;
       }
+
+      if (!grouped.has(group)) {
+        grouped.set(group, []);
+      }
+
+      grouped.get(group).push(player);
     });
 
+    Array.from(grouped.keys())
+      .sort((a, b) => a - b)
+      .forEach(group => {
+        units.push({
+          id: `group_${group}`,
+          group,
+          players: grouped.get(group)
+        });
+      });
+
+    return units;
+  }
+
+  function assignUnitsToTargetSizes(units, colors, targetSizes) {
+    const teamsByColor = {};
+    const shuffledUnits = shuffleArray(units);
+
+    colors.forEach(color => {
+      teamsByColor[color] = [];
+    });
+
+    shuffledUnits.forEach(unit => {
+      const viableColors = colors.filter(color =>
+        teamsByColor[color].length + unit.players.length <= targetSizes[color]
+      );
+
+      if (viableColors.length === 0) {
+        return;
+      }
+
+      viableColors.sort((a, b) => {
+        const remainingA = targetSizes[a] - teamsByColor[a].length;
+        const remainingB = targetSizes[b] - teamsByColor[b].length;
+
+        if (remainingB !== remainingA) return remainingB - remainingA;
+        return Math.random() - 0.5;
+      });
+
+      const chosenColor = viableColors[0];
+      teamsByColor[chosenColor].push(...unit.players);
+    });
+
+    const exact = colors.every(color => teamsByColor[color].length === targetSizes[color]);
+    if (!exact) return null;
+
+    return teamsByColor;
+  }
+
+  function getGroupedAssignmentFailureMessage() {
+    return 'Unable to balance teams. Consider increasing balance strength, reducing grouping, or allowing more flexible teams.';
+  }
+
+  function buildCandidateTeams(presentPlayers, ratingMap) {
     const totalPlayers = presentPlayers.length;
     const targetRedSize = Math.ceil(totalPlayers / 2);
     const targetBlueSize = totalPlayers - targetRedSize;
 
-    if (lockedRed.length > targetRedSize || lockedBlue.length > targetBlueSize) {
+    const units = buildPlayerUnits(presentPlayers);
+    const teamsByColor = assignUnitsToTargetSizes(
+      units,
+      STANDARD_TEAM_COLORS,
+      {
+        red: targetRedSize,
+        blue: targetBlueSize
+      }
+    );
+
+    if (!teamsByColor) {
       return {
-        error: 'Too many locked players on one side for the current number of players.'
+        invalid: true
       };
     }
 
-    const shuffledUnlocked = shuffleArray(unlocked);
-    const redTeam = [...lockedRed];
-    const blueTeam = [...lockedBlue];
-
-    while (redTeam.length < targetRedSize && shuffledUnlocked.length > 0) {
-      redTeam.push(shuffledUnlocked.shift());
-    }
-
-    while (blueTeam.length < targetBlueSize && shuffledUnlocked.length > 0) {
-      blueTeam.push(shuffledUnlocked.shift());
-    }
+    const redTeam = teamsByColor.red;
+    const blueTeam = teamsByColor.blue;
 
     const score = scoreVolleyballCandidateSplit({
       redPlayers: redTeam,
@@ -1106,7 +1250,10 @@
     const baseSize = Math.floor(totalPlayers / 4);
     const remainder = totalPlayers % 4;
 
-    return TEAM_COLORS.map((color, index) => baseSize + (index < remainder ? 1 : 0));
+    return TEAM_COLORS.reduce((acc, color, index) => {
+      acc[color] = baseSize + (index < remainder ? 1 : 0);
+      return acc;
+    }, {});
   }
 
   function getAveragePairwiseDifference(values) {
@@ -1123,16 +1270,15 @@
   }
 
   function buildFourTeamCandidate(presentPlayers, ratingMap) {
-    const shuffled = shuffleArray(presentPlayers);
+    const units = buildPlayerUnits(presentPlayers);
     const targetSizes = getFourTeamTargetSizes(presentPlayers.length);
-    const teamsByColor = {};
-    let cursor = 0;
+    const teamsByColor = assignUnitsToTargetSizes(units, TEAM_COLORS, targetSizes);
 
-    TEAM_COLORS.forEach((color, index) => {
-      const size = targetSizes[index];
-      teamsByColor[color] = shuffled.slice(cursor, cursor + size);
-      cursor += size;
-    });
+    if (!teamsByColor) {
+      return {
+        invalid: true
+      };
+    }
 
     const strengthsByColor = {};
     const averageRatingsByColor = {};
@@ -1183,33 +1329,47 @@
     const attempts = Number(balanceSliderEl.value);
     const ratingData = getRatingData();
     let bestCandidate = null;
+    let validCandidatesFound = 0;
+    let rawAttempts = 0;
+    const maxRawAttempts = Math.max(200, attempts * 150);
 
-    for (let i = 0; i < attempts; i += 1) {
+    while (validCandidatesFound < attempts && rawAttempts < maxRawAttempts) {
+      rawAttempts += 1;
+
       const candidate = buildFourTeamCandidate(presentPlayers, ratingData.ratingMap);
+
+      if (candidate.invalid) {
+        continue;
+      }
+
+      validCandidatesFound += 1;
 
       if (isBetterFourTeamCandidate(candidate, bestCandidate)) {
         bestCandidate = candidate;
       }
     }
 
+    if (!bestCandidate || validCandidatesFound < attempts) {
+      setError(getGroupedAssignmentFailureMessage());
+      return;
+    }
+
     players.forEach(player => {
       const state = getPlayerState(player.id);
       if (state.present) {
         state.team = '';
-        state.lockedTeam = '';
       }
     });
 
     TEAM_COLORS.forEach(color => {
       bestCandidate.teamsByColor[color].forEach(player => {
         presenceState[player.id].team = color;
-        presenceState[player.id].lockedTeam = '';
       });
     });
 
     savePageState();
     renderPlayers();
-    updateBalanceStatus(bestCandidate, attempts);
+    updateBalanceStatus(bestCandidate, validCandidatesFound, rawAttempts, isGroupingActive());
   }
 
   function assignBalancedTeams() {
@@ -1243,16 +1403,15 @@
     let bestCandidate = null;
     let validCandidatesFound = 0;
     let rawAttempts = 0;
-    const maxRawAttempts = Math.max(100, attempts * 100);
+    const maxRawAttempts = Math.max(200, attempts * 150);
 
     while (validCandidatesFound < attempts && rawAttempts < maxRawAttempts) {
       rawAttempts += 1;
 
       const candidate = buildCandidateTeams(presentPlayers, ratingData.ratingMap);
 
-      if (candidate.error) {
-        setError(candidate.error);
-        return;
+      if (candidate.invalid) {
+        continue;
       }
 
       if (previousTeams && !candidateHasEnoughPlayerChanges(candidate, previousTeams)) {
@@ -1267,7 +1426,10 @@
     }
 
     if (!bestCandidate || validCandidatesFound < attempts) {
-      setError('Unable to balance teams. Consider increasing balance strength or allowing more similar teams.');
+      setError(isGroupingActive()
+        ? getGroupedAssignmentFailureMessage()
+        : 'Unable to balance teams. Consider increasing balance strength or allowing more similar teams.'
+      );
       return;
     }
 
@@ -1286,7 +1448,24 @@
 
     savePageState();
     renderPlayers();
-    updateBalanceStatus(bestCandidate, validCandidatesFound, rawAttempts, Boolean(previousTeams));
+    updateBalanceStatus(bestCandidate, validCandidatesFound, rawAttempts, Boolean(previousTeams || isGroupingActive()));
+  }
+
+  function getActiveGroupsSummary() {
+    if (!isGroupingActive()) return 'Grouping: off';
+
+    const counts = {};
+    getPresentPlayers().forEach(player => {
+      const group = normalizeGroupValue(getPlayerState(player.id).group);
+      if (!group) return;
+      counts[group] = (counts[group] || 0) + 1;
+    });
+
+    const parts = Object.keys(counts)
+      .sort((a, b) => Number(a) - Number(b))
+      .map(group => `Group ${group}: ${counts[group]}`);
+
+    return parts.length ? `Grouping: ${parts.join(' | ')}` : 'Grouping: on, no active groups';
   }
 
   function updateSelectedCount() {
@@ -1298,21 +1477,21 @@
 
     if (isLeagueGameMode()) {
       selectedCountEl.textContent =
-        `Selected players: ${selected.length}\nRed: ${redTeam.length} | League Team`;
+        `Selected players: ${selected.length}\nRed: ${redTeam.length} | League Team\nGrouping: ignored in league mode`;
       return;
     }
 
     if (isFourTeamMode()) {
       selectedCountEl.textContent =
-        `Selected players: ${selected.length}\nRed: ${redTeam.length} | Blue: ${blueTeam.length} | Green: ${greenTeam.length} | Yellow: ${yellowTeam.length}`;
+        `Selected players: ${selected.length}\nRed: ${redTeam.length} | Blue: ${blueTeam.length} | Green: ${greenTeam.length} | Yellow: ${yellowTeam.length}\n${getActiveGroupsSummary()}`;
       return;
     }
 
     selectedCountEl.textContent =
-      `Selected players: ${selected.length}\nRed: ${redTeam.length} | Blue: ${blueTeam.length}`;
+      `Selected players: ${selected.length}\nRed: ${redTeam.length} | Blue: ${blueTeam.length}\n${getActiveGroupsSummary()}`;
   }
 
-  function updateBalanceStatus(candidate = null, attempts = null, rawAttempts = null, usedSimilarityConstraint = false) {
+  function updateBalanceStatus(candidate = null, attempts = null, rawAttempts = null, usedConstraint = false) {
     const ratingData = getRatingData();
 
     if (isLeagueGameMode()) {
@@ -1369,7 +1548,8 @@
           `Court type: ${getCourtTypeLabel()}`,
           `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
           `Season length: ${loadSeasonLengthMonths()} months`,
-          `Volleyball-adjusted model: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`
+          `Volleyball-adjusted model: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
+          getActiveGroupsSummary()
         ].join('\n');
         return;
       }
@@ -1385,6 +1565,7 @@
         `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
         `Season length: ${loadSeasonLengthMonths()} months`,
         `Volleyball-adjusted ratings: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
+        getActiveGroupsSummary(),
         `Team strength spread: ${Math.round(spread)}`,
         `Average pairwise difference: ${Math.round(averagePairwiseDifference)}`,
         `Red average Rating: ${formatDisplayedRating(averagesByColor.red)} | Strength: ${Math.round(strengthsByColor.red)}`,
@@ -1394,7 +1575,11 @@
       ];
 
       if (attempts !== null) {
-        lines.unshift(`Selected best 4-team split from ${attempts} candidate assignments.`);
+        if (usedConstraint && rawAttempts !== null) {
+          lines.unshift(`Selected best 4-team split from ${attempts} valid assignments after ${rawAttempts} total attempts.`);
+        } else {
+          lines.unshift(`Selected best 4-team split from ${attempts} candidate assignments.`);
+        }
       }
 
       balanceStatusEl.textContent = lines.join('\n');
@@ -1411,7 +1596,8 @@
         `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
         `Season length: ${loadSeasonLengthMonths()} months`,
         `Volleyball-adjusted model: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
-        `Similarity rule: ${forceTwoChangesCheckboxEl.checked ? 'on' : 'off'}`
+        `Similarity rule: ${forceTwoChangesCheckboxEl.checked ? 'on' : 'off'}`,
+        getActiveGroupsSummary()
       ].join('\n');
       return;
     }
@@ -1432,6 +1618,7 @@
       `Season length: ${loadSeasonLengthMonths()} months`,
       `Volleyball-adjusted ratings: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
       `Similarity rule: ${forceTwoChangesCheckboxEl.checked ? 'on' : 'off'}`,
+      getActiveGroupsSummary(),
       `Red average Rating: ${formatDisplayedRating(redAvg)}`,
       `Blue average Rating: ${formatDisplayedRating(blueAvg)}`,
       `Red strength: ${Math.round(score.redStrength)}`,
@@ -1448,7 +1635,7 @@
     }
 
     if (attempts !== null) {
-      if (usedSimilarityConstraint && rawAttempts !== null) {
+      if (usedConstraint && rawAttempts !== null) {
         lines.unshift(`Selected best split from ${attempts} valid candidate assignments after ${rawAttempts} total attempts.`);
       } else {
         lines.unshift(`Selected best split from ${attempts} candidate team assignments.`);
@@ -1765,6 +1952,7 @@
       presenceState[player.id] = {
         present: false,
         team: '',
+        group: getPlayerState(player.id).group,
         lockedTeam: ''
       };
     });
@@ -1779,7 +1967,6 @@
       const state = getPlayerState(player.id);
       if (state.present) {
         state.team = '';
-        state.lockedTeam = '';
       }
     });
     savePageState();
@@ -1795,7 +1982,6 @@
 
       if (isLeagueGameMode()) {
         state.team = 'red';
-        state.lockedTeam = '';
       }
     });
 
@@ -1824,6 +2010,17 @@
 
     forceTwoChangesCheckboxEl.disabled = isLeagueGameMode() || isFourTeamMode();
     fourTeamModeCheckboxEl.disabled = isLeagueGameMode();
+    groupingCheckboxEl.disabled = isLeagueGameMode();
+
+    if (isLeagueGameMode()) {
+      groupControlsEl.classList.add('hidden');
+    } else {
+      groupControlsEl.classList.toggle('hidden', !groupingEnabled);
+    }
+
+    groupCountValueEl.textContent = String(groupCount);
+    decreaseGroupCountButtonEl.disabled = groupCount <= MIN_GROUP_COUNT;
+    increaseGroupCountButtonEl.disabled = groupCount >= MAX_GROUP_COUNT;
 
     greenSummaryBoxEl.classList.toggle('hidden', !isFourTeamMode());
     yellowSummaryBoxEl.classList.toggle('hidden', !isFourTeamMode());
@@ -1831,9 +2028,6 @@
 
     recordGreenWinButtonEl.classList.toggle('hidden', !isFourTeamMode());
     recordYellowWinButtonEl.classList.toggle('hidden', !isFourTeamMode());
-
-    recordRedWinButtonEl.textContent = isFourTeamMode() ? 'Red Team Win' : 'Red Team Win';
-    recordBlueWinButtonEl.textContent = isFourTeamMode() ? 'Blue Team Win' : 'Blue Team Win';
 
     if (isFourTeamMode()) {
       redScoreLabelEl.textContent = 'Winning team score (optional)';
@@ -1849,6 +2043,21 @@
     savePageState();
     updateToggleButton();
     renderPlayers();
+  }
+
+  function setGroupCount(nextCount) {
+    groupCount = Math.min(MAX_GROUP_COUNT, Math.max(MIN_GROUP_COUNT, Math.round(nextCount)));
+
+    players.forEach(player => {
+      const state = getPlayerState(player.id);
+      if (state.group && state.group > groupCount) {
+        state.group = null;
+      }
+    });
+
+    savePageState();
+    renderPlayers();
+    updateBalanceStatus();
   }
 
   function renderLatestGame() {
@@ -1950,10 +2159,8 @@
 
           if (!state.present) {
             state.team = '';
-            state.lockedTeam = '';
           } else if (isLeagueGameMode()) {
             state.team = 'red';
-            state.lockedTeam = '';
           }
 
           savePageState();
@@ -1985,10 +2192,12 @@
         sub.className = 'small';
         sub.style.marginTop = '4px';
 
-        if (isFourTeamMode()) {
-          sub.textContent = 'Locks ignored in 4-team mode';
+        if (isLeagueGameMode()) {
+          sub.textContent = 'Grouping ignored in league mode';
+        } else if (isGroupingActive()) {
+          sub.textContent = getGroupLabel(state.group);
         } else {
-          sub.textContent = state.lockedTeam ? getLockedTeamLabel(state.lockedTeam) : 'No lock';
+          sub.textContent = 'Grouping off';
         }
 
         middle.appendChild(name);
@@ -1999,22 +2208,18 @@
         right.style.alignItems = 'center';
         right.style.gap = '8px';
 
-        const lockButton = document.createElement('button');
-        lockButton.type = 'button';
-        lockButton.className = 'ghost';
-        lockButton.style.padding = '6px 10px';
-        lockButton.style.fontSize = '12px';
-        lockButton.textContent = getLockedTeamLabel(state.lockedTeam);
-        lockButton.disabled = !state.present || isLeagueGameMode() || isFourTeamMode();
-        lockButton.addEventListener('click', () => {
+        const groupButton = document.createElement('button');
+        groupButton.type = 'button';
+        groupButton.className = 'ghost';
+        groupButton.style.padding = '6px 10px';
+        groupButton.style.fontSize = '12px';
+        groupButton.textContent = getGroupLabel(state.group);
+        groupButton.disabled = !state.present || !isGroupingActive();
+        groupButton.addEventListener('click', () => {
           clearError();
-          if (!state.present || isLeagueGameMode() || isFourTeamMode()) return;
+          if (!state.present || !isGroupingActive()) return;
 
-          state.lockedTeam = nextLockedTeam(state.lockedTeam);
-
-          if (state.lockedTeam) {
-            state.team = state.lockedTeam;
-          }
+          state.group = nextGroup(state.group);
 
           savePageState();
           renderPlayers();
@@ -2022,10 +2227,12 @@
         });
 
         const tag = document.createElement('div');
-        tag.className = 'tag';
-        tag.textContent = state.present ? (state.team || 'present') : 'away';
+        tag.className = `tag ${state.group && isGroupingActive() ? 'group-tag' : ''}`;
+        tag.textContent = state.present
+          ? (state.team || getGroupLabel(state.group).replace('No Group', 'present'))
+          : 'away';
 
-        right.appendChild(lockButton);
+        right.appendChild(groupButton);
         right.appendChild(tag);
 
         row.appendChild(checkbox);
@@ -2228,6 +2435,9 @@
     hideUnselectedPlayers = false;
     playerSearchQuery = '';
     playerSearchInputEl.value = '';
+    groupingEnabled = false;
+    groupCount = MIN_GROUP_COUNT;
+    groupingCheckboxEl.checked = false;
 
     redScoreEl.value = '';
     blueScoreEl.value = '';
@@ -2262,6 +2472,24 @@
     clearError();
     savePageState();
     updateBalanceStatus();
+  });
+
+  groupingCheckboxEl.addEventListener('change', () => {
+    clearError();
+    groupingEnabled = groupingCheckboxEl.checked;
+    savePageState();
+    renderPlayers();
+    updateBalanceStatus();
+  });
+
+  decreaseGroupCountButtonEl.addEventListener('click', () => {
+    clearError();
+    setGroupCount(groupCount - 1);
+  });
+
+  increaseGroupCountButtonEl.addEventListener('click', () => {
+    clearError();
+    setGroupCount(groupCount + 1);
   });
 
   playerSearchInputEl.addEventListener('input', () => {
@@ -2331,6 +2559,7 @@
 
   fourTeamModeCheckboxEl.checked = false;
   forceTwoChangesCheckboxEl.checked = true;
+  groupingCheckboxEl.checked = false;
 
   restorePageState();
   syncPresenceState();

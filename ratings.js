@@ -1,5 +1,15 @@
 // ratings.js
 // Shared rating engine for the Volleyball app.
+//
+// Architecture:
+// - Backend model uses OpenSkill skill objects: { mu, sigma }.
+// - Raw rating / raw ordinal = mu - z * sigma. This stays on OpenSkill scale.
+// - Volleyball balancing uses raw ordinal scale, not public display scale.
+// - Public display rating is only created at UI/display boundaries:
+//     displayRating = 1500 + rawOrdinal * 50
+// - Leaderboard rating is display/ranking only. It is confidence-adjusted so
+//   low-game players are pulled toward baseline until they have more data.
+// - Leaderboard rating must not feed back into OpenSkill updates or team balancing.
 
 import {
   rating,
@@ -62,6 +72,13 @@ export const LEAGUE_TEAM_MEMBER_IDS = LEAGUE_CONTEXTS.flatMap(context =>
   )
 );
 
+export const DISPLAY_RATING_BASE = 1500;
+export const DISPLAY_RATING_SCALE = 50;
+
+export const SEASONAL_FULL_WEIGHT_DAYS = 7;
+export const SEASONAL_TAPER_DAYS = 180;
+export const SEASONAL_MIN_WEIGHT = 0.05;
+
 export const DEFAULT_RATING_OPTIONS = {
   mu: 25,
   sigma: 25 / 3,
@@ -81,22 +98,44 @@ export const DEFAULT_RATING_OPTIONS = {
   closeOvertimeDampenerStep: 0.05,
 
   seasonalTaperDays: 180,
+
+  // Leaderboard-only confidence adjustment.
+  // This does NOT affect OpenSkill updates or team balancing.
+  //
+  // Formula:
+  //   confidence = (games / (games + leaderboardConfidenceGames)) ^ leaderboardConfidencePower
+  //   leaderboardRaw = rawOrdinal * confidence
+  //
+  // With confidenceGames=8 and power=1.10:
+  //   3 games  ≈ 24% confidence
+  //   5 games  ≈ 35% confidence
+  //   10 games ≈ 53% confidence
+  //   20 games ≈ 68% confidence
+  //   33 games ≈ 79% confidence
+  //
+  // This makes it hard for 3-5 game players to sit near the top unless their raw result
+  // is extremely strong, while still letting weekly results matter.
+  leaderboardConfidenceGames: 8,
+  leaderboardConfidencePower: 1.10,
 };
 
-export const DISPLAY_RATING_BASE = 1500;
-export const DISPLAY_RATING_SCALE = 50;
-
-export const SEASONAL_FULL_WEIGHT_DAYS = 7;
-export const SEASONAL_TAPER_DAYS = 180;
-export const SEASONAL_MIN_WEIGHT = 0.05;
-
+// These constants are now calibrated to raw OpenSkill ordinal scale,
+// not the 1500-ish public display scale.
+// Previous display-scale values were:
+//   sizeBonusPerExtraPlayer: 35
+//   probabilityScale: 220
+//
+// Since display rating = 1500 + rawOrdinal * 50,
+// divide by 50:
+//   35 / 50 = 0.7
+//   220 / 50 = 4.4
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   topPlayerWeight: 0.40,
   secondPlayerWeight: 0.25,
   averageWeight: 0.25,
   depthWeight: 0.10,
-  sizeBonusPerExtraPlayer: 35,
-  probabilityScale: 220,
+  sizeBonusPerExtraPlayer: 0.7,
+  probabilityScale: 4.4,
   minWinProbability: 0.05,
   maxWinProbability: 0.95,
   minUpdateMultiplier: 0.35,
@@ -133,6 +172,86 @@ function sigmoid(value) {
 
 function getEffectiveVolleyballSize(players) {
   return Math.min(Array.isArray(players) ? players.length : 0, LEAGUE_TEAM_SIZE);
+}
+
+export function mergeRatingOptions(overrides = {}) {
+  return { ...DEFAULT_RATING_OPTIONS, ...overrides };
+}
+
+export function mergeVolleyballBalanceOptions(overrides = {}) {
+  return { ...DEFAULT_VOLLEYBALL_BALANCE_OPTIONS, ...overrides };
+}
+
+export function makeInitialRating(options = {}) {
+  const cfg = mergeRatingOptions(options);
+  return rating({ mu: cfg.mu, sigma: cfg.sigma });
+}
+
+// Backend raw rating / raw ordinal.
+// This stays on OpenSkill scale and is safe for backend model logic.
+export function getRawOrdinal(skill, options = {}) {
+  const cfg = mergeRatingOptions(options);
+
+  try {
+    return ordinal(skill, { z: cfg.ordinalSigmaMultiplier });
+  } catch {
+    const mu = Number(skill?.mu ?? cfg.mu);
+    const sigma = Number(skill?.sigma ?? cfg.sigma);
+    return mu - cfg.ordinalSigmaMultiplier * sigma;
+  }
+}
+
+// Backward-compatible alias.
+// Important: this returns raw ordinal, NOT the 1500-ish public score.
+export function getDisplayedRating(skill, options = {}) {
+  return getRawOrdinal(skill, options);
+}
+
+export function toDisplayRating(rawOrdinal) {
+  return DISPLAY_RATING_BASE + Number(rawOrdinal) * DISPLAY_RATING_SCALE;
+}
+
+export function getDisplayRatingFromSkill(skill, options = {}) {
+  return toDisplayRating(getRawOrdinal(skill, options));
+}
+
+// Leaderboard-only confidence adjustment.
+// This pulls low-game ratings toward baseline 1500 for standings display/sorting.
+// It must not be used by balancing or OpenSkill updates.
+export function getLeaderboardRawOrdinal(rawOrdinal, games = 0, options = {}) {
+  const cfg = mergeRatingOptions(options);
+  const safeGames = Math.max(0, Number(games) || 0);
+  const confidenceGames = Math.max(1, Number(cfg.leaderboardConfidenceGames) || 8);
+  const confidencePower = Math.max(0.1, Number(cfg.leaderboardConfidencePower) || 1);
+
+  const baseConfidence = safeGames / (safeGames + confidenceGames);
+  const confidence = Math.pow(baseConfidence, confidencePower);
+
+  return Number(rawOrdinal) * confidence;
+}
+
+export function getLeaderboardRawOrdinalFromSkill(skill, games = 0, options = {}) {
+  return getLeaderboardRawOrdinal(getRawOrdinal(skill, options), games, options);
+}
+
+export function getLeaderboardDisplayRatingFromSkill(skill, games = 0, options = {}) {
+  return toDisplayRating(getLeaderboardRawOrdinalFromSkill(skill, games, options));
+}
+
+export function formatDisplayedRating(rawOrdinal) {
+  return `${Math.round(toDisplayRating(rawOrdinal))}`;
+}
+
+export function formatPublicRating(value) {
+  return `${Math.round(Number(value))}`;
+}
+
+export function formatMu(value) {
+  return Number(value).toFixed(2);
+}
+
+export function formatSigma(value) {
+  return Number(value).toFixed(2);
 }
 
 export function getLeagueLevel(game) {
@@ -248,30 +367,6 @@ export function getSeasonalWeight(
     SEASONAL_MIN_WEIGHT,
     1
   );
-}
-
-export function mergeRatingOptions(overrides = {}) {
-  return { ...DEFAULT_RATING_OPTIONS, ...overrides };
-}
-
-export function mergeVolleyballBalanceOptions(overrides = {}) {
-  return { ...DEFAULT_VOLLEYBALL_BALANCE_OPTIONS, ...overrides };
-}
-
-export function makeInitialRating(options = {}) {
-  const cfg = mergeRatingOptions(options);
-  return rating({ mu: cfg.mu, sigma: cfg.sigma });
-}
-
-export function getDisplayedRating(skill, options = {}) {
-  const cfg = mergeRatingOptions(options);
-  try {
-    return ordinal(skill, { z: cfg.ordinalSigmaMultiplier });
-  } catch {
-    const mu = Number(skill?.mu ?? cfg.mu);
-    const sigma = Number(skill?.sigma ?? cfg.sigma);
-    return mu - cfg.ordinalSigmaMultiplier * sigma;
-  }
 }
 
 export function getGamesSortedOldestFirst(gamesList) {
@@ -450,34 +545,36 @@ export function getVolleyballTeamStrength({
 } = {}) {
   const ratingCfg = mergeRatingOptions(ratingOptions);
   const volleyballCfg = mergeVolleyballBalanceOptions(volleyballOptions);
+  const baselineRawOrdinal = getRawOrdinal(makeInitialRating(ratingCfg), ratingCfg);
 
   const ratedPlayers = players.map(player => {
     const skill = ratingMap[player.id] ?? makeInitialRating(ratingCfg);
-    const rawRating = getDisplayedRating(skill, ratingCfg);
-    const displayRating = toDisplayRating(rawRating);
+    const rawOrdinal = getRawOrdinal(skill, ratingCfg);
 
     return {
       ...player,
-      rawRating,
-      displayRating,
+      rawOrdinal,
+      // Backward-compatible alias for older UI code.
+      rating: rawOrdinal,
+      displayRating: toDisplayRating(rawOrdinal),
       mu: Number(skill.mu),
       sigma: Number(skill.sigma),
     };
   });
 
-  const ratings = ratedPlayers.map(player => player.displayRating);
+  const ratings = ratedPlayers.map(player => player.rawOrdinal);
 
   if (!ratings.length) {
     return {
       teamSize: 0,
       effectiveTeamSize: 0,
-      strength: DISPLAY_RATING_BASE,
-      baseStrength: DISPLAY_RATING_BASE,
-      averageRating: DISPLAY_RATING_BASE,
-      medianRating: DISPLAY_RATING_BASE,
-      bestRating: DISPLAY_RATING_BASE,
-      secondBestRating: DISPLAY_RATING_BASE,
-      depthRating: DISPLAY_RATING_BASE,
+      strength: baselineRawOrdinal,
+      baseStrength: baselineRawOrdinal,
+      averageRating: baselineRawOrdinal,
+      medianRating: baselineRawOrdinal,
+      bestRating: baselineRawOrdinal,
+      secondBestRating: baselineRawOrdinal,
+      depthRating: baselineRawOrdinal,
       sizeAdjustment: 0,
       ratedPlayers,
     };
@@ -709,14 +806,14 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     id,
     mu: Number(ratingMap[id].mu),
     sigma: Number(ratingMap[id].sigma),
-    rating: getDisplayedRating(ratingMap[id], cfg),
+    rating: getRawOrdinal(ratingMap[id], cfg),
   }));
 
   const blueBefore = blueIds.map(id => ({
     id,
     mu: Number(ratingMap[id].mu),
     sigma: Number(ratingMap[id].sigma),
-    rating: getDisplayedRating(ratingMap[id], cfg),
+    rating: getRawOrdinal(ratingMap[id], cfg),
   }));
 
   const redTeam = buildTeamObjectsFromIds(redIds, ratingMap);
@@ -784,14 +881,14 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     id,
     mu: Number(ratingMap[id].mu),
     sigma: Number(ratingMap[id].sigma),
-    rating: getDisplayedRating(ratingMap[id], cfg),
+    rating: getRawOrdinal(ratingMap[id], cfg),
   }));
 
   const blueAfter = blueIds.map(id => ({
     id,
     mu: Number(ratingMap[id].mu),
     sigma: Number(ratingMap[id].sigma),
-    rating: getDisplayedRating(ratingMap[id], cfg),
+    rating: getRawOrdinal(ratingMap[id], cfg),
   }));
 
   return {
@@ -836,7 +933,12 @@ function buildLeagueTeamFromContext(context, ratingMap, cfg, includedGames) {
   const leagueTeam = {
     id: context.id,
     name: context.name,
-    rating: getDisplayedRating(leagueSkill, cfg),
+    rawOrdinal: getRawOrdinal(leagueSkill, cfg),
+    displayRating: getDisplayRatingFromSkill(leagueSkill, cfg),
+    leaderboardRawOrdinal: 0,
+    leaderboardRating: DISPLAY_RATING_BASE,
+    // Backward-compatible alias used by existing stats/index pages.
+    rating: 0,
     mu: Number(leagueSkill.mu),
     sigma: Number(leagueSkill.sigma),
     wins: 0,
@@ -854,6 +956,9 @@ function buildLeagueTeamFromContext(context, ratingMap, cfg, includedGames) {
   });
 
   leagueTeam.winrate = leagueTeam.games > 0 ? leagueTeam.wins / leagueTeam.games : 0.5;
+  leagueTeam.leaderboardRawOrdinal = getLeaderboardRawOrdinal(leagueTeam.rawOrdinal, leagueTeam.games, cfg);
+  leagueTeam.leaderboardRating = toDisplayRating(leagueTeam.leaderboardRawOrdinal);
+  leagueTeam.rating = leagueTeam.leaderboardRawOrdinal;
 
   return leagueTeam;
 }
@@ -929,22 +1034,34 @@ export function replayRatings({
   const standings = Object.values(statsMap)
     .map(player => {
       const skill = ratingMap[player.id] ?? makeInitialRating(cfg);
+      const rawOrdinal = getRawOrdinal(skill, cfg);
+      const leaderboardRawOrdinal = getLeaderboardRawOrdinal(rawOrdinal, player.games, cfg);
+
       return {
         id: player.id,
         name: player.name,
-        rating: getDisplayedRating(skill, cfg),
+
+        // Backend/diagnostic values.
         mu: Number(skill.mu),
         sigma: Number(skill.sigma),
+        rawOrdinal,
+
+        // Public normal rating without leaderboard confidence correction.
+        displayRating: toDisplayRating(rawOrdinal),
+
+        // Leaderboard-only adjusted rating.
+        leaderboardRawOrdinal,
+        leaderboardRating: toDisplayRating(leaderboardRawOrdinal),
+
+        // Backward-compatible alias used by current stats.html:
+        // stats.html calls formatDisplayedRating(player.rating),
+        // so rating must be raw ordinal on the chosen display/ranking basis.
+        rating: leaderboardRawOrdinal,
+
         wins: player.wins,
         games: player.games,
         winrate: player.games > 0 ? player.wins / player.games : 0.5,
       };
-    })
-    .sort((a, b) => {
-      if (b.rating !== a.rating) return b.rating - a.rating;
-      if (b.wins !== a.wins) return b.wins - a.wins;
-      if (b.games !== a.games) return b.games - a.games;
-      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     });
 
   const leagueTeams = LEAGUE_CONTEXTS.map(context =>
@@ -958,7 +1075,8 @@ export function replayRatings({
   }
 
   standings.sort((a, b) => {
-    if (b.rating !== a.rating) return b.rating - a.rating;
+    if (b.leaderboardRating !== a.leaderboardRating) return b.leaderboardRating - a.leaderboardRating;
+    if (b.rawOrdinal !== a.rawOrdinal) return b.rawOrdinal - a.rawOrdinal;
     if (b.wins !== a.wins) return b.wins - a.wins;
     if (b.games !== a.games) return b.games - a.games;
     return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
@@ -1010,14 +1128,17 @@ function getLeagueContextTimelineEntry({
     displayLoserColor: game.displayLoserColor || null,
     scoreRed: typeof game.scoreRed === 'undefined' ? null : game.scoreRed,
     scoreBlue: typeof game.scoreBlue === 'undefined' ? null : game.scoreBlue,
+
     ratingBefore: beforeRating,
     ratingAfter: afterRating,
     displayRatingBefore: toDisplayRating(beforeRating),
     displayRatingAfter: toDisplayRating(afterRating),
+
     muBefore: beforeMu,
     muAfter: afterMu,
     sigmaBefore: beforeSigma,
     sigmaAfter: afterSigma,
+
     marginFactor: result.marginFactor,
     blowoutBonusFactor: result.blowoutBonusFactor,
     closeOvertimeDampener: result.closeOvertimeDampener,
@@ -1127,14 +1248,17 @@ export function getPlayerRatingTimeline({
       displayLoserColor: game.displayLoserColor || null,
       scoreRed: typeof game.scoreRed === 'undefined' ? null : game.scoreRed,
       scoreBlue: typeof game.scoreBlue === 'undefined' ? null : game.scoreBlue,
+
       ratingBefore: before.rating,
       ratingAfter: after.rating,
       displayRatingBefore: toDisplayRating(before.rating),
       displayRatingAfter: toDisplayRating(after.rating),
+
       muBefore: before.mu,
       muAfter: after.mu,
       sigmaBefore: before.sigma,
       sigmaAfter: after.sigma,
+
       marginFactor: result.marginFactor,
       blowoutBonusFactor: result.blowoutBonusFactor,
       closeOvertimeDampener: result.closeOvertimeDampener,
@@ -1185,35 +1309,20 @@ export function scoreCandidateSplit({ redPlayers, bluePlayers, ratingMap, option
 
 export function getPlayerRatingsForList(players, ratingMap, options = {}) {
   const cfg = mergeRatingOptions(options);
+
   return players.map(player => {
     const skill = ratingMap[player.id] ?? makeInitialRating(cfg);
-    const rawRating = getDisplayedRating(skill, cfg);
+    const rawOrdinal = getRawOrdinal(skill, cfg);
+
     return {
       ...player,
-      rating: rawRating,
-      displayRating: toDisplayRating(rawRating),
+      rawOrdinal,
+      // Backward-compatible alias. Existing index.html averages `rating`
+      // and then calls formatDisplayedRating(), so this must stay raw ordinal.
+      rating: rawOrdinal,
+      displayRating: toDisplayRating(rawOrdinal),
       mu: Number(skill.mu),
       sigma: Number(skill.sigma),
     };
   });
-}
-
-export function toDisplayRating(value) {
-  return DISPLAY_RATING_BASE + Number(value) * DISPLAY_RATING_SCALE;
-}
-
-export function formatDisplayedRating(value) {
-  return `${Math.round(toDisplayRating(value))}`;
-}
-
-export function formatPublicRating(value) {
-  return `${Math.round(Number(value))}`;
-}
-
-export function formatMu(value) {
-  return Number(value).toFixed(2);
-}
-
-export function formatSigma(value) {
-  return Number(value).toFixed(2);
 }

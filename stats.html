@@ -361,6 +361,8 @@
       background: rgba(255,255,255,0.03);
     }
 
+    .hidden { display: none !important; }
+
     dialog {
       border: 1px solid var(--border);
       border-radius: 18px;
@@ -447,7 +449,7 @@
       </div>
 
       <div class="small" id="rankingModeDescription">
-        Sorted by leaderboard-adjusted Rating. Backend ratings and balancing still use OpenSkill mu/sigma.
+        Sorted by experimental leaderboard-adjusted Rating. Backend ratings and balancing still use OpenSkill mu/sigma.
       </div>
 
       <div class="model-controls">
@@ -460,14 +462,18 @@
             <input type="range" id="seasonLengthSlider" min="1" max="12" value="6" />
           </div>
 
-          <div class="season-slider">
+          <div id="confidenceSliderPanel" class="season-slider hidden">
             <label for="confidenceAdjustmentSlider">
               <span>Confidence adjustment</span>
-              <span><span id="confidenceAdjustmentValue">8</span></span>
+              <span>
+                position <span id="confidenceAdjustmentValue">50</span>
+                · strength <span id="confidencePenaltyStrengthValue">1.50</span>
+              </span>
             </label>
-            <input type="range" id="confidenceAdjustmentSlider" min="0" max="16" step="1" value="8" />
+            <input type="range" id="confidenceAdjustmentSlider" min="0" max="100" step="1" value="50" />
             <div class="slider-explain">
-              Lower = less low-game penalty. Higher = stronger pull toward 1500 for players with fewer games.
+              Nonlinear scale: actual penalty strength = 6 × (slider ÷ 100)². 
+              This uses sigma range 6.4–8.4 plus a small missing-games penalty below 6 games.
             </div>
           </div>
         </div>
@@ -482,11 +488,16 @@
             <input type="checkbox" id="includeLeagueGamesToggle" />
             Include league games (beta)
           </label>
+
+          <label for="showConfidenceSliderToggle">
+            <input type="checkbox" id="showConfidenceSliderToggle" />
+            Show confidence slider
+          </label>
         </div>
       </div>
 
       <div class="small" id="modelHelpText">
-        Rating on this page is leaderboard-adjusted so low-game players are pulled toward baseline. This does not affect OpenSkill updates or team balancing.
+        Rating on this page uses an experimental nonlinear uncertainty adjustment for leaderboard display only. This does not affect OpenSkill updates or team balancing.
       </div>
 
       <div class="table-wrap standings-wrap" style="margin-top: 12px;">
@@ -561,12 +572,21 @@
     const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
     const DEFAULT_DB_SOURCE_PATH = './default_database';
     const LEAGUE_TEAM_SIZE = 6;
+
     const DEFAULT_SEASON_LENGTH_MONTHS = 6;
-    const DEFAULT_CONFIDENCE_ADJUSTMENT = 8;
+    const DEFAULT_CONFIDENCE_SLIDER_POSITION = 50;
+
     const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
-    const CONFIDENCE_ADJUSTMENT_STORAGE_KEY = 'gameDayLeaderboardConfidenceAdjustment';
+    const CONFIDENCE_SLIDER_STORAGE_KEY = 'gameDayLeaderboardConfidenceSliderPosition';
     const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
     const INCLUDE_LEAGUE_GAMES_STORAGE_KEY = 'gameDayIncludeLeagueGamesEnabled';
+
+    const LEADERBOARD_LOW_SIGMA = 6.4;
+    const LEADERBOARD_HIGH_SIGMA = 8.4;
+    const LEADERBOARD_SIGMA_POWER = 2;
+    const LEADERBOARD_MAX_SIGMA_PENALTY_STRENGTH = 6;
+    const LEADERBOARD_MINIMUM_GAMES = 6;
+    const LEADERBOARD_MISSING_GAME_PENALTY_AT_FULL_STRENGTH = 0.35;
 
     const TEAM_COLORS = ['red', 'blue', 'green', 'yellow'];
     const TEAM_LABELS = {
@@ -585,10 +605,15 @@
     const deleteGameText = document.getElementById('deleteGameText');
     const loadDefaultDatabaseButtonEl = document.getElementById('loadDefaultDatabaseButton');
     const serverStatsDateEl = document.getElementById('serverStatsDate');
+
     const seasonLengthSliderEl = document.getElementById('seasonLengthSlider');
     const seasonLengthValueEl = document.getElementById('seasonLengthValue');
     const confidenceAdjustmentSliderEl = document.getElementById('confidenceAdjustmentSlider');
     const confidenceAdjustmentValueEl = document.getElementById('confidenceAdjustmentValue');
+    const confidencePenaltyStrengthValueEl = document.getElementById('confidencePenaltyStrengthValue');
+    const confidenceSliderPanelEl = document.getElementById('confidenceSliderPanel');
+    const showConfidenceSliderToggleEl = document.getElementById('showConfidenceSliderToggle');
+
     const volleyballAdjustedToggleEl = document.getElementById('volleyballAdjustedToggle');
     const includeLeagueGamesToggleEl = document.getElementById('includeLeagueGamesToggle');
     const rankingModeDescriptionEl = document.getElementById('rankingModeDescription');
@@ -646,13 +671,9 @@
 
     function loadSeasonLengthMonths() {
       const raw = localStorage.getItem(SEASON_LENGTH_MONTHS_STORAGE_KEY);
-
-      if (raw === null) {
-        return DEFAULT_SEASON_LENGTH_MONTHS;
-      }
+      if (raw === null) return DEFAULT_SEASON_LENGTH_MONTHS;
 
       const saved = Number(raw);
-
       if (!Number.isFinite(saved) || saved < 1 || saved > 12) {
         return DEFAULT_SEASON_LENGTH_MONTHS;
       }
@@ -672,29 +693,37 @@
       return Math.round(getSeasonLengthMonths() * 30.4375);
     }
 
-    function loadConfidenceAdjustment() {
-      const raw = localStorage.getItem(CONFIDENCE_ADJUSTMENT_STORAGE_KEY);
-
-      if (raw === null) {
-        return DEFAULT_CONFIDENCE_ADJUSTMENT;
-      }
+    function loadConfidenceSliderPosition() {
+      const raw = localStorage.getItem(CONFIDENCE_SLIDER_STORAGE_KEY);
+      if (raw === null) return DEFAULT_CONFIDENCE_SLIDER_POSITION;
 
       const saved = Number(raw);
-
-      if (!Number.isFinite(saved) || saved < 0 || saved > 16) {
-        return DEFAULT_CONFIDENCE_ADJUSTMENT;
+      if (!Number.isFinite(saved) || saved < 0 || saved > 100) {
+        return DEFAULT_CONFIDENCE_SLIDER_POSITION;
       }
 
       return Math.round(saved);
     }
 
-    function saveConfidenceAdjustment(value) {
-      localStorage.setItem(CONFIDENCE_ADJUSTMENT_STORAGE_KEY, String(value));
+    function saveConfidenceSliderPosition(value) {
+      localStorage.setItem(CONFIDENCE_SLIDER_STORAGE_KEY, String(value));
     }
 
-    function getConfidenceAdjustment() {
+    function getConfidenceSliderPosition() {
       const value = Number(confidenceAdjustmentSliderEl.value);
-      return Number.isFinite(value) ? Math.max(0, Math.min(16, Math.round(value))) : DEFAULT_CONFIDENCE_ADJUSTMENT;
+      return Number.isFinite(value)
+        ? Math.max(0, Math.min(100, Math.round(value)))
+        : DEFAULT_CONFIDENCE_SLIDER_POSITION;
+    }
+
+    function getUncertaintyPenaltyStrength() {
+      const position = getConfidenceSliderPosition();
+      const normalized = position / 100;
+      return LEADERBOARD_MAX_SIGMA_PENALTY_STRENGTH * normalized * normalized;
+    }
+
+    function getUncertaintyPenaltyScale() {
+      return getUncertaintyPenaltyStrength() / LEADERBOARD_MAX_SIGMA_PENALTY_STRENGTH;
     }
 
     function loadVolleyballAdjustedEnabled() {
@@ -736,10 +765,78 @@
         volleyballAdjusted: isVolleyballAdjustedMode(),
         includeLeagueGames: isIncludeLeagueGamesMode(),
         options: {
-          seasonalTaperDays: getSeasonalTaperDays(),
-          leaderboardConfidenceGames: getConfidenceAdjustment()
+          seasonalTaperDays: getSeasonalTaperDays()
         }
       });
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function getExperimentalLeaderboardRaw(player) {
+      const rawOrdinal =
+        typeof player.rawOrdinal === 'number'
+          ? player.rawOrdinal
+          : typeof player.rating === 'number'
+            ? player.rating
+            : 0;
+
+      const sigma = Number(player.sigma);
+      const games = Number(player.games) || 0;
+      const penaltyStrength = getUncertaintyPenaltyStrength();
+      const penaltyScale = getUncertaintyPenaltyScale();
+
+      const uncertainty = Number.isFinite(sigma)
+        ? clamp(
+            (sigma - LEADERBOARD_LOW_SIGMA) /
+              Math.max(0.01, LEADERBOARD_HIGH_SIGMA - LEADERBOARD_LOW_SIGMA),
+            0,
+            1
+          )
+        : 1;
+
+      const sigmaPenalty =
+        penaltyStrength * Math.pow(uncertainty, LEADERBOARD_SIGMA_POWER);
+
+      const missingGamePenalty =
+        Math.max(0, LEADERBOARD_MINIMUM_GAMES - games) *
+        LEADERBOARD_MISSING_GAME_PENALTY_AT_FULL_STRENGTH *
+        penaltyScale;
+
+      return rawOrdinal - sigmaPenalty - missingGamePenalty;
+    }
+
+    function getSortedStandingsRows(result) {
+      return result.standings
+        .filter(player => player.games > 0)
+        .map(player => ({
+          ...player,
+          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player)
+        }))
+        .sort((a, b) => {
+          if (b.experimentalLeaderboardRaw !== a.experimentalLeaderboardRaw) {
+            return b.experimentalLeaderboardRaw - a.experimentalLeaderboardRaw;
+          }
+
+          const rawA = typeof a.rawOrdinal === 'number' ? a.rawOrdinal : a.rating || 0;
+          const rawB = typeof b.rawOrdinal === 'number' ? b.rawOrdinal : b.rating || 0;
+
+          if (rawB !== rawA) return rawB - rawA;
+          if (b.wins !== a.wins) return b.wins - a.wins;
+          if (b.games !== a.games) return b.games - a.games;
+
+          return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+        });
+    }
+
+    function updateConfidenceSliderUI() {
+      const position = getConfidenceSliderPosition();
+      const strength = getUncertaintyPenaltyStrength();
+
+      confidenceAdjustmentValueEl.textContent = String(position);
+      confidencePenaltyStrengthValueEl.textContent = strength.toFixed(2);
+      confidenceSliderPanelEl.classList.toggle('hidden', !showConfidenceSliderToggleEl.checked);
     }
 
     function updateModeDescriptions() {
@@ -757,7 +854,7 @@
       );
 
       rankingModeDescriptionEl.textContent =
-        `Sorted by leaderboard-adjusted Rating using ${modes.join(' + ')}. Confidence adjustment: ${getConfidenceAdjustment()}. Backend ratings and balancing still use OpenSkill mu/sigma.`;
+        `Sorted by experimental nonlinear leaderboard Rating using ${modes.join(' + ')}. Confidence slider position: ${getConfidenceSliderPosition()} / 100, penalty strength: ${getUncertaintyPenaltyStrength().toFixed(2)}. Backend ratings and balancing still use OpenSkill mu/sigma.`;
 
       historyModeDescriptionEl.textContent =
         `Newest games at the top. Delete removes the game from history and updates all derived stats automatically. Active mode: ${modes.join(' + ')}.`;
@@ -772,28 +869,12 @@
         .replaceAll("'", '&#039;');
     }
 
-    function getStandingsRawForDisplay(player) {
-      if (typeof player.leaderboardRawOrdinal === 'number') {
-        return player.leaderboardRawOrdinal;
-      }
-
-      if (typeof player.rating === 'number') {
-        return player.rating;
-      }
-
-      if (typeof player.rawOrdinal === 'number') {
-        return player.rawOrdinal;
-      }
-
-      return 0;
-    }
-
     function formatPlayerNameCell(player) {
       const params = new URLSearchParams();
       params.set('id', player.id);
       params.set('seasonal', '1');
       params.set('seasonMonths', String(getSeasonLengthMonths()));
-      params.set('confidenceGames', String(getConfidenceAdjustment()));
+      params.set('confidenceSlider', String(getConfidenceSliderPosition()));
 
       if (isVolleyballAdjustedMode()) {
         params.set('volleyballAdjusted', '1');
@@ -813,7 +894,6 @@
 
     function getLeagueContextName(game, entry = null) {
       if (entry?.leagueContext?.name) return entry.leagueContext.name;
-
       if (!game?.isLeagueGame) return '';
 
       const level = game.level === 'intermediate' ? 'Intermediate' : 'Rec';
@@ -882,7 +962,7 @@
 
     function renderStats() {
       const result = getReplayResult();
-      const rows = result.standings.filter(player => player.games > 0);
+      const rows = getSortedStandingsRows(result);
 
       statsTableBody.innerHTML = '';
 
@@ -901,7 +981,7 @@
         tr.innerHTML = `
           <td>${index + 1}</td>
           <td>${formatPlayerNameCell(player)}</td>
-          <td>${formatDisplayedRating(getStandingsRawForDisplay(player))}</td>
+          <td>${formatDisplayedRating(player.experimentalLeaderboardRaw)}</td>
           <td>${player.games}</td>
         `;
         statsTableBody.appendChild(tr);
@@ -1021,6 +1101,7 @@
     }
 
     function renderAll() {
+      updateConfidenceSliderUI();
       updateModeDescriptions();
       renderStats();
       renderHistory();
@@ -1254,13 +1335,8 @@
     }
 
     async function maybeOfferDefaultDatabase() {
-      if (!hasNoRealData()) {
-        return;
-      }
-
-      if (getPromptChoice() !== '') {
-        return;
-      }
+      if (!hasNoRealData()) return;
+      if (getPromptChoice() !== '') return;
 
       try {
         defaultDatabaseStatusEl.textContent = 'Checking server stats...';
@@ -1346,10 +1422,15 @@
     });
 
     confidenceAdjustmentSliderEl.addEventListener('input', () => {
-      const value = getConfidenceAdjustment();
+      const value = getConfidenceSliderPosition();
       confidenceAdjustmentValueEl.textContent = String(value);
-      saveConfidenceAdjustment(value);
+      confidencePenaltyStrengthValueEl.textContent = getUncertaintyPenaltyStrength().toFixed(2);
+      saveConfidenceSliderPosition(value);
       renderAll();
+    });
+
+    showConfidenceSliderToggleEl.addEventListener('change', () => {
+      updateConfidenceSliderUI();
     });
 
     volleyballAdjustedToggleEl.addEventListener('change', () => {
@@ -1365,12 +1446,13 @@
     seasonLengthSliderEl.value = String(loadSeasonLengthMonths());
     seasonLengthValueEl.textContent = seasonLengthSliderEl.value;
 
-    confidenceAdjustmentSliderEl.value = String(loadConfidenceAdjustment());
-    confidenceAdjustmentValueEl.textContent = confidenceAdjustmentSliderEl.value;
+    confidenceAdjustmentSliderEl.value = String(loadConfidenceSliderPosition());
+    showConfidenceSliderToggleEl.checked = false;
 
     volleyballAdjustedToggleEl.checked = loadVolleyballAdjustedEnabled();
     includeLeagueGamesToggleEl.checked = loadIncludeLeagueGamesEnabled();
 
+    updateConfidenceSliderUI();
     renderAll();
 
     prepareDefaultDatabaseMeta().catch(() => {

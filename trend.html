@@ -286,7 +286,9 @@
     } from './ratings.js';
 
     const DEFAULT_SEASON_LENGTH_MONTHS = 6;
+    const DEFAULT_CONFIDENCE_ADJUSTMENT = 8;
     const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
+    const CONFIDENCE_ADJUSTMENT_STORAGE_KEY = 'gameDayLeaderboardConfidenceAdjustment';
     const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
     const INCLUDE_LEAGUE_GAMES_STORAGE_KEY = 'gameDayIncludeLeagueGamesEnabled';
 
@@ -365,6 +367,29 @@
 
       if (!Number.isFinite(saved) || saved < 1 || saved > 12) {
         return DEFAULT_SEASON_LENGTH_MONTHS;
+      }
+
+      return Math.round(saved);
+    }
+
+    function loadConfidenceAdjustment() {
+      const params = getUrlParams();
+      const fromUrl = Number(params.get('confidenceGames'));
+
+      if (Number.isFinite(fromUrl) && fromUrl >= 0 && fromUrl <= 16) {
+        return Math.round(fromUrl);
+      }
+
+      const raw = localStorage.getItem(CONFIDENCE_ADJUSTMENT_STORAGE_KEY);
+
+      if (raw === null) {
+        return DEFAULT_CONFIDENCE_ADJUSTMENT;
+      }
+
+      const saved = Number(raw);
+
+      if (!Number.isFinite(saved) || saved < 0 || saved > 16) {
+        return DEFAULT_CONFIDENCE_ADJUSTMENT;
       }
 
       return Math.round(saved);
@@ -528,9 +553,10 @@
       return `${date} #${index + 1}`;
     }
 
-    function getModeText({ volleyballAdjusted, includeLeagueGames, seasonLengthMonths }) {
+    function getModeText({ volleyballAdjusted, includeLeagueGames, seasonLengthMonths, confidenceAdjustment }) {
       const modes = [
-        `${seasonLengthMonths}-month seasonal ranking`
+        `${seasonLengthMonths}-month seasonal ranking`,
+        `confidence adjustment ${confidenceAdjustment}`
       ];
 
       modes.push(
@@ -601,7 +627,14 @@
       return parts.join('<br>');
     }
 
-    function getReplayResult({ players, games, seasonLengthMonths, volleyballAdjusted, includeLeagueGames }) {
+    function getReplayResult({
+      players,
+      games,
+      seasonLengthMonths,
+      confidenceAdjustment,
+      volleyballAdjusted,
+      includeLeagueGames
+    }) {
       return replayRatings({
         players,
         games,
@@ -609,7 +642,8 @@
         volleyballAdjusted,
         includeLeagueGames,
         options: {
-          seasonalTaperDays: Math.round(seasonLengthMonths * 30.4375)
+          seasonalTaperDays: Math.round(seasonLengthMonths * 30.4375),
+          leaderboardConfidenceGames: confidenceAdjustment
         }
       });
     }
@@ -619,6 +653,7 @@
       games,
       playerId,
       seasonLengthMonths,
+      confidenceAdjustment,
       volleyballAdjusted,
       includeLeagueGames
     }) {
@@ -626,6 +661,7 @@
         players,
         games,
         seasonLengthMonths,
+        confidenceAdjustment,
         volleyballAdjusted,
         includeLeagueGames
       });
@@ -651,7 +687,7 @@
       return null;
     }
 
-    function renderSummary(timeline, standingsEntry) {
+    function renderSummary(timeline, standingsEntry, confidenceAdjustment) {
       summaryGridEl.innerHTML = '';
 
       if (timeline.length === 0) {
@@ -671,6 +707,7 @@
       const items = [
         ['Current Rating', formatRating(latest.displayRatingAfter)],
         ['Leaderboard Rating', leaderboardRating === null ? 'n/a' : formatRating(leaderboardRating)],
+        ['Confidence Adj.', confidenceAdjustment],
         ['Games', timeline.length],
         ['Record', `${wins}-${losses} (${formatPercent(winRate)})`],
         ['Rating Change', formatSignedNumber(ratingChange)],
@@ -840,6 +877,7 @@
       const entity = player || leagueContext;
       const isLeagueContext = Boolean(leagueContext);
       const seasonLengthMonths = loadSeasonLengthMonths();
+      const confidenceAdjustment = loadConfidenceAdjustment();
       const seasonal = true;
       const volleyballAdjusted = loadVolleyballAdjustedEnabled();
       const includeLeagueGames = loadIncludeLeagueGamesEnabled();
@@ -870,13 +908,14 @@
         games,
         playerId,
         seasonLengthMonths,
+        confidenceAdjustment,
         volleyballAdjusted,
         includeLeagueGames
       });
 
       if (timeline.length === 0) {
         statusMessageEl.textContent = `${entity.name} has no included games under the current model settings.`;
-        renderSummary(timeline, standingsEntry);
+        renderSummary(timeline, standingsEntry, confidenceAdjustment);
         renderTable(timeline, isLeagueContext);
         return;
       }
@@ -890,10 +929,11 @@
 
       statusMessageEl.textContent = [
         `${isLeagueContext ? 'League context' : 'Player'}: ${entity.name}`,
-        `Mode: ${getModeText({ volleyballAdjusted, includeLeagueGames, seasonLengthMonths })}`,
+        `Mode: ${getModeText({ volleyballAdjusted, includeLeagueGames, seasonLengthMonths, confidenceAdjustment })}`,
         `Starting Rating: ${formatRating(first.displayRatingBefore)}`,
         `Current Rating: ${formatRating(latest.displayRatingAfter)}`,
         `Leaderboard-adjusted Rating: ${leaderboardRating === null ? 'n/a' : formatRating(leaderboardRating)}`,
+        `Confidence adjustment: ${confidenceAdjustment}`,
         `Rating change: ${formatSignedNumber(ratingChange)}`,
         `Record: ${wins}-${losses} (${formatPercent(wins / timeline.length)})`,
         `Current mu: ${formatMu(latest.muAfter)}`,
@@ -903,7 +943,7 @@
         `Latest included game: ${latest.date || 'Unknown'}`
       ].join('\n');
 
-      renderSummary(timeline, standingsEntry);
+      renderSummary(timeline, standingsEntry, confidenceAdjustment);
       renderChart(timeline, entity.name);
       renderTable(timeline, isLeagueContext);
     }

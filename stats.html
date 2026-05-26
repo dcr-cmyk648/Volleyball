@@ -469,19 +469,16 @@
           <thead>
             <tr>
               <th>#</th>
-              <th>Player / League Team (click name for score graph)</th>
+              <th>Player / League Team</th>
               <th>Rating</th>
               <th>Games</th>
-              <th>Wins</th>
-              <th>Mu</th>
-              <th>Sigma</th>
             </tr>
           </thead>
           <tbody id="statsTableBody"></tbody>
         </table>
       </div>
       <div class="small">
-        Standings scroll after roughly 10 rows to keep the page compact.
+        Click a name to open the detailed trend page with wins, mu, sigma, rating changes, and game-by-game model details.
       </div>
     </div>
 
@@ -530,8 +527,6 @@
     import {
       replayRatings,
       formatDisplayedRating,
-      formatMu,
-      formatSigma,
       LEAGUE_TEAM_ID,
       LEAGUE_TEAM_NAME,
     } from './ratings.js';
@@ -813,6 +808,11 @@
       return entries.reduce((sum, p) => sum + Number(p.rating), 0) / entries.length;
     }
 
+    function formatMaybeMultiplier(value) {
+      if (typeof value !== 'number' || Number.isNaN(value)) return null;
+      return `${value.toFixed(2)}x`;
+    }
+
     function renderStats() {
       const result = getReplayResult();
       const rows = result.standings.filter(player => player.games > 0);
@@ -822,7 +822,7 @@
       if (rows.length === 0) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 7;
+        td.colSpan = 4;
         td.innerHTML = '<div class="empty-state">No players or league teams found for the current model.</div>';
         tr.appendChild(td);
         statsTableBody.appendChild(tr);
@@ -836,9 +836,6 @@
           <td>${formatPlayerNameCell(player)}</td>
           <td>${formatDisplayedRating(player.rating)}</td>
           <td>${player.games}</td>
-          <td>${player.wins}</td>
-          <td>${formatMu(player.mu)}</td>
-          <td>${formatSigma(player.sigma)}</td>
         `;
         statsTableBody.appendChild(tr);
       });
@@ -874,7 +871,7 @@
         const redNames = entry.before.red.map((p, i) => {
           const after = entry.after.red[i];
           const name =
-            (game.redTeam || []).find(player => player.id === p.id)?.name || p.id;
+            (game.redTeam || []).find(player => String(player.id) === String(p.id))?.name || p.id;
           return `${name} (${formatDisplayedRating(p.rating)} → ${formatDisplayedRating(after.rating)})`;
         }).join(', ') || '(none)';
 
@@ -883,18 +880,30 @@
           : entry.before.blue.map((p, i) => {
               const after = entry.after.blue[i];
               const name =
-                (game.blueTeam || []).find(player => player.id === p.id)?.name || p.id;
+                (game.blueTeam || []).find(player => String(player.id) === String(p.id))?.name || p.id;
               return `${name} (${formatDisplayedRating(p.rating)} → ${formatDisplayedRating(after.rating)})`;
             }).join(', ') || '(none)';
 
         const modeBits = [courtTypeText];
 
-        if (entry.seasonalWeight !== 1) {
+        if (typeof entry.seasonalWeight === 'number' && entry.seasonalWeight !== 1) {
           modeBits.push(`Seasonal weight: ${entry.seasonalWeight.toFixed(2)}x`);
         }
 
         if (entry.volleyballAdjusted) {
           modeBits.push(`Volleyball update: ${entry.volleyballUpdateMultiplier.toFixed(2)}x`);
+        }
+
+        if (typeof entry.finalUpdateMultiplier === 'number') {
+          modeBits.push(`Final update: ${entry.finalUpdateMultiplier.toFixed(2)}x`);
+        }
+
+        if (typeof entry.blowoutBonusFactor === 'number' && entry.blowoutBonusFactor !== 1) {
+          modeBits.push(`Margin bonus: ${entry.blowoutBonusFactor.toFixed(2)}x`);
+        }
+
+        if (typeof entry.closeOvertimeDampener === 'number' && entry.closeOvertimeDampener !== 1) {
+          modeBits.push(`Close overtime dampener: ${entry.closeOvertimeDampener.toFixed(2)}x`);
         }
 
         if (game.isLeagueGame) {

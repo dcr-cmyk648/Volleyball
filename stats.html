@@ -435,7 +435,7 @@
       </div>
 
       <div class="small" id="rankingModeDescription">
-        Sorted by Rating, an elo-like transform of (mu - 3 × sigma).
+        Sorted by leaderboard-adjusted Rating. Backend ratings and balancing still use OpenSkill mu/sigma.
       </div>
 
       <div class="model-controls">
@@ -461,7 +461,7 @@
       </div>
 
       <div class="small" id="modelHelpText">
-        Seasonal ranking is always active here. The slider controls how long the season is before older games taper toward minimum impact. Volleyball-adjusted model reduces how strongly team size drives expected outcomes. League games are separated by inferred league context.
+        Rating on this page is leaderboard-adjusted so low-game players are pulled toward baseline. This does not affect OpenSkill updates or team balancing.
       </div>
 
       <div class="table-wrap standings-wrap" style="margin-top: 12px;">
@@ -702,7 +702,7 @@
       );
 
       rankingModeDescriptionEl.textContent =
-        `Sorted by Rating, an elo-like transform of (mu - 3 × sigma), using ${modes.join(' + ')}.`;
+        `Sorted by leaderboard-adjusted Rating using ${modes.join(' + ')}. Backend ratings and balancing still use OpenSkill mu/sigma.`;
 
       historyModeDescriptionEl.textContent =
         `Newest games at the top. Delete removes the game from history and updates all derived stats automatically. Active mode: ${modes.join(' + ')}.`;
@@ -715,6 +715,22 @@
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#039;');
+    }
+
+    function getStandingsRawForDisplay(player) {
+      if (typeof player.leaderboardRawOrdinal === 'number') {
+        return player.leaderboardRawOrdinal;
+      }
+
+      if (typeof player.rating === 'number') {
+        return player.rating;
+      }
+
+      if (typeof player.rawOrdinal === 'number') {
+        return player.rawOrdinal;
+      }
+
+      return 0;
     }
 
     function formatPlayerNameCell(player) {
@@ -803,14 +819,9 @@
       return `Score: ${winnerLabel} ${game.scoreRed} - ${loserLabel} ${game.scoreBlue}`;
     }
 
-    function averageDisplayedRating(entries) {
+    function averageRawOrdinal(entries) {
       if (!entries.length) return 0;
       return entries.reduce((sum, p) => sum + Number(p.rating), 0) / entries.length;
-    }
-
-    function formatMaybeMultiplier(value) {
-      if (typeof value !== 'number' || Number.isNaN(value)) return null;
-      return `${value.toFixed(2)}x`;
     }
 
     function renderStats() {
@@ -834,7 +845,7 @@
         tr.innerHTML = `
           <td>${index + 1}</td>
           <td>${formatPlayerNameCell(player)}</td>
-          <td>${formatDisplayedRating(player.rating)}</td>
+          <td>${formatDisplayedRating(getStandingsRawForDisplay(player))}</td>
           <td>${player.games}</td>
         `;
         statsTableBody.appendChild(tr);
@@ -876,7 +887,7 @@
         }).join(', ') || '(none)';
 
         const blueNames = game.isLeagueGame
-          ? `${leagueContextName} (${formatDisplayedRating(averageDisplayedRating(entry.before.blue))} → ${formatDisplayedRating(averageDisplayedRating(entry.after.blue))})`
+          ? `${leagueContextName} (${formatDisplayedRating(averageRawOrdinal(entry.before.blue))} → ${formatDisplayedRating(averageRawOrdinal(entry.after.blue))})`
           : entry.before.blue.map((p, i) => {
               const after = entry.after.blue[i];
               const name =

@@ -1060,12 +1060,17 @@
     return `${(value * 100).toFixed(1)}%`;
   }
 
-  function getAverageDisplayedRating(teamPlayers, ratingMap) {
+  function getAverageRawOrdinal(teamPlayers, ratingMap) {
     if (!teamPlayers.length) return 0;
 
     const ratedPlayers = getPlayerRatingsForList(teamPlayers, ratingMap);
-    const total = ratedPlayers.reduce((sum, player) => sum + player.rating, 0);
+    const total = ratedPlayers.reduce((sum, player) => sum + player.rawOrdinal, 0);
     return total / ratedPlayers.length;
+  }
+
+  function formatRawStrength(value) {
+    if (typeof value !== 'number' || Number.isNaN(value)) return 'n/a';
+    return value.toFixed(2);
   }
 
   function getPlayerIdSet(teamPlayers) {
@@ -1303,7 +1308,7 @@
       });
 
       strengthsByColor[color] = strength.strength;
-      averageRatingsByColor[color] = getAverageDisplayedRating(teamsByColor[color], ratingMap);
+      averageRatingsByColor[color] = getAverageRawOrdinal(teamsByColor[color], ratingMap);
     });
 
     const strengths = TEAM_COLORS.map(color => strengthsByColor[color]);
@@ -1526,8 +1531,12 @@
         return;
       }
 
-      const redAvg = getAverageDisplayedRating(redTeam, ratingData.ratingMap);
+      const redAvg = getAverageRawOrdinal(redTeam, ratingData.ratingMap);
       const league = ratingData.leagueTeam;
+      const leagueRawOrdinal =
+        typeof league.rawOrdinal === 'number'
+          ? league.rawOrdinal
+          : league.rating;
 
       const lines = [
         `${getLeagueLevelLabel()} league mode is on.`,
@@ -1536,7 +1545,7 @@
         `Season length: ${loadSeasonLengthMonths()} months`,
         `Volleyball-adjusted model: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
         `Red average Rating: ${formatDisplayedRating(redAvg)}`,
-        `Blue Rating: ${formatDisplayedRating(league.rating)} (${LEAGUE_TEAM_NAME})`,
+        `Blue Rating: ${formatDisplayedRating(leagueRawOrdinal)} (${LEAGUE_TEAM_NAME})`,
         `Blue mu: ${formatMu(league.mu)}`,
         `Blue sigma: ${formatSigma(league.sigma)}`
       ];
@@ -1560,7 +1569,7 @@
         });
 
         strengthsByColor[color] = strength.strength;
-        averagesByColor[color] = getAverageDisplayedRating(teamPlayers, ratingData.ratingMap);
+        averagesByColor[color] = getAverageRawOrdinal(teamPlayers, ratingData.ratingMap);
       });
 
       const allEmpty = TEAM_COLORS.every(color => teamsByColor[color].length === 0);
@@ -1591,12 +1600,12 @@
         `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
         `Season length: ${loadSeasonLengthMonths()} months`,
         `Volleyball-adjusted ratings: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
-        `Team strength spread: ${Math.round(spread)}`,
-        `Average pairwise difference: ${Math.round(averagePairwiseDifference)}`,
-        `Red average Rating: ${formatDisplayedRating(averagesByColor.red)} | Strength: ${Math.round(strengthsByColor.red)}`,
-        `Blue average Rating: ${formatDisplayedRating(averagesByColor.blue)} | Strength: ${Math.round(strengthsByColor.blue)}`,
-        `Green average Rating: ${formatDisplayedRating(averagesByColor.green)} | Strength: ${Math.round(strengthsByColor.green)}`,
-        `Yellow average Rating: ${formatDisplayedRating(averagesByColor.yellow)} | Strength: ${Math.round(strengthsByColor.yellow)}`
+        `Team raw-strength spread: ${formatRawStrength(spread)}`,
+        `Average pairwise raw-strength difference: ${formatRawStrength(averagePairwiseDifference)}`,
+        `Red average Rating: ${formatDisplayedRating(averagesByColor.red)} | Raw strength: ${formatRawStrength(strengthsByColor.red)}`,
+        `Blue average Rating: ${formatDisplayedRating(averagesByColor.blue)} | Raw strength: ${formatRawStrength(strengthsByColor.blue)}`,
+        `Green average Rating: ${formatDisplayedRating(averagesByColor.green)} | Raw strength: ${formatRawStrength(strengthsByColor.green)}`,
+        `Yellow average Rating: ${formatDisplayedRating(averagesByColor.yellow)} | Raw strength: ${formatRawStrength(strengthsByColor.yellow)}`
       ];
 
       maybePushGroupSummary(lines);
@@ -1637,8 +1646,8 @@
       ratingMap: ratingData.ratingMap
     });
 
-    const redAvg = getAverageDisplayedRating(redTeam, ratingData.ratingMap);
-    const blueAvg = getAverageDisplayedRating(blueTeam, ratingData.ratingMap);
+    const redAvg = getAverageRawOrdinal(redTeam, ratingData.ratingMap);
+    const blueAvg = getAverageRawOrdinal(blueTeam, ratingData.ratingMap);
 
     const lines = [
       `Balancing model: volleyball-adjusted`,
@@ -1649,8 +1658,8 @@
       `Similarity rule: ${forceTwoChangesCheckboxEl.checked ? 'on' : 'off'}`,
       `Red average Rating: ${formatDisplayedRating(redAvg)}`,
       `Blue average Rating: ${formatDisplayedRating(blueAvg)}`,
-      `Red strength: ${Math.round(score.redStrength)}`,
-      `Blue strength: ${Math.round(score.blueStrength)}`,
+      `Red raw strength: ${formatRawStrength(score.redStrength)}`,
+      `Blue raw strength: ${formatRawStrength(score.blueStrength)}`,
       `Red win probability: ${formatPercent(score.redWinProbability)}`,
       `Blue win probability: ${formatPercent(score.blueWinProbability)}`,
       `Fairness: ${formatPercent(score.fairness)}`
@@ -1660,7 +1669,7 @@
 
     if (score.redTeamSize !== score.blueTeamSize || score.redSizeAdjustment !== 0 || score.blueSizeAdjustment !== 0) {
       lines.push(
-        `Size adjustment: Red ${score.redSizeAdjustment >= 0 ? '+' : ''}${Math.round(score.redSizeAdjustment)}, Blue ${score.blueSizeAdjustment >= 0 ? '+' : ''}${Math.round(score.blueSizeAdjustment)}`
+        `Size adjustment: Red ${score.redSizeAdjustment >= 0 ? '+' : ''}${formatRawStrength(score.redSizeAdjustment)}, Blue ${score.blueSizeAdjustment >= 0 ? '+' : ''}${formatRawStrength(score.blueSizeAdjustment)}`
       );
     }
 

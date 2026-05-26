@@ -16,6 +16,10 @@
       --button: #334155;
       --button-text: #f3f4f6;
       --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+      --red: #f87171;
+      --blue: #60a5fa;
+      --green: #4ade80;
+      --yellow: #facc15;
     }
 
     * { box-sizing: border-box; }
@@ -31,7 +35,7 @@
       padding: 16px;
     }
 
-    .container { max-width: 1100px; margin: 0 auto; }
+    .container { max-width: 1200px; margin: 0 auto; }
 
     .topbar {
       display: flex;
@@ -133,9 +137,11 @@
       border-radius: 16px;
       background: rgba(255,255,255,0.02);
       margin-top: 12px;
+      max-height: 620px;
+      overflow-y: auto;
     }
 
-    table { width: 100%; border-collapse: collapse; }
+    table { width: 100%; border-collapse: collapse; min-width: 1160px; }
 
     th, td {
       text-align: left;
@@ -165,6 +171,41 @@
       font-weight: 700;
     }
 
+    .team-pill {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      margin-bottom: 4px;
+    }
+
+    .team-pill.red {
+      color: #fecaca;
+      border-color: rgba(248, 113, 113, 0.35);
+      background: rgba(248, 113, 113, 0.12);
+    }
+
+    .team-pill.blue {
+      color: #bfdbfe;
+      border-color: rgba(96, 165, 250, 0.35);
+      background: rgba(96, 165, 250, 0.12);
+    }
+
+    .team-pill.green {
+      color: #bbf7d0;
+      border-color: rgba(74, 222, 128, 0.35);
+      background: rgba(74, 222, 128, 0.12);
+    }
+
+    .team-pill.yellow {
+      color: #fef08a;
+      border-color: rgba(250, 204, 21, 0.35);
+      background: rgba(250, 204, 21, 0.12);
+    }
+
     .empty-state {
       color: var(--muted);
       border: 1px dashed var(--border);
@@ -173,7 +214,7 @@
       background: rgba(255,255,255,0.03);
     }
 
-    @media (max-width: 800px) {
+    @media (max-width: 900px) {
       .summary-grid { grid-template-columns: 1fr 1fr; }
       .chart-wrap { height: 320px; }
       h1 { font-size: 1.7rem; }
@@ -197,7 +238,7 @@
     <div class="card">
       <h2>Rating Over Time</h2>
       <div class="small">
-        This graph starts at the initial baseline rating, then shows the public Rating after each included game.
+        This graph starts at the initial baseline rating, then shows the public Rating after each included game. It uses the same replay settings as the standings page.
       </div>
       <div id="summaryGrid" class="summary-grid"></div>
       <div id="statusMessage" class="status">Loading trend...</div>
@@ -218,11 +259,13 @@
               <th>Date</th>
               <th>Result</th>
               <th>Side</th>
+              <th>Court / Context</th>
               <th>Score</th>
               <th>Rating</th>
               <th>Mu</th>
               <th>Sigma</th>
-              <th>Model</th>
+              <th>Change</th>
+              <th>Model Details</th>
             </tr>
           </thead>
           <tbody id="timelineTableBody"></tbody>
@@ -245,6 +288,14 @@
     const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
     const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
     const INCLUDE_LEAGUE_GAMES_STORAGE_KEY = 'gameDayIncludeLeagueGamesEnabled';
+
+    const TEAM_COLORS = ['red', 'blue', 'green', 'yellow'];
+    const TEAM_LABELS = {
+      red: 'Red',
+      blue: 'Blue',
+      green: 'Green',
+      yellow: 'Yellow'
+    };
 
     const pageTitleEl = document.getElementById('pageTitle');
     const summaryGridEl = document.getElementById('summaryGrid');
@@ -350,8 +401,99 @@
       return players.find(player => String(player.id) === String(playerId)) || null;
     }
 
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
     function formatRating(value) {
       return `${Math.round(Number(value))}`;
+    }
+
+    function formatSignedNumber(value) {
+      const rounded = Math.round(Number(value));
+      return `${rounded >= 0 ? '+' : ''}${rounded}`;
+    }
+
+    function formatPercent(value) {
+      if (typeof value !== 'number' || Number.isNaN(value)) return 'n/a';
+      return `${Math.round(value * 100)}%`;
+    }
+
+    function formatMultiplier(value) {
+      if (typeof value !== 'number' || Number.isNaN(value)) return 'n/a';
+      return `${value.toFixed(2)}x`;
+    }
+
+    function getCourtTypeLabel(row) {
+      return row?.courtType === 'sand' ? 'Sand' : 'Indoor';
+    }
+
+    function getLeagueContextName(row) {
+      if (row?.leagueContext?.name) return row.leagueContext.name;
+      if (!row?.isLeagueGame) return '';
+      return 'League Team';
+    }
+
+    function getDisplayColorForSide(row, side) {
+      if (side === 'red' && TEAM_COLORS.includes(row?.displayWinnerColor)) {
+        return row.displayWinnerColor;
+      }
+
+      if (side === 'blue' && TEAM_COLORS.includes(row?.displayLoserColor)) {
+        return row.displayLoserColor;
+      }
+
+      return side === 'blue' ? 'blue' : 'red';
+    }
+
+    function getDisplayLabelForSide(row, side) {
+      const color = getDisplayColorForSide(row, side);
+      return `${TEAM_LABELS[color] || TEAM_LABELS[side] || side} Team`;
+    }
+
+    function formatSide(row, isLeagueContext) {
+      if (isLeagueContext) return getLeagueContextName(row) || 'League Team';
+      if (row.side === 'red') return getDisplayLabelForSide(row, 'red');
+      if (row.side === 'blue') {
+        return row.isLeagueGame ? getLeagueContextName(row) : getDisplayLabelForSide(row, 'blue');
+      }
+      return '';
+    }
+
+    function getSideColor(row, isLeagueContext) {
+      if (isLeagueContext) return 'blue';
+      if (row.side === 'red') return getDisplayColorForSide(row, 'red');
+      if (row.side === 'blue') return getDisplayColorForSide(row, 'blue');
+      return 'blue';
+    }
+
+    function getWinnerLabel(row) {
+      const winnerSide = row.winner === 'blue' ? 'blue' : 'red';
+
+      if (winnerSide === 'blue' && row.isLeagueGame) {
+        return getLeagueContextName(row);
+      }
+
+      return getDisplayLabelForSide(row, winnerSide);
+    }
+
+    function getLoserLabel(row) {
+      const loserSide = row.winner === 'blue' ? 'red' : 'blue';
+
+      if (loserSide === 'blue' && row.isLeagueGame) {
+        return getLeagueContextName(row);
+      }
+
+      return getDisplayLabelForSide(row, loserSide);
+    }
+
+    function getScoreForSide(row, side) {
+      return side === 'blue' ? row.scoreBlue : row.scoreRed;
     }
 
     function formatScore(row) {
@@ -364,14 +506,10 @@
         return 'None';
       }
 
-      return `Red ${row.scoreRed} - Blue ${row.scoreBlue}`;
-    }
+      const winnerSide = row.winner === 'blue' ? 'blue' : 'red';
+      const loserSide = winnerSide === 'blue' ? 'red' : 'blue';
 
-    function formatSide(side, isLeagueContext) {
-      if (isLeagueContext) return 'League Team';
-      if (side === 'red') return 'Red';
-      if (side === 'blue') return 'Blue';
-      return '';
+      return `${getWinnerLabel(row)} ${getScoreForSide(row, winnerSide)} - ${getLoserLabel(row)} ${getScoreForSide(row, loserSide)}`;
     }
 
     function makeGameLabel(row, index) {
@@ -399,30 +537,57 @@
       return modes.join(' + ');
     }
 
-    function getLeagueContextName(row) {
-      if (row?.leagueContext?.name) return row.leagueContext.name;
-      if (!row?.isLeagueGame) return '';
-      return 'League Team';
-    }
-
-    function getModelCell(row) {
-      const parts = [];
-
-      if (row.seasonalWeight !== 1) {
-        parts.push(`Seasonal ${row.seasonalWeight.toFixed(2)}x`);
-      }
-
-      if (row.volleyballAdjusted) {
-        parts.push(`VB update ${row.volleyballUpdateMultiplier.toFixed(2)}x`);
-      } else {
-        parts.push('Standard');
-      }
+    function getContextCell(row) {
+      const parts = [`Court: ${getCourtTypeLabel(row)}`];
 
       if (row.isLeagueGame) {
         parts.push(getLeagueContextName(row));
       }
 
-      return parts.join(' | ');
+      if (row.displayWinnerColor || row.displayLoserColor) {
+        parts.push(`Displayed: ${getDisplayLabelForSide(row, 'red')} vs ${getDisplayLabelForSide(row, 'blue')}`);
+      }
+
+      return parts.join('<br>');
+    }
+
+    function getModelCell(row) {
+      const parts = [];
+
+      parts.push(`Seasonal ${formatMultiplier(row.seasonalWeight)}`);
+      parts.push(`Margin ${formatMultiplier(row.marginFactor)}`);
+
+      if (typeof row.blowoutBonusFactor === 'number' && row.blowoutBonusFactor !== 1) {
+        parts.push(`Margin bonus ${formatMultiplier(row.blowoutBonusFactor)}`);
+      }
+
+      if (typeof row.closeOvertimeDampener === 'number' && row.closeOvertimeDampener !== 1) {
+        parts.push(`Close overtime dampener ${formatMultiplier(row.closeOvertimeDampener)}`);
+      }
+
+      if (row.volleyballAdjusted) {
+        parts.push(`VB update ${formatMultiplier(row.volleyballUpdateMultiplier)}`);
+      } else {
+        parts.push('Standard OpenSkill update');
+      }
+
+      if (typeof row.finalUpdateMultiplier === 'number') {
+        parts.push(`Final update ${formatMultiplier(row.finalUpdateMultiplier)}`);
+      }
+
+      if (typeof row.openSkillWinnerProbability === 'number') {
+        parts.push(`OpenSkill winner prob ${formatPercent(row.openSkillWinnerProbability)}`);
+      }
+
+      if (typeof row.volleyballWinnerProbability === 'number') {
+        parts.push(`VB winner prob ${formatPercent(row.volleyballWinnerProbability)}`);
+      }
+
+      if (typeof row.pointDiff === 'number') {
+        parts.push(`Point diff ${row.pointDiff}`);
+      }
+
+      return parts.join('<br>');
     }
 
     function renderSummary(timeline) {
@@ -436,13 +601,20 @@
       const latest = timeline[timeline.length - 1];
       const wins = timeline.filter(row => row.won).length;
       const losses = timeline.length - wins;
-      const change = latest.displayRatingAfter - first.displayRatingBefore;
+      const winRate = timeline.length > 0 ? wins / timeline.length : 0;
+      const ratingChange = latest.displayRatingAfter - first.displayRatingBefore;
+      const muChange = latest.muAfter - first.muBefore;
+      const sigmaChange = latest.sigmaAfter - first.sigmaBefore;
 
       const items = [
         ['Current Rating', formatRating(latest.displayRatingAfter)],
         ['Games', timeline.length],
-        ['Record', `${wins}-${losses}`],
-        ['Change', `${change >= 0 ? '+' : ''}${Math.round(change)}`],
+        ['Record', `${wins}-${losses} (${formatPercent(winRate)})`],
+        ['Rating Change', formatSignedNumber(ratingChange)],
+        ['Current Mu', formatMu(latest.muAfter)],
+        ['Current Sigma', formatSigma(latest.sigmaAfter)],
+        ['Mu Change', `${muChange >= 0 ? '+' : ''}${muChange.toFixed(2)}`],
+        ['Sigma Change', `${sigmaChange >= 0 ? '+' : ''}${sigmaChange.toFixed(2)}`],
       ];
 
       items.forEach(([label, value]) => {
@@ -450,8 +622,8 @@
         box.className = 'summary-box';
 
         box.innerHTML = `
-          <div class="summary-label">${label}</div>
-          <div class="summary-value">${value}</div>
+          <div class="summary-label">${escapeHtml(label)}</div>
+          <div class="summary-value">${escapeHtml(value)}</div>
         `;
 
         summaryGridEl.appendChild(box);
@@ -514,11 +686,12 @@
                   const row = timeline[context.dataIndex - 1];
                   const result = row.won ? 'Win' : 'Loss';
                   const score = formatScore(row);
-                  const model = getModelCell(row);
+                  const model = getModelCell(row).replaceAll('<br>', ' | ');
 
                   return [
                     `Result: ${result}`,
-                    `Side: ${formatSide(row.side, Boolean(row.leagueContext && row.side === 'blue'))}`,
+                    `Side: ${formatSide(row, Boolean(row.leagueContext && row.side === 'blue'))}`,
+                    `Court: ${getCourtTypeLabel(row)}`,
                     `Score: ${score}`,
                     `Rating: ${formatRating(row.displayRatingBefore)} → ${formatRating(row.displayRatingAfter)}`,
                     `Mu: ${formatMu(row.muBefore)} → ${formatMu(row.muAfter)}`,
@@ -559,7 +732,7 @@
       if (timeline.length === 0) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 8;
+        td.colSpan = 10;
         td.innerHTML = '<div class="empty-state">No included games for this rating.</div>';
         tr.appendChild(td);
         timelineTableBodyEl.appendChild(tr);
@@ -572,15 +745,20 @@
         const tr = document.createElement('tr');
         const resultClass = row.won ? 'result-win' : 'result-loss';
         const resultText = row.won ? 'Win' : 'Loss';
+        const ratingChange = row.displayRatingAfter - row.displayRatingBefore;
+        const sideColor = getSideColor(row, isLeagueContext);
+        const sideText = formatSide(row, isLeagueContext);
 
         tr.innerHTML = `
-          <td>${row.date || 'Unknown'}</td>
+          <td>${escapeHtml(row.date || 'Unknown')}</td>
           <td><span class="${resultClass}">${resultText}</span></td>
-          <td>${formatSide(row.side, isLeagueContext)}</td>
-          <td>${formatScore(row)}</td>
+          <td><span class="team-pill ${escapeHtml(sideColor)}">${escapeHtml(sideText)}</span></td>
+          <td>${getContextCell(row)}</td>
+          <td>${escapeHtml(formatScore(row))}</td>
           <td>${formatRating(row.displayRatingBefore)} → ${formatRating(row.displayRatingAfter)}</td>
           <td>${formatMu(row.muBefore)} → ${formatMu(row.muAfter)}</td>
           <td>${formatSigma(row.sigmaBefore)} → ${formatSigma(row.sigmaAfter)}</td>
+          <td>${formatSignedNumber(ratingChange)}</td>
           <td>${getModelCell(row)}</td>
         `;
 
@@ -631,12 +809,19 @@
 
       const first = timeline[0];
       const latest = timeline[timeline.length - 1];
+      const wins = timeline.filter(row => row.won).length;
+      const losses = timeline.length - wins;
+      const ratingChange = latest.displayRatingAfter - first.displayRatingBefore;
 
       statusMessageEl.textContent = [
         `${isLeagueContext ? 'League context' : 'Player'}: ${entity.name}`,
         `Mode: ${getModeText({ volleyballAdjusted, includeLeagueGames, seasonLengthMonths })}`,
         `Starting Rating: ${formatRating(first.displayRatingBefore)}`,
         `Current Rating: ${formatRating(latest.displayRatingAfter)}`,
+        `Rating change: ${formatSignedNumber(ratingChange)}`,
+        `Record: ${wins}-${losses} (${formatPercent(wins / timeline.length)})`,
+        `Current mu: ${formatMu(latest.muAfter)}`,
+        `Current sigma: ${formatSigma(latest.sigmaAfter)}`,
         `Games included: ${timeline.length}`,
         `Latest included game: ${latest.date || 'Unknown'}`
       ].join('\n');

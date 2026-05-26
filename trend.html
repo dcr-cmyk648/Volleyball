@@ -141,7 +141,7 @@
       overflow-y: auto;
     }
 
-    table { width: 100%; border-collapse: collapse; min-width: 1160px; }
+    table { width: 100%; border-collapse: collapse; min-width: 1240px; }
 
     th, td {
       text-align: left;
@@ -238,7 +238,7 @@
     <div class="card">
       <h2>Rating Over Time</h2>
       <div class="small">
-        This graph starts at the initial baseline rating, then shows the public Rating after each included game. It uses the same replay settings as the standings page.
+        This graph shows normal public Rating over time. The leaderboard-adjusted Rating is shown in the summary, but it is not used for backend updates or team balancing.
       </div>
       <div id="summaryGrid" class="summary-grid"></div>
       <div id="statusMessage" class="status">Loading trend...</div>
@@ -280,6 +280,7 @@
       GAME_STORAGE_KEY,
       getPlayerRatingTimeline,
       getLeagueContextById,
+      replayRatings,
       formatMu,
       formatSigma,
     } from './ratings.js';
@@ -419,6 +420,11 @@
       return `${rounded >= 0 ? '+' : ''}${rounded}`;
     }
 
+    function formatRawOrdinal(value) {
+      if (typeof value !== 'number' || Number.isNaN(value)) return 'n/a';
+      return value.toFixed(2);
+    }
+
     function formatPercent(value) {
       if (typeof value !== 'number' || Number.isNaN(value)) return 'n/a';
       return `${Math.round(value * 100)}%`;
@@ -458,10 +464,15 @@
 
     function formatSide(row, isLeagueContext) {
       if (isLeagueContext) return getLeagueContextName(row) || 'League Team';
-      if (row.side === 'red') return getDisplayLabelForSide(row, 'red');
+
+      if (row.side === 'red') {
+        return getDisplayLabelForSide(row, 'red');
+      }
+
       if (row.side === 'blue') {
         return row.isLeagueGame ? getLeagueContextName(row) : getDisplayLabelForSide(row, 'blue');
       }
+
       return '';
     }
 
@@ -590,7 +601,57 @@
       return parts.join('<br>');
     }
 
-    function renderSummary(timeline) {
+    function getReplayResult({ players, games, seasonLengthMonths, volleyballAdjusted, includeLeagueGames }) {
+      return replayRatings({
+        players,
+        games,
+        seasonal: true,
+        volleyballAdjusted,
+        includeLeagueGames,
+        options: {
+          seasonalTaperDays: Math.round(seasonLengthMonths * 30.4375)
+        }
+      });
+    }
+
+    function getStandingsEntry({
+      players,
+      games,
+      playerId,
+      seasonLengthMonths,
+      volleyballAdjusted,
+      includeLeagueGames
+    }) {
+      const replay = getReplayResult({
+        players,
+        games,
+        seasonLengthMonths,
+        volleyballAdjusted,
+        includeLeagueGames
+      });
+
+      return replay.standings.find(row => String(row.id) === String(playerId)) || null;
+    }
+
+    function getLeaderboardDisplayRating(standingsEntry) {
+      if (!standingsEntry) return null;
+
+      if (typeof standingsEntry.leaderboardRating === 'number') {
+        return standingsEntry.leaderboardRating;
+      }
+
+      if (typeof standingsEntry.leaderboardRawOrdinal === 'number') {
+        return 1500 + standingsEntry.leaderboardRawOrdinal * 50;
+      }
+
+      if (typeof standingsEntry.rating === 'number') {
+        return 1500 + standingsEntry.rating * 50;
+      }
+
+      return null;
+    }
+
+    function renderSummary(timeline, standingsEntry) {
       summaryGridEl.innerHTML = '';
 
       if (timeline.length === 0) {
@@ -605,14 +666,17 @@
       const ratingChange = latest.displayRatingAfter - first.displayRatingBefore;
       const muChange = latest.muAfter - first.muBefore;
       const sigmaChange = latest.sigmaAfter - first.sigmaBefore;
+      const leaderboardRating = getLeaderboardDisplayRating(standingsEntry);
 
       const items = [
         ['Current Rating', formatRating(latest.displayRatingAfter)],
+        ['Leaderboard Rating', leaderboardRating === null ? 'n/a' : formatRating(leaderboardRating)],
         ['Games', timeline.length],
         ['Record', `${wins}-${losses} (${formatPercent(winRate)})`],
         ['Rating Change', formatSignedNumber(ratingChange)],
         ['Current Mu', formatMu(latest.muAfter)],
         ['Current Sigma', formatSigma(latest.sigmaAfter)],
+        ['Raw Ordinal', formatRawOrdinal(latest.ratingAfter)],
         ['Mu Change', `${muChange >= 0 ? '+' : ''}${muChange.toFixed(2)}`],
         ['Sigma Change', `${sigmaChange >= 0 ? '+' : ''}${sigmaChange.toFixed(2)}`],
       ];
@@ -696,6 +760,7 @@
                     `Rating: ${formatRating(row.displayRatingBefore)} → ${formatRating(row.displayRatingAfter)}`,
                     `Mu: ${formatMu(row.muBefore)} → ${formatMu(row.muAfter)}`,
                     `Sigma: ${formatSigma(row.sigmaBefore)} → ${formatSigma(row.sigmaAfter)}`,
+                    `Raw ordinal: ${formatRawOrdinal(row.ratingBefore)} → ${formatRawOrdinal(row.ratingAfter)}`,
                     `Model: ${model}`
                   ];
                 }
@@ -800,9 +865,18 @@
         }
       });
 
+      const standingsEntry = getStandingsEntry({
+        players,
+        games,
+        playerId,
+        seasonLengthMonths,
+        volleyballAdjusted,
+        includeLeagueGames
+      });
+
       if (timeline.length === 0) {
         statusMessageEl.textContent = `${entity.name} has no included games under the current model settings.`;
-        renderSummary(timeline);
+        renderSummary(timeline, standingsEntry);
         renderTable(timeline, isLeagueContext);
         return;
       }
@@ -812,21 +886,24 @@
       const wins = timeline.filter(row => row.won).length;
       const losses = timeline.length - wins;
       const ratingChange = latest.displayRatingAfter - first.displayRatingBefore;
+      const leaderboardRating = getLeaderboardDisplayRating(standingsEntry);
 
       statusMessageEl.textContent = [
         `${isLeagueContext ? 'League context' : 'Player'}: ${entity.name}`,
         `Mode: ${getModeText({ volleyballAdjusted, includeLeagueGames, seasonLengthMonths })}`,
         `Starting Rating: ${formatRating(first.displayRatingBefore)}`,
         `Current Rating: ${formatRating(latest.displayRatingAfter)}`,
+        `Leaderboard-adjusted Rating: ${leaderboardRating === null ? 'n/a' : formatRating(leaderboardRating)}`,
         `Rating change: ${formatSignedNumber(ratingChange)}`,
         `Record: ${wins}-${losses} (${formatPercent(wins / timeline.length)})`,
         `Current mu: ${formatMu(latest.muAfter)}`,
         `Current sigma: ${formatSigma(latest.sigmaAfter)}`,
+        `Raw ordinal: ${formatRawOrdinal(latest.ratingAfter)}`,
         `Games included: ${timeline.length}`,
         `Latest included game: ${latest.date || 'Unknown'}`
       ].join('\n');
 
-      renderSummary(timeline);
+      renderSummary(timeline, standingsEntry);
       renderChart(timeline, entity.name);
       renderTable(timeline, isLeagueContext);
     }

@@ -66,9 +66,20 @@ export const DEFAULT_RATING_OPTIONS = {
   mu: 25,
   sigma: 25 / 3,
   ordinalSigmaMultiplier: 3,
+
   useScoreMargin: true,
+
+  // Blowout bonus:
+  // Larger point margins still move ratings more.
   maxMarginBonus: 0.25,
   marginScale: 20,
+
+  // Close overtime dampener:
+  // A game that reaches 26-24, 27-25, etc. is evidence that the teams were well balanced,
+  // so rating movement is reduced. The dampener bottoms out at 0.75x.
+  closeOvertimeDampenerMin: 0.75,
+  closeOvertimeDampenerStep: 0.05,
+
   seasonalTaperDays: 180,
 };
 
@@ -279,17 +290,63 @@ export function getGamesSortedOldestFirst(gamesList) {
     .map(entry => entry.game);
 }
 
-export function getScoreMarginFactor(scoreRed, scoreBlue, options = {}) {
+export function getScoreMarginDetails(scoreRed, scoreBlue, options = {}) {
   const cfg = mergeRatingOptions(options);
-  if (!cfg.useScoreMargin) return 1;
+
+  const emptyDetails = {
+    marginFactor: 1,
+    blowoutBonusFactor: 1,
+    closeOvertimeDampener: 1,
+    pointDiff: null,
+    winnerScore: null,
+    loserScore: null,
+    isCloseOvertime: false,
+  };
+
+  if (!cfg.useScoreMargin) return emptyDetails;
 
   const red = toFiniteNumber(scoreRed, null);
   const blue = toFiniteNumber(scoreBlue, null);
-  if (red === null || blue === null) return 1;
+  if (red === null || blue === null) return emptyDetails;
 
   const pointDiff = Math.abs(red - blue);
+  const winnerScore = Math.max(red, blue);
+  const loserScore = Math.min(red, blue);
+
   const bonus = clamp(pointDiff / cfg.marginScale, 0, cfg.maxMarginBonus);
-  return 1 + bonus;
+  const blowoutBonusFactor = 1 + bonus;
+
+  const isCloseOvertime =
+    winnerScore > 25 &&
+    pointDiff === 2;
+
+  let closeOvertimeDampener = 1;
+
+  if (isCloseOvertime) {
+    const overtimePoints = Math.max(1, winnerScore - 25);
+    const dampenerStep = Number(cfg.closeOvertimeDampenerStep) || DEFAULT_RATING_OPTIONS.closeOvertimeDampenerStep;
+    const dampenerMin = Number(cfg.closeOvertimeDampenerMin) || DEFAULT_RATING_OPTIONS.closeOvertimeDampenerMin;
+
+    closeOvertimeDampener = clamp(
+      1 - overtimePoints * dampenerStep,
+      dampenerMin,
+      1
+    );
+  }
+
+  return {
+    marginFactor: blowoutBonusFactor * closeOvertimeDampener,
+    blowoutBonusFactor,
+    closeOvertimeDampener,
+    pointDiff,
+    winnerScore,
+    loserScore,
+    isCloseOvertime,
+  };
+}
+
+export function getScoreMarginFactor(scoreRed, scoreBlue, options = {}) {
+  return getScoreMarginDetails(scoreRed, scoreBlue, options).marginFactor;
 }
 
 export function ensureRatingEntry(ratingMap, playerId, options = {}) {
@@ -665,11 +722,13 @@ export function rateSingleGame(game, ratingMap, options = {}) {
   const redTeam = buildTeamObjectsFromIds(redIds, ratingMap);
   const blueTeam = buildTeamObjectsFromIds(blueIds, ratingMap);
 
-  const marginFactor = getScoreMarginFactor(
+  const marginDetails = getScoreMarginDetails(
     game?.scoreRed,
     game?.scoreBlue,
     cfg
   );
+
+  const marginFactor = marginDetails.marginFactor;
 
   const seasonalWeight =
     typeof cfg.seasonalWeight === 'number' ? cfg.seasonalWeight : 1;
@@ -738,6 +797,12 @@ export function rateSingleGame(game, ratingMap, options = {}) {
   return {
     game: cloneSimple(game),
     marginFactor,
+    blowoutBonusFactor: marginDetails.blowoutBonusFactor,
+    closeOvertimeDampener: marginDetails.closeOvertimeDampener,
+    pointDiff: marginDetails.pointDiff,
+    winnerScore: marginDetails.winnerScore,
+    loserScore: marginDetails.loserScore,
+    isCloseOvertime: marginDetails.isCloseOvertime,
     seasonalWeight,
     volleyballAdjusted,
     volleyballUpdateMultiplier: adjustment.multiplier,
@@ -753,17 +818,6 @@ export function rateSingleGame(game, ratingMap, options = {}) {
       red: redAfter,
       blue: blueAfter,
     },
-  };
-}
-
-function getLeagueContextStatsTemplate(context) {
-  return {
-    id: context.id,
-    name: context.name,
-    wins: 0,
-    games: 0,
-    isLeagueContext: true,
-    leagueContext: cloneSimple(context),
   };
 }
 
@@ -951,6 +1005,9 @@ function getLeagueContextTimelineEntry({
     won: game.winner === 'blue',
     isLeagueGame: true,
     leagueContext: cloneSimple(context),
+    courtType: getCourtType(game),
+    displayWinnerColor: game.displayWinnerColor || null,
+    displayLoserColor: game.displayLoserColor || null,
     scoreRed: typeof game.scoreRed === 'undefined' ? null : game.scoreRed,
     scoreBlue: typeof game.scoreBlue === 'undefined' ? null : game.scoreBlue,
     ratingBefore: beforeRating,
@@ -962,9 +1019,16 @@ function getLeagueContextTimelineEntry({
     sigmaBefore: beforeSigma,
     sigmaAfter: afterSigma,
     marginFactor: result.marginFactor,
+    blowoutBonusFactor: result.blowoutBonusFactor,
+    closeOvertimeDampener: result.closeOvertimeDampener,
+    pointDiff: result.pointDiff,
+    winnerScore: result.winnerScore,
+    loserScore: result.loserScore,
+    isCloseOvertime: result.isCloseOvertime,
     seasonalWeight: result.seasonalWeight,
     volleyballAdjusted: result.volleyballAdjusted,
     volleyballUpdateMultiplier: result.volleyballUpdateMultiplier,
+    finalUpdateMultiplier: result.finalUpdateMultiplier,
     openSkillWinnerProbability: result.openSkillWinnerProbability,
     volleyballWinnerProbability: result.volleyballWinnerProbability,
     redTeam: Array.isArray(game.redTeam) ? cloneSimple(game.redTeam) : [],
@@ -1006,18 +1070,6 @@ export function getPlayerRatingTimeline({
   const referenceDate = seasonal ? getMostRecentGameDate(sortedGames) : null;
 
   sortedGames.forEach((game, chronologicalIndex) => {
-    const isRequestedLeagueContext =
-      leagueContext &&
-      game?.isLeagueGame &&
-      getLeagueContextKey(game) === leagueContext.key;
-
-    const playerIds = getGamePlayerIds(game);
-
-    if (!isRequestedLeagueContext && !playerIds.includes(String(playerId))) {
-      ensureRatingsForGame(ratingMap, game, cfg);
-      return;
-    }
-
     const seasonalWeight = seasonal
       ? getSeasonalWeight(game?.date, referenceDate, seasonalTaperDays)
       : 1;
@@ -1029,6 +1081,11 @@ export function getPlayerRatingTimeline({
       volleyballOptions,
     });
 
+    const isRequestedLeagueContext =
+      leagueContext &&
+      game?.isLeagueGame &&
+      getLeagueContextKey(game) === leagueContext.key;
+
     if (isRequestedLeagueContext) {
       const leagueEntry = getLeagueContextTimelineEntry({
         game,
@@ -1038,6 +1095,12 @@ export function getPlayerRatingTimeline({
       });
 
       if (leagueEntry) timeline.push(leagueEntry);
+      return;
+    }
+
+    const playerIds = getGamePlayerIds(game);
+
+    if (!playerIds.includes(String(playerId))) {
       return;
     }
 
@@ -1059,6 +1122,9 @@ export function getPlayerRatingTimeline({
       won: playerResult.won,
       isLeagueGame: Boolean(game.isLeagueGame),
       leagueContext: game?.isLeagueGame ? cloneSimple(getLeagueContext(game)) : null,
+      courtType: getCourtType(game),
+      displayWinnerColor: game.displayWinnerColor || null,
+      displayLoserColor: game.displayLoserColor || null,
       scoreRed: typeof game.scoreRed === 'undefined' ? null : game.scoreRed,
       scoreBlue: typeof game.scoreBlue === 'undefined' ? null : game.scoreBlue,
       ratingBefore: before.rating,
@@ -1070,9 +1136,16 @@ export function getPlayerRatingTimeline({
       sigmaBefore: before.sigma,
       sigmaAfter: after.sigma,
       marginFactor: result.marginFactor,
+      blowoutBonusFactor: result.blowoutBonusFactor,
+      closeOvertimeDampener: result.closeOvertimeDampener,
+      pointDiff: result.pointDiff,
+      winnerScore: result.winnerScore,
+      loserScore: result.loserScore,
+      isCloseOvertime: result.isCloseOvertime,
       seasonalWeight: result.seasonalWeight,
       volleyballAdjusted: result.volleyballAdjusted,
       volleyballUpdateMultiplier: result.volleyballUpdateMultiplier,
+      finalUpdateMultiplier: result.finalUpdateMultiplier,
       openSkillWinnerProbability: result.openSkillWinnerProbability,
       volleyballWinnerProbability: result.volleyballWinnerProbability,
       redTeam: Array.isArray(game.redTeam) ? cloneSimple(game.redTeam) : [],

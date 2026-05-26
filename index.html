@@ -269,6 +269,12 @@
       padding-right: 4px;
     }
 
+    .player-list.no-scroll {
+      max-height: none;
+      overflow-y: visible;
+      padding-right: 0;
+    }
+
     .player-row {
       display: grid;
       grid-template-columns: 28px minmax(0, 1fr) auto;
@@ -1034,6 +1040,13 @@
     });
   }
 
+  function updatePlayerListScrollMode(visiblePlayers) {
+    const hasPresent = visiblePlayers.some(player => getPlayerState(player.id).present);
+    const hasAway = visiblePlayers.some(player => !getPlayerState(player.id).present);
+
+    playerListEl.classList.toggle('no-scroll', !(hasPresent && hasAway));
+  }
+
   function shuffleArray(input) {
     const arr = [...input];
     for (let i = arr.length - 1; i > 0; i -= 1) {
@@ -1452,7 +1465,7 @@
   }
 
   function getActiveGroupsSummary() {
-    if (!isGroupingActive()) return 'Grouping: off';
+    if (!isGroupingActive()) return '';
 
     const counts = {};
     getPresentPlayers().forEach(player => {
@@ -1468,6 +1481,11 @@
     return parts.length ? `Grouping: ${parts.join(' | ')}` : 'Grouping: on, no active groups';
   }
 
+  function maybePushGroupSummary(lines) {
+    const groupSummary = getActiveGroupsSummary();
+    if (groupSummary) lines.push(groupSummary);
+  }
+
   function updateSelectedCount() {
     const selected = getPresentPlayers();
     const redTeam = getTeamPlayers('red');
@@ -1477,18 +1495,24 @@
 
     if (isLeagueGameMode()) {
       selectedCountEl.textContent =
-        `Selected players: ${selected.length}\nRed: ${redTeam.length} | League Team\nGrouping: ignored in league mode`;
+        `Selected players: ${selected.length}\nRed: ${redTeam.length} | League Team`;
       return;
     }
+
+    const lines = [];
 
     if (isFourTeamMode()) {
-      selectedCountEl.textContent =
-        `Selected players: ${selected.length}\nRed: ${redTeam.length} | Blue: ${blueTeam.length} | Green: ${greenTeam.length} | Yellow: ${yellowTeam.length}\n${getActiveGroupsSummary()}`;
+      lines.push(`Selected players: ${selected.length}`);
+      lines.push(`Red: ${redTeam.length} | Blue: ${blueTeam.length} | Green: ${greenTeam.length} | Yellow: ${yellowTeam.length}`);
+      maybePushGroupSummary(lines);
+      selectedCountEl.textContent = lines.join('\n');
       return;
     }
 
-    selectedCountEl.textContent =
-      `Selected players: ${selected.length}\nRed: ${redTeam.length} | Blue: ${blueTeam.length}\n${getActiveGroupsSummary()}`;
+    lines.push(`Selected players: ${selected.length}`);
+    lines.push(`Red: ${redTeam.length} | Blue: ${blueTeam.length}`);
+    maybePushGroupSummary(lines);
+    selectedCountEl.textContent = lines.join('\n');
   }
 
   function updateBalanceStatus(candidate = null, attempts = null, rawAttempts = null, usedConstraint = false) {
@@ -1542,15 +1566,17 @@
       const allEmpty = TEAM_COLORS.every(color => teamsByColor[color].length === 0);
 
       if (allEmpty) {
-        balanceStatusEl.textContent = [
+        const lines = [
           'No team assignment yet.',
           '4-team mode is on.',
           `Court type: ${getCourtTypeLabel()}`,
           `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
           `Season length: ${loadSeasonLengthMonths()} months`,
-          `Volleyball-adjusted model: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
-          getActiveGroupsSummary()
-        ].join('\n');
+          `Volleyball-adjusted model: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`
+        ];
+
+        maybePushGroupSummary(lines);
+        balanceStatusEl.textContent = lines.join('\n');
         return;
       }
 
@@ -1565,7 +1591,6 @@
         `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
         `Season length: ${loadSeasonLengthMonths()} months`,
         `Volleyball-adjusted ratings: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
-        getActiveGroupsSummary(),
         `Team strength spread: ${Math.round(spread)}`,
         `Average pairwise difference: ${Math.round(averagePairwiseDifference)}`,
         `Red average Rating: ${formatDisplayedRating(averagesByColor.red)} | Strength: ${Math.round(strengthsByColor.red)}`,
@@ -1573,6 +1598,8 @@
         `Green average Rating: ${formatDisplayedRating(averagesByColor.green)} | Strength: ${Math.round(strengthsByColor.green)}`,
         `Yellow average Rating: ${formatDisplayedRating(averagesByColor.yellow)} | Strength: ${Math.round(strengthsByColor.yellow)}`
       ];
+
+      maybePushGroupSummary(lines);
 
       if (attempts !== null) {
         if (usedConstraint && rawAttempts !== null) {
@@ -1590,15 +1617,17 @@
     const blueTeam = candidate ? candidate.blueTeam : getTeamPlayers('blue');
 
     if (redTeam.length === 0 && blueTeam.length === 0) {
-      balanceStatusEl.textContent = [
+      const lines = [
         'No team assignment yet.',
         `Court type: ${getCourtTypeLabel()}`,
         `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
         `Season length: ${loadSeasonLengthMonths()} months`,
         `Volleyball-adjusted model: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
-        `Similarity rule: ${forceTwoChangesCheckboxEl.checked ? 'on' : 'off'}`,
-        getActiveGroupsSummary()
-      ].join('\n');
+        `Similarity rule: ${forceTwoChangesCheckboxEl.checked ? 'on' : 'off'}`
+      ];
+
+      maybePushGroupSummary(lines);
+      balanceStatusEl.textContent = lines.join('\n');
       return;
     }
 
@@ -1618,7 +1647,6 @@
       `Season length: ${loadSeasonLengthMonths()} months`,
       `Volleyball-adjusted ratings: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
       `Similarity rule: ${forceTwoChangesCheckboxEl.checked ? 'on' : 'off'}`,
-      getActiveGroupsSummary(),
       `Red average Rating: ${formatDisplayedRating(redAvg)}`,
       `Blue average Rating: ${formatDisplayedRating(blueAvg)}`,
       `Red strength: ${Math.round(score.redStrength)}`,
@@ -1627,6 +1655,8 @@
       `Blue win probability: ${formatPercent(score.blueWinProbability)}`,
       `Fairness: ${formatPercent(score.fairness)}`
     ];
+
+    maybePushGroupSummary(lines);
 
     if (score.redTeamSize !== score.blueTeamSize || score.redSizeAdjustment !== 0 || score.blueSizeAdjustment !== 0) {
       lines.push(
@@ -1806,48 +1836,77 @@
     return record;
   }
 
+  function getRecordWinnerSide(record) {
+    return record?.winner === 'blue' ? 'blue' : 'red';
+  }
+
+  function getRecordLoserSide(record) {
+    return getRecordWinnerSide(record) === 'blue' ? 'red' : 'blue';
+  }
+
+  function getRecordSideLabel(record, side) {
+    if (side === 'red' && record?.displayWinnerColor) {
+      return `${TEAM_LABELS[record.displayWinnerColor]} Team`;
+    }
+
+    if (side === 'blue' && record?.displayLoserColor) {
+      return `${TEAM_LABELS[record.displayLoserColor]} Team`;
+    }
+
+    return side === 'blue' ? 'Blue Team' : 'Red Team';
+  }
+
+  function getRecordDisplayWinner(record) {
+    return getRecordSideLabel(record, getRecordWinnerSide(record));
+  }
+
+  function getRecordDisplayLoser(record) {
+    return getRecordSideLabel(record, getRecordLoserSide(record));
+  }
+
+  function getRecordPlayersForSide(record, side) {
+    if (side === 'blue') return Array.isArray(record?.blueTeam) ? record.blueTeam : [];
+    return Array.isArray(record?.redTeam) ? record.redTeam : [];
+  }
+
+  function getRecordScoreForSide(record, side) {
+    return side === 'blue' ? record?.scoreBlue : record?.scoreRed;
+  }
+
   function formatTeamForConfirmation(label, playersList) {
     const names = playersList.map(player => player.name).join(', ') || '(none)';
     return `${label}: ${names}`;
   }
 
-  function getRecordDisplayWinner(record) {
-    if (record.displayWinnerColor) {
-      return `${TEAM_LABELS[record.displayWinnerColor]} Team`;
+  function getRecordScoreLine(record) {
+    const winnerSide = getRecordWinnerSide(record);
+    const loserSide = getRecordLoserSide(record);
+    const winnerLabel = getRecordDisplayWinner(record);
+    const loserLabel = getRecordDisplayLoser(record);
+    const winnerScore = getRecordScoreForSide(record, winnerSide);
+    const loserScore = getRecordScoreForSide(record, loserSide);
+
+    if (
+      winnerScore === null ||
+      loserScore === null ||
+      typeof winnerScore === 'undefined' ||
+      typeof loserScore === 'undefined'
+    ) {
+      return 'Score: none';
     }
 
-    return record.winner === 'red' ? 'Red Team' : 'Blue Team';
-  }
-
-  function getRecordDisplayLoser(record) {
-    if (record.displayLoserColor) {
-      return `${TEAM_LABELS[record.displayLoserColor]} Team`;
-    }
-
-    return record.winner === 'red' ? 'Blue Team' : 'Red Team';
+    return `Score: ${winnerLabel} ${winnerScore} - ${loserLabel} ${loserScore}`;
   }
 
   function buildConfirmationSummary(record) {
+    const winnerSide = getRecordWinnerSide(record);
+    const loserSide = getRecordLoserSide(record);
+
     const winnerLabel = getRecordDisplayWinner(record);
     const loserLabel = getRecordDisplayLoser(record);
 
-    const winnerPlayers = record.redTeam;
-    const loserPlayers = record.blueTeam;
-
-    const scoreText =
-      record.scoreRed === null || record.scoreBlue === null
-        ? 'Score: none'
-        : `Score: ${winnerLabel} ${record.scoreRed} - ${loserLabel} ${record.scoreBlue}`;
-
-    const savedMapping = record.displayWinnerColor
-      ? [
-          '',
-          'Saved rating matchup:',
-          `redTeam = ${winnerLabel}`,
-          `blueTeam = ${loserLabel}`,
-          `winner = red`
-        ].join('\n')
-      : '';
+    const winnerPlayers = getRecordPlayersForSide(record, winnerSide);
+    const loserPlayers = getRecordPlayersForSide(record, loserSide);
 
     const contextLines = [];
 
@@ -1861,15 +1920,14 @@
     return [
       `Winner: ${winnerLabel}`,
       `Loser: ${loserLabel}`,
-      scoreText,
+      getRecordScoreLine(record),
       '',
       formatTeamForConfirmation(winnerLabel, winnerPlayers),
-      record.isLeagueGame
+      record.isLeagueGame && loserSide === 'blue'
         ? `${loserLabel}: ${LEAGUE_TEAM_NAME}`
         : formatTeamForConfirmation(loserLabel, loserPlayers),
       '',
-      ...contextLines,
-      savedMapping
+      ...contextLines
     ].filter(line => line !== null && typeof line !== 'undefined').join('\n');
   }
 
@@ -2070,18 +2128,17 @@
 
     const latest = games[0];
     const isLeagueGame = Boolean(latest.isLeagueGame);
+    const winnerSide = getRecordWinnerSide(latest);
+    const loserSide = getRecordLoserSide(latest);
     const winnerLabel = getRecordDisplayWinner(latest);
     const loserLabel = getRecordDisplayLoser(latest);
-
-    const scoreText =
-      latest.scoreRed === null || latest.scoreBlue === null
-        ? 'Score: none'
-        : `Score: ${winnerLabel} ${latest.scoreRed} - ${loserLabel} ${latest.scoreBlue}`;
+    const winnerPlayers = getRecordPlayersForSide(latest, winnerSide);
+    const loserPlayers = getRecordPlayersForSide(latest, loserSide);
 
     const marginFactor = getScoreMarginFactor(latest.scoreRed, latest.scoreBlue);
-    const blueLine = isLeagueGame
+    const blueLine = isLeagueGame && loserSide === 'blue'
       ? `${loserLabel}: ${LEAGUE_TEAM_NAME}`
-      : `${loserLabel}: ${(latest.blueTeam || []).map(player => player.name).join(', ') || '(none)'}`;
+      : `${loserLabel}: ${loserPlayers.map(player => player.name).join(', ') || '(none)'}`;
 
     const levelText = isLeagueGame
       ? `League level: ${latest.level === 'intermediate' ? 'Intermediate' : 'Rec'}`
@@ -2095,9 +2152,9 @@
       isLeagueGame ? 'Game type: League game' : 'Game type: Standard game',
       levelText,
       courtText,
-      `${winnerLabel}: ${(latest.redTeam || []).map(player => player.name).join(', ') || '(none)'}`,
+      `${winnerLabel}: ${winnerPlayers.map(player => player.name).join(', ') || '(none)'}`,
       blueLine,
-      scoreText,
+      getRecordScoreLine(latest),
       `Margin factor: ${marginFactor.toFixed(2)}x`
     ].join('\n');
   }
@@ -2114,6 +2171,7 @@
     playerListEl.innerHTML = '';
 
     if (players.length === 0) {
+      playerListEl.classList.add('no-scroll');
       const emptyState = document.createElement('div');
       emptyState.className = 'empty-state';
       emptyState.textContent = 'No players found. Add players in Player Management first.';
@@ -2129,6 +2187,7 @@
     }
 
     const visiblePlayers = getVisiblePlayers();
+    updatePlayerListScrollMode(visiblePlayers);
 
     if (visiblePlayers.length === 0) {
       const emptyState = document.createElement('div');
@@ -2188,20 +2247,15 @@
           updateBalanceStatus();
         });
 
-        const sub = document.createElement('div');
-        sub.className = 'small';
-        sub.style.marginTop = '4px';
-
-        if (isLeagueGameMode()) {
-          sub.textContent = 'Grouping ignored in league mode';
-        } else if (isGroupingActive()) {
-          sub.textContent = getGroupLabel(state.group);
-        } else {
-          sub.textContent = 'Grouping off';
-        }
-
         middle.appendChild(name);
-        middle.appendChild(sub);
+
+        if (isGroupingActive()) {
+          const sub = document.createElement('div');
+          sub.className = 'small';
+          sub.style.marginTop = '4px';
+          sub.textContent = getGroupLabel(state.group);
+          middle.appendChild(sub);
+        }
 
         const right = document.createElement('div');
         right.style.display = 'flex';
@@ -2210,7 +2264,7 @@
 
         const groupButton = document.createElement('button');
         groupButton.type = 'button';
-        groupButton.className = 'ghost';
+        groupButton.className = isGroupingActive() ? 'ghost' : 'ghost hidden';
         groupButton.style.padding = '6px 10px';
         groupButton.style.fontSize = '12px';
         groupButton.textContent = getGroupLabel(state.group);
@@ -2229,7 +2283,7 @@
         const tag = document.createElement('div');
         tag.className = `tag ${state.group && isGroupingActive() ? 'group-tag' : ''}`;
         tag.textContent = state.present
-          ? (state.team || getGroupLabel(state.group).replace('No Group', 'present'))
+          ? (state.team || (isGroupingActive() ? getGroupLabel(state.group).replace('No Group', 'present') : 'present'))
           : 'away';
 
         right.appendChild(groupButton);

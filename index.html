@@ -597,13 +597,13 @@
 
   <dialog id="defaultDatabaseDialog">
     <div class="dialog-content">
-      <h2>Load Default Database?</h2>
+      <h2>Load Newest Stats?</h2>
       <div id="defaultDatabaseText" class="small">
-        A bundled default database is available.
+        Newest stats can be loaded from Google Drive.
       </div>
-      <div id="defaultDatabaseStatus" class="status">Checking default database...</div>
+      <div id="defaultDatabaseStatus" class="status">Checking Google Drive stats...</div>
       <div class="dialog-actions">
-        <button id="confirmLoadDefaultDatabaseButton" class="success">Yes, Load Default Database</button>
+        <button id="confirmLoadDefaultDatabaseButton" class="success">Yes, Load Newest Stats</button>
         <button id="declineLoadDefaultDatabaseButton" class="secondary">No</button>
       </div>
     </div>
@@ -630,6 +630,7 @@
 
   const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
   const DEFAULT_DB_SOURCE_PATH = './default_database';
+  const GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyZ1jU8iYn0MpOE1ydGU2pg1RIQWKQ2echsy9e_NR5-b5AcCiVMNCCg2UVPG827jvTb/exec';
   const DEFAULT_BALANCE_ATTEMPTS = 10;
 
   const DEFAULT_SEASON_LENGTH_MONTHS = 6;
@@ -2417,30 +2418,47 @@
     return latest || 'unknown date';
   }
 
-  async function fetchDefaultDatabase() {
-    const response = await fetch(DEFAULT_DB_SOURCE_PATH, { cache: 'no-store' });
+  async function fetchGoogleDriveStats() {
+    if (!GOOGLE_STATS_ENDPOINT || GOOGLE_STATS_ENDPOINT.includes('PASTE_')) {
+      throw new Error('Google Drive stats endpoint is not configured.');
+    }
+
+    const response = await fetch(GOOGLE_STATS_ENDPOINT, { cache: 'no-store' });
+
     if (!response.ok) {
-      throw new Error('Could not load the default database file.');
+      throw new Error(`Google Drive stats request failed with HTTP ${response.status}.`);
     }
 
     const parsed = await response.json();
 
     if (!parsed || typeof parsed !== 'object') {
-      throw new Error('Default database file is invalid.');
+      throw new Error('Google Drive stats response was not valid JSON.');
     }
 
-    const normalizedPlayers = normalizeImportedPlayers(
-      Array.isArray(parsed.players) ? parsed.players : []
-    );
+    if (parsed.ok === false) {
+      throw new Error(parsed.error || 'Google Drive stats endpoint returned an error.');
+    }
 
-    const normalizedGames = normalizeImportedGames(
-      Array.isArray(parsed.games) ? parsed.games : []
-    );
+    if (!Array.isArray(parsed.players) || !Array.isArray(parsed.games)) {
+      throw new Error('Google Drive stats response must include players[] and games[].');
+    }
+
+    return parsed;
+  }
+
+  async function fetchDefaultDatabase() {
+    const parsed = await fetchGoogleDriveStats();
+
+    const normalizedPlayers = normalizeImportedPlayers(parsed.players);
+    const normalizedGames = normalizeImportedGames(parsed.games);
 
     return {
       players: normalizedPlayers,
       games: normalizedGames,
-      latestGameDate: getLatestGameDate(normalizedGames)
+      latestGameDate: getLatestGameDate(normalizedGames),
+      sourceFileName: parsed.source?.fileName || '',
+      sourceLastUpdated: parsed.source?.lastUpdated || '',
+      sourceLabel: 'Google Drive'
     };
   }
 
@@ -2454,11 +2472,17 @@
   }
 
   function openDefaultDatabaseDialog(meta) {
+    const sourceText = meta.sourceFileName
+      ? ` from ${meta.sourceFileName}`
+      : meta.sourceLabel
+        ? ` via ${meta.sourceLabel}`
+        : '';
+
     defaultDatabaseTextEl.textContent =
-      `The bundled default database includes games through ${meta.latestGameDate}.`;
+      `The newest stats file includes games through ${meta.latestGameDate}${sourceText}.`;
 
     defaultDatabaseStatusEl.textContent =
-      `Default database has ${meta.players.length} players and ${meta.games.length} games.`;
+      `Google Drive stats file has ${meta.players.length} players and ${meta.games.length} games.`;
 
     confirmLoadDefaultDatabaseButtonEl.disabled = false;
     defaultDatabaseDialog.showModal();
@@ -2474,13 +2498,13 @@
     }
 
     try {
-      defaultDatabaseStatusEl.textContent = 'Checking default database...';
+      defaultDatabaseStatusEl.textContent = 'Checking Google Drive stats...';
       confirmLoadDefaultDatabaseButtonEl.disabled = true;
       const meta = await prepareDefaultDatabaseMeta();
       openDefaultDatabaseDialog(meta);
     } catch {
-      defaultDatabaseTextEl.textContent = 'A bundled default database is available.';
-      defaultDatabaseStatusEl.textContent = 'Could not read the default database file.';
+      defaultDatabaseTextEl.textContent = 'Newest stats can be loaded from Google Drive.';
+      defaultDatabaseStatusEl.textContent = 'Could not read Google Drive stats. Check the Apps Script deployment, permissions, and Drive folder access.';
       confirmLoadDefaultDatabaseButtonEl.disabled = true;
       defaultDatabaseDialog.showModal();
     }
@@ -2605,12 +2629,12 @@
   confirmLoadDefaultDatabaseButtonEl.addEventListener('click', async () => {
     try {
       confirmLoadDefaultDatabaseButtonEl.disabled = true;
-      defaultDatabaseStatusEl.textContent = 'Loading default database...';
+      defaultDatabaseStatusEl.textContent = 'Loading newest stats from Google Drive...';
       await loadDefaultDatabaseIntoStorage();
       defaultDatabaseDialog.close();
-      alert('Default database loaded.');
+      alert('Newest stats loaded from Google Drive.');
     } catch {
-      defaultDatabaseStatusEl.textContent = 'Failed to load the default database.';
+      defaultDatabaseStatusEl.textContent = 'Failed to load newest stats from Google Drive. Check Apps Script auth/deployment and Drive folder access.';
       confirmLoadDefaultDatabaseButtonEl.disabled = false;
     }
   });

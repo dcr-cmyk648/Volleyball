@@ -571,6 +571,7 @@
     const GAME_STORAGE_KEY = 'gameDayGames';
     const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
     const DEFAULT_DB_SOURCE_PATH = './default_database';
+    const GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyZ1jU8iYn0MpOE1ydGU2pg1RIQWKQ2echsy9e_NR5-b5AcCiVMNCCg2UVPG827jvTb/exec';
     const LEAGUE_TEAM_SIZE = 6;
 
     const DEFAULT_SEASON_LENGTH_MONTHS = 6;
@@ -1280,16 +1281,59 @@
         return;
       }
 
-      serverStatsDateEl.textContent = `Newest server game: ${meta.latestGameDate}`;
+      const sourceText = meta.sourceFileName
+        ? ` from ${meta.sourceFileName}`
+        : meta.sourceLabel
+          ? ` via ${meta.sourceLabel}`
+          : '';
+
+      serverStatsDateEl.textContent =
+        `Newest server game: ${meta.latestGameDate}${sourceText}`;
     }
 
-    async function fetchDefaultDatabase() {
-      const response = await fetch(DEFAULT_DB_SOURCE_PATH, { cache: 'no-store' });
+    async function fetchJsonFromGoogleStatsEndpoint() {
+      const response = await fetch(GOOGLE_STATS_ENDPOINT, { cache: 'no-store' });
+
       if (!response.ok) {
-        throw new Error('Could not load the server stats file.');
+        throw new Error('Could not load Google Drive stats.');
       }
 
       const parsed = await response.json();
+
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Google Drive stats response was invalid.');
+      }
+
+      if (parsed.ok === false) {
+        throw new Error(parsed.error || 'Google Drive stats response returned an error.');
+      }
+
+      return parsed;
+    }
+
+    async function fetchJsonFromBundledDefaultDatabase() {
+      const response = await fetch(DEFAULT_DB_SOURCE_PATH, { cache: 'no-store' });
+
+      if (!response.ok) {
+        throw new Error('Could not load the bundled server stats file.');
+      }
+
+      return response.json();
+    }
+
+    async function fetchDefaultDatabase() {
+      let parsed;
+      let sourceLabel = 'Google Drive';
+      let sourceFileName = '';
+
+      try {
+        parsed = await fetchJsonFromGoogleStatsEndpoint();
+        sourceFileName = parsed.source?.fileName || '';
+      } catch (googleError) {
+        console.warn('Google Drive stats failed, falling back to bundled default_database:', googleError);
+        parsed = await fetchJsonFromBundledDefaultDatabase();
+        sourceLabel = 'bundled default_database';
+      }
 
       if (!parsed || typeof parsed !== 'object') {
         throw new Error('Server stats file is invalid.');
@@ -1306,7 +1350,9 @@
       return {
         players: normalizedPlayers,
         games: normalizedGames,
-        latestGameDate: getLatestGameDate(normalizedGames)
+        latestGameDate: getLatestGameDate(normalizedGames),
+        sourceLabel,
+        sourceFileName
       };
     }
 

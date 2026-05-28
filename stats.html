@@ -361,6 +361,139 @@
       background: rgba(255,255,255,0.03);
     }
 
+
+    .tab-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 8px 0 14px;
+    }
+
+    button.tab-button {
+      background: var(--ghost);
+      color: var(--text);
+      border-color: var(--border);
+    }
+
+    button.tab-button.active {
+      background: rgba(147, 197, 253, 0.16);
+      color: #dbeafe;
+      border-color: rgba(147, 197, 253, 0.45);
+    }
+
+    .tab-panel.hidden {
+      display: none !important;
+    }
+
+    .season-movers-controls {
+      display: flex;
+      gap: 12px;
+      align-items: end;
+      flex-wrap: wrap;
+      margin: 12px 0;
+    }
+
+    .season-date-field label {
+      display: block;
+      font-size: 14px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .season-date-field input {
+      padding: 10px 12px;
+      font-size: 15px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #0f172a;
+      color: var(--text);
+      outline: none;
+    }
+
+    .season-date-field input:focus {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
+    }
+
+    .season-movers-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .season-mover-row {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 12px;
+      background: rgba(255,255,255,0.03);
+    }
+
+    .season-mover-header {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .season-mover-rank {
+      width: 30px;
+      height: 30px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      background: rgba(147, 197, 253, 0.14);
+      color: #dbeafe;
+      border: 1px solid rgba(147, 197, 253, 0.35);
+    }
+
+    .season-mover-name {
+      min-width: 0;
+      font-size: 16px;
+      font-weight: 800;
+      word-break: break-word;
+    }
+
+    .season-mover-score {
+      font-weight: 900;
+      color: #bbf7d0;
+      white-space: nowrap;
+    }
+
+    .season-mover-bar-track {
+      height: 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .season-mover-bar {
+      height: 100%;
+      min-width: 3px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(34, 197, 94, 0.45), rgba(34, 197, 94, 0.95));
+    }
+
+    .season-mover-meta {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .season-sample-pill {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(250, 204, 21, 0.35);
+      background: rgba(250, 204, 21, 0.12);
+      color: #fef08a;
+      font-weight: 700;
+    }
+
     .hidden { display: none !important; }
 
     dialog {
@@ -444,78 +577,102 @@
 
     <div class="card">
       <div class="section-heading">
-        <h2>Player Standings</h2>
+        <h2>Stats</h2>
         <a href="ranking.html" class="button-link">How ranking works</a>
       </div>
 
-      <div class="small" id="rankingModeDescription">
-        Sorted by experimental leaderboard-adjusted Rating. Backend ratings and balancing still use OpenSkill mu/sigma.
+      <div class="tab-row" role="tablist" aria-label="Stats views">
+        <button id="overallStandingsTabButton" class="tab-button active" type="button">Overall Standings</button>
+        <button id="seasonMoversTabButton" class="tab-button" type="button">Season Movers</button>
       </div>
 
-      <div class="model-controls">
-        <div class="slider-stack">
-          <div class="season-slider">
-            <label for="seasonLengthSlider">
-              <span>Season length</span>
-              <span><span id="seasonLengthValue">6</span> months</span>
-            </label>
-            <input type="range" id="seasonLengthSlider" min="1" max="12" value="6" />
-          </div>
+      <section id="overallStandingsPanel" class="tab-panel">
+        <div class="small" id="rankingModeDescription">
+          Sorted by experimental leaderboard-adjusted Rating. Backend ratings and balancing still use OpenSkill mu/sigma.
+        </div>
 
-          <div id="confidenceSliderPanel" class="season-slider hidden">
-            <label for="confidenceAdjustmentSlider">
-              <span>Confidence adjustment</span>
-              <span>
-                position <span id="confidenceAdjustmentValue">50</span>
-                · strength <span id="confidencePenaltyStrengthValue">1.50</span>
-              </span>
-            </label>
-            <input type="range" id="confidenceAdjustmentSlider" min="0" max="100" step="1" value="50" />
-            <div class="slider-explain">
-              Nonlinear scale: actual penalty strength = 6 × (slider ÷ 100)². 
-              This uses sigma range 6.4–8.4 plus a small missing-games penalty below 6 games.
+        <div class="model-controls">
+          <div class="slider-stack">
+            <div class="season-slider">
+              <label for="seasonLengthSlider">
+                <span>Season length</span>
+                <span><span id="seasonLengthValue">6</span> months</span>
+              </label>
+              <input type="range" id="seasonLengthSlider" min="1" max="12" value="6" />
+            </div>
+
+            <div id="confidenceSliderPanel" class="season-slider hidden">
+              <label for="confidenceAdjustmentSlider">
+                <span>Confidence adjustment</span>
+                <span>
+                  position <span id="confidenceAdjustmentValue">50</span>
+                  · strength <span id="confidencePenaltyStrengthValue">1.50</span>
+                </span>
+              </label>
+              <input type="range" id="confidenceAdjustmentSlider" min="0" max="100" step="1" value="50" />
+              <div class="slider-explain">
+                Nonlinear scale: actual penalty strength = 6 × (slider ÷ 100)².
+                This uses sigma range 6.4–8.4 plus a small missing-games penalty below 6 games.
+              </div>
             </div>
           </div>
+
+          <div class="toggle-row">
+            <label for="volleyballAdjustedToggle">
+              <input type="checkbox" id="volleyballAdjustedToggle" />
+              Volleyball-adjusted model
+            </label>
+
+            <label for="includeLeagueGamesToggle">
+              <input type="checkbox" id="includeLeagueGamesToggle" />
+              Include league games (beta)
+            </label>
+
+            <label for="showConfidenceSliderToggle">
+              <input type="checkbox" id="showConfidenceSliderToggle" />
+              Show confidence slider
+            </label>
+          </div>
         </div>
 
-        <div class="toggle-row">
-          <label for="volleyballAdjustedToggle">
-            <input type="checkbox" id="volleyballAdjustedToggle" />
-            Volleyball-adjusted model
-          </label>
-
-          <label for="includeLeagueGamesToggle">
-            <input type="checkbox" id="includeLeagueGamesToggle" />
-            Include league games (beta)
-          </label>
-
-          <label for="showConfidenceSliderToggle">
-            <input type="checkbox" id="showConfidenceSliderToggle" />
-            Show confidence slider
-          </label>
+        <div class="small" id="modelHelpText">
+          Rating on this page uses an experimental nonlinear uncertainty adjustment for leaderboard display only. This does not affect OpenSkill updates or team balancing.
         </div>
-      </div>
 
-      <div class="small" id="modelHelpText">
-        Rating on this page uses an experimental nonlinear uncertainty adjustment for leaderboard display only. This does not affect OpenSkill updates or team balancing.
-      </div>
+        <div class="table-wrap standings-wrap" style="margin-top: 12px;">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Player / League Team</th>
+                <th>Rating</th>
+                <th>Games</th>
+              </tr>
+            </thead>
+            <tbody id="statsTableBody"></tbody>
+          </table>
+        </div>
+        <div class="small">
+          Click a name to open the detailed trend page with wins, mu, sigma, rating changes, and game-by-game model details.
+        </div>
+      </section>
 
-      <div class="table-wrap standings-wrap" style="margin-top: 12px;">
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Player / League Team</th>
-              <th>Rating</th>
-              <th>Games</th>
-            </tr>
-          </thead>
-          <tbody id="statsTableBody"></tbody>
-        </table>
-      </div>
-      <div class="small">
-        Click a name to open the detailed trend page with wins, mu, sigma, rating changes, and game-by-game model details.
-      </div>
+      <section id="seasonMoversPanel" class="tab-panel hidden">
+        <div class="small">
+          Ranks the top 10 improvers since the selected season start date. The score uses rating gain, games played since the date, and current uncertainty so tiny samples do not dominate the list.
+        </div>
+
+        <div class="season-movers-controls">
+          <div class="season-date-field">
+            <label for="seasonStartDateInput">Season start date</label>
+            <input type="date" id="seasonStartDateInput" />
+          </div>
+          <button id="applySeasonStartDateButton" class="secondary" type="button">Apply Date</button>
+        </div>
+
+        <div id="seasonMoversSummary" class="status">Choose a season start date to calculate season movers.</div>
+        <div id="seasonMoversList" class="season-movers-list"></div>
+      </section>
     </div>
 
     <div class="card">
@@ -583,6 +740,7 @@
     const CONFIDENCE_SLIDER_STORAGE_KEY = 'gameDayLeaderboardConfidenceSliderPosition';
     const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
     const INCLUDE_LEAGUE_GAMES_STORAGE_KEY = 'gameDayIncludeLeagueGamesEnabled';
+    const SEASON_START_DATE_STORAGE_KEY = 'gameDaySeasonStartDate';
 
     const LEADERBOARD_LOW_SIGMA = 6.4;
     const LEADERBOARD_HIGH_SIGMA = 8.4;
@@ -622,6 +780,15 @@
     const rankingModeDescriptionEl = document.getElementById('rankingModeDescription');
     const historyModeDescriptionEl = document.getElementById('historyModeDescription');
 
+    const overallStandingsTabButtonEl = document.getElementById('overallStandingsTabButton');
+    const seasonMoversTabButtonEl = document.getElementById('seasonMoversTabButton');
+    const overallStandingsPanelEl = document.getElementById('overallStandingsPanel');
+    const seasonMoversPanelEl = document.getElementById('seasonMoversPanel');
+    const seasonStartDateInputEl = document.getElementById('seasonStartDateInput');
+    const applySeasonStartDateButtonEl = document.getElementById('applySeasonStartDateButton');
+    const seasonMoversSummaryEl = document.getElementById('seasonMoversSummary');
+    const seasonMoversListEl = document.getElementById('seasonMoversList');
+
     const defaultDatabaseDialog = document.getElementById('defaultDatabaseDialog');
     const defaultDatabaseTextEl = document.getElementById('defaultDatabaseText');
     const defaultDatabaseStatusEl = document.getElementById('defaultDatabaseStatus');
@@ -631,6 +798,7 @@
     let pendingDeleteGameId = null;
     let defaultDatabaseMeta = null;
     let defaultDatabaseDialogMode = 'prompt';
+    let activeStatsTab = 'overall';
 
     function loadPlayers() {
       const saved = localStorage.getItem(PLAYER_STORAGE_KEY);
@@ -777,6 +945,69 @@
       return Math.max(min, Math.min(max, value));
     }
 
+    function getTodayDateString() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    function isValidDateString(value) {
+      return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+    }
+
+    function getDefaultSeasonStartDate() {
+      const games = loadGames();
+      const latestGameDate = getLatestGameDate(games);
+
+      if (isValidDateString(latestGameDate) && latestGameDate !== 'unknown date') {
+        const date = new Date(`${latestGameDate}T00:00:00`);
+        date.setMonth(date.getMonth() - 3);
+        return date.toISOString().slice(0, 10);
+      }
+
+      const date = new Date();
+      date.setMonth(date.getMonth() - 3);
+      return date.toISOString().slice(0, 10);
+    }
+
+    function loadSeasonStartDate() {
+      const saved = localStorage.getItem(SEASON_START_DATE_STORAGE_KEY);
+      return isValidDateString(saved) ? saved : getDefaultSeasonStartDate();
+    }
+
+    function saveSeasonStartDate(value) {
+      if (!isValidDateString(value)) return;
+      localStorage.setItem(SEASON_START_DATE_STORAGE_KEY, value);
+    }
+
+    function getSeasonStartDate() {
+      const inputValue = seasonStartDateInputEl?.value || '';
+      return isValidDateString(inputValue) ? inputValue : loadSeasonStartDate();
+    }
+
+    function applyImportedSeasonStartDate(parsed) {
+      const importedDate = parsed?.seasonStartDate || parsed?.metadata?.seasonStartDate;
+
+      if (isValidDateString(importedDate)) {
+        saveSeasonStartDate(importedDate);
+        if (seasonStartDateInputEl) {
+          seasonStartDateInputEl.value = importedDate;
+        }
+      }
+    }
+
+    function setStatsTab(tabName) {
+      activeStatsTab = tabName === 'seasonMovers' ? 'seasonMovers' : 'overall';
+
+      overallStandingsTabButtonEl.classList.toggle('active', activeStatsTab === 'overall');
+      seasonMoversTabButtonEl.classList.toggle('active', activeStatsTab === 'seasonMovers');
+      overallStandingsPanelEl.classList.toggle('hidden', activeStatsTab !== 'overall');
+      seasonMoversPanelEl.classList.toggle('hidden', activeStatsTab !== 'seasonMovers');
+
+      if (activeStatsTab === 'seasonMovers') {
+        renderSeasonMovers();
+      }
+    }
+
+
     function getExperimentalLeaderboardRaw(player) {
       const rawOrdinal =
         typeof player.rawOrdinal === 'number'
@@ -832,6 +1063,187 @@
           return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
         });
     }
+
+
+    function getReplayResultForGames(games) {
+      const players = loadPlayers();
+
+      return replayRatings({
+        players,
+        games,
+        seasonal: true,
+        volleyballAdjusted: isVolleyballAdjustedMode(),
+        includeLeagueGames: isIncludeLeagueGamesMode(),
+        options: {
+          seasonalTaperDays: getSeasonalTaperDays()
+        }
+      });
+    }
+
+    function getRawOrdinalFromStanding(player) {
+      if (!player) return 0;
+      if (typeof player.rawOrdinal === 'number') return player.rawOrdinal;
+      if (typeof player.rating === 'number') return player.rating;
+      return 0;
+    }
+
+    function getGameDateValue(game) {
+      return typeof game?.date === 'string' ? game.date : '';
+    }
+
+    function isGameOnOrAfterDate(game, dateString) {
+      const gameDate = getGameDateValue(game);
+      return gameDate && gameDate >= dateString;
+    }
+
+    function isGameBeforeDate(game, dateString) {
+      const gameDate = getGameDateValue(game);
+      return gameDate && gameDate < dateString;
+    }
+
+    function getPlayerIdsForGame(game) {
+      const ids = new Set();
+
+      if (Array.isArray(game?.redTeam)) {
+        game.redTeam.forEach(player => ids.add(String(player?.id ?? player?.name ?? '')));
+      }
+
+      if (!game?.isLeagueGame && Array.isArray(game?.blueTeam)) {
+        game.blueTeam.forEach(player => ids.add(String(player?.id ?? player?.name ?? '')));
+      }
+
+      ids.delete('');
+      return ids;
+    }
+
+    function getGamesPlayedSinceDateByPlayer(games, dateString) {
+      const counts = new Map();
+
+      games
+        .filter(game => isGameOnOrAfterDate(game, dateString))
+        .forEach(game => {
+          getPlayerIdsForGame(game).forEach(id => {
+            counts.set(id, (counts.get(id) || 0) + 1);
+          });
+        });
+
+      return counts;
+    }
+
+    function getStandingsMap(result) {
+      const map = new Map();
+
+      (result?.standings || []).forEach(player => {
+        map.set(String(player.id), player);
+      });
+
+      return map;
+    }
+
+    function getSeasonMoverRows() {
+      const seasonStartDate = getSeasonStartDate();
+      const allGames = loadGames();
+      const gamesBeforeSeason = allGames.filter(game => isGameBeforeDate(game, seasonStartDate));
+      const startResult = getReplayResultForGames(gamesBeforeSeason);
+      const currentResult = getReplayResultForGames(allGames);
+      const startMap = getStandingsMap(startResult);
+      const gamesSinceMap = getGamesPlayedSinceDateByPlayer(allGames, seasonStartDate);
+
+      return (currentResult.standings || [])
+        .map(player => {
+          const id = String(player.id);
+          const gamesSinceDate = gamesSinceMap.get(id) || 0;
+          const startPlayer = startMap.get(id);
+          const startRawOrdinal = getRawOrdinalFromStanding(startPlayer);
+          const currentRawOrdinal = getRawOrdinalFromStanding(player);
+          const rawChange = currentRawOrdinal - startRawOrdinal;
+
+          const sigma = Number(player.sigma);
+          const uncertainty = Number.isFinite(sigma)
+            ? clamp((sigma - LEADERBOARD_LOW_SIGMA) / Math.max(0.01, LEADERBOARD_HIGH_SIGMA - LEADERBOARD_LOW_SIGMA), 0, 1)
+            : 1;
+
+          const gamesConfidence = gamesSinceDate / (gamesSinceDate + 4);
+          const certaintyConfidence = 1 - 0.35 * uncertainty;
+          const confidence = gamesConfidence * certaintyConfidence;
+          const adjustedRawChange = rawChange * confidence;
+
+          return {
+            ...player,
+            gamesSinceDate,
+            startRawOrdinal,
+            currentRawOrdinal,
+            rawChange,
+            adjustedRawChange,
+            confidence,
+            gamesConfidence,
+            certaintyConfidence,
+            isNewThisSeason: !startPlayer || Number(startPlayer.games) === 0
+          };
+        })
+        .filter(player => player.gamesSinceDate >= 2 && player.rawChange > 0)
+        .sort((a, b) => {
+          if (b.adjustedRawChange !== a.adjustedRawChange) {
+            return b.adjustedRawChange - a.adjustedRawChange;
+          }
+
+          if (b.rawChange !== a.rawChange) return b.rawChange - a.rawChange;
+          if (b.gamesSinceDate !== a.gamesSinceDate) return b.gamesSinceDate - a.gamesSinceDate;
+          return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+        })
+        .slice(0, 10);
+    }
+
+    function renderSeasonMovers() {
+      const seasonStartDate = getSeasonStartDate();
+
+      if (seasonStartDateInputEl && seasonStartDateInputEl.value !== seasonStartDate) {
+        seasonStartDateInputEl.value = seasonStartDate;
+      }
+
+      const rows = getSeasonMoverRows();
+      seasonMoversListEl.innerHTML = '';
+
+      if (!rows.length) {
+        seasonMoversSummaryEl.textContent =
+          `No season movers found since ${seasonStartDate}. Players need at least 2 games and a positive rating change to appear here.`;
+        return;
+      }
+
+      const maxAdjusted = Math.max(...rows.map(row => Math.max(0, row.adjustedRawChange)), 0.01);
+
+      seasonMoversSummaryEl.textContent =
+        `Top ${rows.length} season movers since ${seasonStartDate}. Adjusted score shrinks raw rating gain for small samples and high uncertainty.`;
+
+      rows.forEach((row, index) => {
+        const width = Math.max(3, Math.round((Math.max(0, row.adjustedRawChange) / maxAdjusted) * 100));
+        const adjustedDisplay = formatDisplayedRating(row.adjustedRawChange);
+        const rawDisplay = formatDisplayedRating(row.rawChange);
+        const confidencePct = Math.round(row.confidence * 100);
+        const smallSample = row.gamesSinceDate < LEADERBOARD_MINIMUM_GAMES;
+        const newText = row.isNewThisSeason ? ' · new this season' : '';
+
+        const div = document.createElement('div');
+        div.className = 'season-mover-row';
+        div.innerHTML = `
+          <div class="season-mover-header">
+            <div class="season-mover-rank">${index + 1}</div>
+            <div class="season-mover-name">${escapeHtml(row.name)}</div>
+            <div class="season-mover-score">+${adjustedDisplay}</div>
+          </div>
+          <div class="season-mover-bar-track">
+            <div class="season-mover-bar" style="width: ${width}%"></div>
+          </div>
+          <div class="season-mover-meta">
+            raw +${rawDisplay} · ${row.gamesSinceDate} game${row.gamesSinceDate === 1 ? '' : 's'} since start · confidence ${confidencePct}%${newText}
+            ${smallSample ? '<span class="season-sample-pill">small sample</span>' : ''}
+          </div>
+        `;
+
+        seasonMoversListEl.appendChild(div);
+      });
+    }
+
 
     function updateConfidenceSliderUI() {
       const position = getConfidenceSliderPosition();
@@ -1109,10 +1521,19 @@
       renderStats();
       renderHistory();
       updateServerSyncButton();
+      if (activeStatsTab === 'seasonMovers') {
+        renderSeasonMovers();
+      }
     }
 
     function exportDatabase() {
+      const seasonStartDate = getSeasonStartDate();
+
       const payload = {
+        seasonStartDate,
+        metadata: {
+          seasonStartDate
+        },
         players: loadPlayers(),
         games: loadGames()
       };
@@ -1193,6 +1614,8 @@
 
           const players = Array.isArray(parsed.players) ? parsed.players : [];
           const games = Array.isArray(parsed.games) ? parsed.games : [];
+
+          applyImportedSeasonStartDate(parsed);
 
           const normalizedPlayers = normalizeImportedPlayers(players);
           const normalizedGames = normalizeImportedGames(games);
@@ -1417,7 +1840,10 @@
         games: normalizedGames,
         latestGameDate: getLatestGameDate(normalizedGames),
         sourceLabel,
-        sourceFileName
+        sourceFileName,
+        seasonStartDate: isValidDateString(parsed.seasonStartDate || parsed.metadata?.seasonStartDate)
+          ? (parsed.seasonStartDate || parsed.metadata?.seasonStartDate)
+          : ''
       };
     }
 
@@ -1439,7 +1865,7 @@
         `The server stats file includes games through ${meta.latestGameDate}.`;
 
       defaultDatabaseStatusEl.textContent =
-        `Server stats file has ${meta.players.length} players and ${meta.games.length} games.`;
+        `Server stats file has ${meta.players.length} players and ${meta.games.length} games.${meta.seasonStartDate ? ` Season start: ${meta.seasonStartDate}.` : ''}`;
 
       confirmLoadDefaultDatabaseButtonEl.disabled = false;
       defaultDatabaseDialog.showModal();
@@ -1485,11 +1911,42 @@
 
       savePlayers(meta.players);
       saveGames(meta.games);
+
+      if (isValidDateString(meta.seasonStartDate)) {
+        saveSeasonStartDate(meta.seasonStartDate);
+        if (seasonStartDateInputEl) {
+          seasonStartDateInputEl.value = meta.seasonStartDate;
+        }
+      }
+
       renderAll();
 
       databaseStatus.textContent =
         `Loaded newest stats from server with ${meta.players.length} players and ${meta.games.length} games.`;
     }
+
+    overallStandingsTabButtonEl.addEventListener('click', () => setStatsTab('overall'));
+    seasonMoversTabButtonEl.addEventListener('click', () => setStatsTab('seasonMovers'));
+
+    applySeasonStartDateButtonEl.addEventListener('click', () => {
+      const date = seasonStartDateInputEl.value;
+
+      if (!isValidDateString(date)) {
+        databaseStatus.textContent = 'Enter a valid season start date.';
+        return;
+      }
+
+      saveSeasonStartDate(date);
+      renderSeasonMovers();
+      databaseStatus.textContent = `Season start date set to ${date}. This date will be included in future database exports.`;
+    });
+
+    seasonStartDateInputEl.addEventListener('change', () => {
+      const date = seasonStartDateInputEl.value;
+      if (!isValidDateString(date)) return;
+      saveSeasonStartDate(date);
+      renderSeasonMovers();
+    });
 
     document.getElementById('exportDatabaseButton').addEventListener('click', exportDatabase);
     document.getElementById('importDatabaseButton').addEventListener('click', () => importFileInput.click());
@@ -1563,7 +2020,10 @@
     volleyballAdjustedToggleEl.checked = loadVolleyballAdjustedEnabled();
     includeLeagueGamesToggleEl.checked = loadIncludeLeagueGamesEnabled();
 
+    seasonStartDateInputEl.value = loadSeasonStartDate();
+
     updateConfidenceSliderUI();
+    setStatsTab('overall');
     renderAll();
 
     prepareDefaultDatabaseMeta().catch(() => {

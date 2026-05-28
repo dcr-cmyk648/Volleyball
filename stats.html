@@ -203,6 +203,37 @@
       accent-color: #93c5fd;
     }
 
+    .advanced-settings-control {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.03);
+    }
+
+    .advanced-settings-control label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .advanced-settings-control input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #93c5fd;
+    }
+
+    .season-start-status {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 8px;
+      line-height: 1.35;
+    }
+
     .small {
       font-size: 13px;
       color: var(--muted);
@@ -570,8 +601,9 @@
       </div>
 
       <div class="small">
-        Export saves the full database as JSON: all players and all games. Import replaces the current database with the file you choose.
+        Export saves the full database as JSON: all players, all games, and the shared season start date. Import replaces the current database with the file you choose.
       </div>
+      <div id="seasonStartDateStatus" class="season-start-status">Season start date: checking...</div>
       <div id="databaseStatus" class="status">Ready.</div>
     </div>
 
@@ -591,14 +623,24 @@
           Sorted by experimental leaderboard-adjusted Rating. Backend ratings and balancing still use OpenSkill mu/sigma.
         </div>
 
-        <div class="model-controls">
+        <div class="advanced-settings-control">
+          <label for="showAdvancedSettingsToggle">
+            <input type="checkbox" id="showAdvancedSettingsToggle" />
+            Show advanced settings
+          </label>
+        </div>
+
+        <div id="advancedModelSettings" class="model-controls hidden">
           <div class="slider-stack">
-            <div class="season-slider">
+            <div id="seasonLengthSliderPanel" class="season-slider hidden">
               <label for="seasonLengthSlider">
                 <span>Season length</span>
                 <span><span id="seasonLengthValue">6</span> months</span>
               </label>
               <input type="range" id="seasonLengthSlider" min="1" max="12" value="6" />
+              <div class="slider-explain">
+                Controls the seasonal recency taper used by the standings, history, and season movers calculations.
+              </div>
             </div>
 
             <div id="confidenceSliderPanel" class="season-slider hidden">
@@ -618,6 +660,16 @@
           </div>
 
           <div class="toggle-row">
+            <label for="showSeasonLengthSliderToggle">
+              <input type="checkbox" id="showSeasonLengthSliderToggle" />
+              Show season length slider
+            </label>
+
+            <label for="showConfidenceSliderToggle">
+              <input type="checkbox" id="showConfidenceSliderToggle" />
+              Show confidence slider
+            </label>
+
             <label for="volleyballAdjustedToggle">
               <input type="checkbox" id="volleyballAdjustedToggle" />
               Volleyball-adjusted model
@@ -627,16 +679,11 @@
               <input type="checkbox" id="includeLeagueGamesToggle" />
               Include league games (beta)
             </label>
-
-            <label for="showConfidenceSliderToggle">
-              <input type="checkbox" id="showConfidenceSliderToggle" />
-              Show confidence slider
-            </label>
           </div>
         </div>
 
         <div class="small" id="modelHelpText">
-          Rating on this page uses an experimental nonlinear uncertainty adjustment for leaderboard display only. This does not affect OpenSkill updates or team balancing.
+          Rating on this page uses an experimental nonlinear uncertainty adjustment for leaderboard display only. Advanced settings are hidden by default and saved on this device. This does not affect OpenSkill updates or team balancing.
         </div>
 
         <div class="table-wrap standings-wrap" style="margin-top: 12px;">
@@ -743,6 +790,9 @@
     const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
     const INCLUDE_LEAGUE_GAMES_STORAGE_KEY = 'gameDayIncludeLeagueGamesEnabled';
     const SEASON_START_DATE_STORAGE_KEY = 'gameDaySeasonStartDate';
+    const SHOW_ADVANCED_SETTINGS_STORAGE_KEY = 'gameDayStatsShowAdvancedSettings';
+    const SHOW_SEASON_LENGTH_SLIDER_STORAGE_KEY = 'gameDayStatsShowSeasonLengthSlider';
+    const SHOW_CONFIDENCE_SLIDER_STORAGE_KEY = 'gameDayStatsShowConfidenceSlider';
 
     const LEADERBOARD_LOW_SIGMA = 6.4;
     const LEADERBOARD_HIGH_SIGMA = 8.4;
@@ -762,6 +812,7 @@
     const statsTableBody = document.getElementById('statsTableBody');
     const historyList = document.getElementById('historyList');
     const databaseStatus = document.getElementById('databaseStatus');
+    const seasonStartDateStatusEl = document.getElementById('seasonStartDateStatus');
     const importFileInput = document.getElementById('importFileInput');
     const deleteGameDialog = document.getElementById('deleteGameDialog');
     const deleteGameInput = document.getElementById('deleteGameInput');
@@ -775,6 +826,10 @@
     const confidenceAdjustmentValueEl = document.getElementById('confidenceAdjustmentValue');
     const confidencePenaltyStrengthValueEl = document.getElementById('confidencePenaltyStrengthValue');
     const confidenceSliderPanelEl = document.getElementById('confidenceSliderPanel');
+    const seasonLengthSliderPanelEl = document.getElementById('seasonLengthSliderPanel');
+    const advancedModelSettingsEl = document.getElementById('advancedModelSettings');
+    const showAdvancedSettingsToggleEl = document.getElementById('showAdvancedSettingsToggle');
+    const showSeasonLengthSliderToggleEl = document.getElementById('showSeasonLengthSliderToggle');
     const showConfidenceSliderToggleEl = document.getElementById('showConfidenceSliderToggle');
 
     const volleyballAdjustedToggleEl = document.getElementById('volleyballAdjustedToggle');
@@ -978,6 +1033,25 @@
     function saveSeasonStartDate(value) {
       if (!isValidDateString(value)) return;
       localStorage.setItem(SEASON_START_DATE_STORAGE_KEY, value);
+      updateSeasonStartDateStatus();
+    }
+
+    function loadBooleanSetting(key, defaultValue = false) {
+      const saved = localStorage.getItem(key);
+      if (saved === null) return defaultValue;
+      return saved === 'true';
+    }
+
+    function saveBooleanSetting(key, value) {
+      localStorage.setItem(key, value ? 'true' : 'false');
+    }
+
+    function updateSeasonStartDateStatus(extraText = '') {
+      if (!seasonStartDateStatusEl) return;
+
+      const seasonStartDate = getSeasonStartDate();
+      seasonStartDateStatusEl.textContent =
+        `Shared season start date: ${seasonStartDate}${extraText ? ` · ${extraText}` : ''}`;
     }
 
     function getSeasonStartDate() {
@@ -993,7 +1067,12 @@
         if (seasonStartDateInputEl) {
           seasonStartDateInputEl.value = importedDate;
         }
+        updateSeasonStartDateStatus('imported from database');
+        return importedDate;
       }
+
+      updateSeasonStartDateStatus('no season date found in imported file');
+      return '';
     }
 
     function setStatsTab(tabName) {
@@ -1279,13 +1358,23 @@
     }
 
 
+    function updateAdvancedSettingsUI() {
+      const showAdvanced = showAdvancedSettingsToggleEl.checked;
+      const showSeasonLength = showAdvanced && showSeasonLengthSliderToggleEl.checked;
+      const showConfidence = showAdvanced && showConfidenceSliderToggleEl.checked;
+
+      advancedModelSettingsEl.classList.toggle('hidden', !showAdvanced);
+      seasonLengthSliderPanelEl.classList.toggle('hidden', !showSeasonLength);
+      confidenceSliderPanelEl.classList.toggle('hidden', !showConfidence);
+    }
+
     function updateConfidenceSliderUI() {
       const position = getConfidenceSliderPosition();
       const strength = getUncertaintyPenaltyStrength();
 
       confidenceAdjustmentValueEl.textContent = String(position);
       confidencePenaltyStrengthValueEl.textContent = strength.toFixed(2);
-      confidenceSliderPanelEl.classList.toggle('hidden', !showConfidenceSliderToggleEl.checked);
+      updateAdvancedSettingsUI();
     }
 
     function updateModeDescriptions() {
@@ -1550,6 +1639,7 @@
     }
 
     function renderAll() {
+      updateSeasonStartDateStatus();
       updateConfidenceSliderUI();
       updateModeDescriptions();
       renderStats();
@@ -1583,7 +1673,8 @@
       a.click();
       URL.revokeObjectURL(url);
 
-      databaseStatus.textContent = `Exported ${payload.players.length} players and ${payload.games.length} games.`;
+      databaseStatus.textContent = `Exported ${payload.players.length} players and ${payload.games.length} games. Season start date included: ${seasonStartDate}.`;
+      updateSeasonStartDateStatus('included in export');
     }
 
     function normalizeImportedPlayers(players) {
@@ -1649,7 +1740,7 @@
           const players = Array.isArray(parsed.players) ? parsed.players : [];
           const games = Array.isArray(parsed.games) ? parsed.games : [];
 
-          applyImportedSeasonStartDate(parsed);
+          const importedSeasonStartDate = applyImportedSeasonStartDate(parsed);
 
           const normalizedPlayers = normalizeImportedPlayers(players);
           const normalizedGames = normalizeImportedGames(games);
@@ -1658,7 +1749,12 @@
           saveGames(normalizedGames);
           renderAll();
 
-          databaseStatus.textContent = `Imported ${normalizedPlayers.length} players and ${normalizedGames.length} games.`;
+          const seasonText = importedSeasonStartDate
+            ? ` Season start date imported: ${importedSeasonStartDate}.`
+            : ` No season start date found in file; current season start date kept: ${getSeasonStartDate()}.`;
+
+          databaseStatus.textContent =
+            `Imported ${normalizedPlayers.length} players and ${normalizedGames.length} games.${seasonText}`;
         } catch {
           databaseStatus.textContent = 'Import failed. File must be valid JSON with players and games.';
         }
@@ -1955,8 +2051,12 @@
 
       renderAll();
 
+      const seasonText = isValidDateString(meta.seasonStartDate)
+        ? ` Season start date loaded from server: ${meta.seasonStartDate}.`
+        : ` No server season start date found; current season start date kept: ${getSeasonStartDate()}.`;
+
       databaseStatus.textContent =
-        `Loaded newest stats from server with ${meta.players.length} players and ${meta.games.length} games.`;
+        `Loaded newest stats from server with ${meta.players.length} players and ${meta.games.length} games.${seasonText}`;
     }
 
     overallStandingsTabButtonEl.addEventListener('click', () => setStatsTab('overall'));
@@ -1972,6 +2072,7 @@
 
       saveSeasonStartDate(date);
       renderSeasonMovers();
+      updateSeasonStartDateStatus('saved locally');
       databaseStatus.textContent = `Season start date set to ${date}. This date will be included in future database exports.`;
     });
 
@@ -1979,6 +2080,7 @@
       const date = seasonStartDateInputEl.value;
       if (!isValidDateString(date)) return;
       saveSeasonStartDate(date);
+      updateSeasonStartDateStatus('saved locally');
       renderSeasonMovers();
     });
 
@@ -2016,6 +2118,22 @@
       defaultDatabaseDialog.close();
     });
 
+    showAdvancedSettingsToggleEl.addEventListener('change', () => {
+      saveBooleanSetting(SHOW_ADVANCED_SETTINGS_STORAGE_KEY, showAdvancedSettingsToggleEl.checked);
+      updateConfidenceSliderUI();
+      renderAll();
+    });
+
+    showSeasonLengthSliderToggleEl.addEventListener('change', () => {
+      saveBooleanSetting(SHOW_SEASON_LENGTH_SLIDER_STORAGE_KEY, showSeasonLengthSliderToggleEl.checked);
+      updateConfidenceSliderUI();
+    });
+
+    showConfidenceSliderToggleEl.addEventListener('change', () => {
+      saveBooleanSetting(SHOW_CONFIDENCE_SLIDER_STORAGE_KEY, showConfidenceSliderToggleEl.checked);
+      updateConfidenceSliderUI();
+    });
+
     seasonLengthSliderEl.addEventListener('input', () => {
       const value = getSeasonLengthMonths();
       seasonLengthValueEl.textContent = String(value);
@@ -2029,10 +2147,6 @@
       confidencePenaltyStrengthValueEl.textContent = getUncertaintyPenaltyStrength().toFixed(2);
       saveConfidenceSliderPosition(value);
       renderAll();
-    });
-
-    showConfidenceSliderToggleEl.addEventListener('change', () => {
-      updateConfidenceSliderUI();
     });
 
     volleyballAdjustedToggleEl.addEventListener('change', () => {
@@ -2049,12 +2163,16 @@
     seasonLengthValueEl.textContent = seasonLengthSliderEl.value;
 
     confidenceAdjustmentSliderEl.value = String(loadConfidenceSliderPosition());
-    showConfidenceSliderToggleEl.checked = false;
+
+    showAdvancedSettingsToggleEl.checked = loadBooleanSetting(SHOW_ADVANCED_SETTINGS_STORAGE_KEY, false);
+    showSeasonLengthSliderToggleEl.checked = loadBooleanSetting(SHOW_SEASON_LENGTH_SLIDER_STORAGE_KEY, false);
+    showConfidenceSliderToggleEl.checked = loadBooleanSetting(SHOW_CONFIDENCE_SLIDER_STORAGE_KEY, false);
 
     volleyballAdjustedToggleEl.checked = loadVolleyballAdjustedEnabled();
     includeLeagueGamesToggleEl.checked = loadIncludeLeagueGamesEnabled();
 
     seasonStartDateInputEl.value = loadSeasonStartDate();
+    updateSeasonStartDateStatus();
 
     updateConfidenceSliderUI();
     setStatsTab('overall');

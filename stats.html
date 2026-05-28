@@ -446,6 +446,56 @@
       box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
     }
 
+
+
+    .season-player-lookup {
+      margin: 12px 0;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.03);
+    }
+
+    .season-player-lookup label {
+      display: block;
+      font-size: 14px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .season-player-lookup-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .season-player-lookup input {
+      flex: 1 1 240px;
+      min-width: 0;
+      padding: 10px 12px;
+      font-size: 15px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #0f172a;
+      color: var(--text);
+      outline: none;
+    }
+
+    .season-player-lookup input:focus {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
+    }
+
+    .season-player-lookup-result {
+      margin-top: 10px;
+    }
+
+    .season-player-lookup-result .season-mover-row {
+      background: rgba(147, 197, 253, 0.06);
+      border-color: rgba(147, 197, 253, 0.28);
+    }
+
     .season-movers-list {
       display: grid;
       gap: 10px;
@@ -569,6 +619,47 @@
       gap: 10px;
       flex-wrap: wrap;
       margin-top: 14px;
+    }
+
+
+
+    @media (max-width: 750px) {
+      .season-mover-row {
+        padding: 8px 10px;
+        border-radius: 12px;
+      }
+
+      .season-mover-header {
+        grid-template-columns: 24px minmax(0, 1fr) auto;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+
+      .season-mover-rank {
+        width: 24px;
+        height: 24px;
+        font-size: 12px;
+      }
+
+      .season-mover-name {
+        font-size: 14px;
+      }
+
+      .season-mover-score {
+        font-size: 14px;
+      }
+
+      .season-mover-bar-track {
+        height: 8px;
+      }
+
+      .season-movers-list {
+        gap: 6px;
+      }
+
+      .season-movers-list .season-mover-meta {
+        display: none;
+      }
     }
 
     @media (max-width: 750px) {
@@ -717,6 +808,17 @@
           <button id="applySeasonStartDateButton" class="secondary" type="button">Apply Date</button>
         </div>
 
+
+
+        <div class="season-player-lookup">
+          <label for="seasonPlayerLookupInput">Look up a player</label>
+          <div class="season-player-lookup-row">
+            <input type="search" id="seasonPlayerLookupInput" placeholder="Type a player name..." autocomplete="off" />
+            <button id="clearSeasonPlayerLookupButton" class="ghost" type="button">Clear</button>
+          </div>
+          <div id="seasonPlayerLookupResult" class="season-player-lookup-result"></div>
+        </div>
+
         <div id="seasonMoversSummary" class="status">Choose a season start date to calculate season movers.</div>
         <div id="seasonMoversList" class="season-movers-list"></div>
       </section>
@@ -793,6 +895,7 @@
     const SHOW_ADVANCED_SETTINGS_STORAGE_KEY = 'gameDayStatsShowAdvancedSettings';
     const SHOW_SEASON_LENGTH_SLIDER_STORAGE_KEY = 'gameDayStatsShowSeasonLengthSlider';
     const SHOW_CONFIDENCE_SLIDER_STORAGE_KEY = 'gameDayStatsShowConfidenceSlider';
+    const SEASON_PLAYER_LOOKUP_STORAGE_KEY = 'gameDaySeasonPlayerLookup';
 
     const LEADERBOARD_LOW_SIGMA = 6.4;
     const LEADERBOARD_HIGH_SIGMA = 8.4;
@@ -845,6 +948,9 @@
     const applySeasonStartDateButtonEl = document.getElementById('applySeasonStartDateButton');
     const seasonMoversSummaryEl = document.getElementById('seasonMoversSummary');
     const seasonMoversListEl = document.getElementById('seasonMoversList');
+    const seasonPlayerLookupInputEl = document.getElementById('seasonPlayerLookupInput');
+    const clearSeasonPlayerLookupButtonEl = document.getElementById('clearSeasonPlayerLookupButton');
+    const seasonPlayerLookupResultEl = document.getElementById('seasonPlayerLookupResult');
 
     const defaultDatabaseDialog = document.getElementById('defaultDatabaseDialog');
     const defaultDatabaseTextEl = document.getElementById('defaultDatabaseText');
@@ -1029,28 +1135,13 @@
 
     function loadSeasonStartDate() {
       const saved = localStorage.getItem(SEASON_START_DATE_STORAGE_KEY);
-      if (isValidDateString(saved)) return saved;
-
-      const fallbackDate = getDefaultSeasonStartDate();
-      localStorage.setItem(SEASON_START_DATE_STORAGE_KEY, fallbackDate);
-      return fallbackDate;
-    }
-
-    function setSeasonStartDate(value, extraText = '') {
-      if (!isValidDateString(value)) return false;
-
-      localStorage.setItem(SEASON_START_DATE_STORAGE_KEY, value);
-
-      if (seasonStartDateInputEl) {
-        seasonStartDateInputEl.value = value;
-      }
-
-      updateSeasonStartDateStatus(extraText);
-      return true;
+      return isValidDateString(saved) ? saved : getDefaultSeasonStartDate();
     }
 
     function saveSeasonStartDate(value) {
-      return setSeasonStartDate(value);
+      if (!isValidDateString(value)) return;
+      localStorage.setItem(SEASON_START_DATE_STORAGE_KEY, value);
+      updateSeasonStartDateStatus();
     }
 
     function loadBooleanSetting(key, defaultValue = false) {
@@ -1080,11 +1171,15 @@
       const importedDate = parsed?.seasonStartDate || parsed?.metadata?.seasonStartDate;
 
       if (isValidDateString(importedDate)) {
-        setSeasonStartDate(importedDate, 'imported from database');
+        saveSeasonStartDate(importedDate);
+        if (seasonStartDateInputEl) {
+          seasonStartDateInputEl.value = importedDate;
+        }
+        updateSeasonStartDateStatus('imported from database');
         return importedDate;
       }
 
-      updateSeasonStartDateStatus();
+      updateSeasonStartDateStatus('no season date found in imported file');
       return '';
     }
 
@@ -1251,9 +1346,13 @@
       return map;
     }
 
-    function getSeasonMoverRows() {
+    function isSeasonMoversGame(game) {
+      return game && typeof game === 'object' && !game.isLeagueGame;
+    }
+
+    function getSeasonMoverCandidateRows() {
       const seasonStartDate = getSeasonStartDate();
-      const allGames = loadGames();
+      const allGames = loadGames().filter(isSeasonMoversGame);
       const gamesBeforeSeason = allGames.filter(game => isGameBeforeDate(game, seasonStartDate));
       const startResult = getReplayResultForGames(gamesBeforeSeason);
       const currentResult = getReplayResultForGames(allGames);
@@ -1305,17 +1404,121 @@
             isNewThisSeason: !hadPreSeasonModelState
           };
         })
-        .filter(player => player && player.gamesSinceDate >= 2 && player.rawMuChange > 0)
-        .sort((a, b) => {
-          if (b.adjustedMuChange !== a.adjustedMuChange) {
-            return b.adjustedMuChange - a.adjustedMuChange;
-          }
+        .filter(Boolean);
+    }
 
-          if (b.rawMuChange !== a.rawMuChange) return b.rawMuChange - a.rawMuChange;
-          if (b.gamesSinceDate !== a.gamesSinceDate) return b.gamesSinceDate - a.gamesSinceDate;
-          return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-        })
-        .slice(0, 10);
+    function sortSeasonMoverRows(rows) {
+      return [...rows].sort((a, b) => {
+        if (b.adjustedMuChange !== a.adjustedMuChange) {
+          return b.adjustedMuChange - a.adjustedMuChange;
+        }
+
+        if (b.rawMuChange !== a.rawMuChange) return b.rawMuChange - a.rawMuChange;
+        if (b.gamesSinceDate !== a.gamesSinceDate) return b.gamesSinceDate - a.gamesSinceDate;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      });
+    }
+
+    function getSeasonMoverRows(candidateRows = getSeasonMoverCandidateRows()) {
+      return sortSeasonMoverRows(
+        candidateRows.filter(player => player.gamesSinceDate >= 2 && player.rawMuChange > 0)
+      ).slice(0, 10);
+    }
+
+    function getSeasonPlayerLookupQuery() {
+      return (seasonPlayerLookupInputEl?.value || '').trim();
+    }
+
+    function findSeasonLookupPlayer(candidateRows, query) {
+      const normalized = query.trim().toLowerCase();
+      if (!normalized) return null;
+
+      const sorted = sortSeasonMoverRows(candidateRows);
+      return (
+        sorted.find(row => row.name.toLowerCase() === normalized) ||
+        sorted.find(row => row.name.toLowerCase().startsWith(normalized)) ||
+        sorted.find(row => row.name.toLowerCase().includes(normalized)) ||
+        null
+      );
+    }
+
+    function getSeasonMoverMetaHtml(row, { includeEligibility = false } = {}) {
+      const adjustedDisplay = formatDisplayDeltaFromModelDelta(row.adjustedMuChange);
+      const rawDisplay = formatDisplayDeltaFromModelDelta(row.rawMuChange);
+      const adjustedMuText = formatModelDelta(row.adjustedMuChange);
+      const rawMuText = formatModelDelta(row.rawMuChange);
+      const confidencePct = Math.round(row.confidence * 100);
+      const smallSample = row.gamesSinceDate < LEADERBOARD_MINIMUM_GAMES;
+      const bits = [
+        `adjusted ${adjustedDisplay} display pts / mu ${adjustedMuText}`,
+        `raw ${rawDisplay} display pts / mu ${rawMuText}`,
+        `${row.gamesSinceDate} non-league game${row.gamesSinceDate === 1 ? '' : 's'} since start`,
+        `confidence ${confidencePct}%`
+      ];
+
+      if (row.isNewThisSeason) bits.push('new this season');
+      if (includeEligibility && row.gamesSinceDate < 2) bits.push('needs at least 2 non-league games for top 10');
+      if (includeEligibility && row.rawMuChange <= 0) bits.push('not a positive mover');
+
+      return `${bits.map(escapeHtml).join(' · ')}${smallSample ? '<span class="season-sample-pill">small sample</span>' : ''}`;
+    }
+
+    function createSeasonMoverRow(row, { rank = '', maxAdjusted = 1, showMeta = false, includeEligibility = false } = {}) {
+      const width = Math.max(3, Math.round((Math.max(0, row.adjustedMuChange) / Math.max(maxAdjusted, 0.01)) * 100));
+      const adjustedDisplay = formatDisplayDeltaFromModelDelta(row.adjustedMuChange);
+
+      const div = document.createElement('div');
+      div.className = 'season-mover-row';
+      div.innerHTML = `
+        <div class="season-mover-header">
+          <div class="season-mover-rank">${escapeHtml(rank || '—')}</div>
+          <div class="season-mover-name">${escapeHtml(row.name)}</div>
+          <div class="season-mover-score">${adjustedDisplay}</div>
+        </div>
+        <div class="season-mover-bar-track">
+          <div class="season-mover-bar" style="width: ${width}%"></div>
+        </div>
+        ${showMeta ? `<div class="season-mover-meta">${getSeasonMoverMetaHtml(row, { includeEligibility })}</div>` : ''}
+      `;
+
+      return div;
+    }
+
+    function renderSeasonPlayerLookup(candidateRows, topRows, maxAdjusted) {
+      if (!seasonPlayerLookupResultEl) return;
+
+      const query = getSeasonPlayerLookupQuery();
+      seasonPlayerLookupResultEl.innerHTML = '';
+
+      if (!query) return;
+
+      const match = findSeasonLookupPlayer(candidateRows, query);
+
+      if (!match) {
+        const empty = document.createElement('div');
+        empty.className = 'empty-state';
+        empty.textContent = `No player found matching "${query}".`;
+        seasonPlayerLookupResultEl.appendChild(empty);
+        return;
+      }
+
+      const topIndex = topRows.findIndex(row => String(row.id) === String(match.id));
+      const rank = topIndex >= 0 ? String(topIndex + 1) : '—';
+      const rowEl = createSeasonMoverRow(match, {
+        rank,
+        maxAdjusted,
+        showMeta: true,
+        includeEligibility: true
+      });
+
+      const note = document.createElement('div');
+      note.className = 'small';
+      note.textContent = topIndex >= 0
+        ? 'This player is currently in the top 10 season movers.'
+        : 'This player is shown here even though they are not currently in the top 10.';
+
+      seasonPlayerLookupResultEl.appendChild(rowEl);
+      seasonPlayerLookupResultEl.appendChild(note);
     }
 
     function renderSeasonMovers() {
@@ -1325,48 +1528,28 @@
         seasonStartDateInputEl.value = seasonStartDate;
       }
 
-      const rows = getSeasonMoverRows();
+      const candidateRows = getSeasonMoverCandidateRows();
+      const rows = getSeasonMoverRows(candidateRows);
       seasonMoversListEl.innerHTML = '';
+
+      const maxAdjusted = Math.max(...rows.map(row => Math.max(0, row.adjustedMuChange)), 0.01);
+      renderSeasonPlayerLookup(candidateRows, rows, maxAdjusted);
 
       if (!rows.length) {
         seasonMoversSummaryEl.textContent =
-          `No season movers found since ${seasonStartDate}. Players need at least 2 games and a positive mu change to appear here.`;
+          `No season movers found since ${seasonStartDate}. Players need at least 2 non-league games and a positive mu change to appear here.`;
         return;
       }
 
-      const maxAdjusted = Math.max(...rows.map(row => Math.max(0, row.adjustedMuChange)), 0.01);
-
       seasonMoversSummaryEl.textContent =
-        `Top ${rows.length} season movers since ${seasonStartDate}. Ranking uses mu change adjusted for games played and current sigma uncertainty. Displayed points are converted only for rendering.`;
+        `Top ${rows.length} season movers since ${seasonStartDate}. League games are excluded.`;
 
       rows.forEach((row, index) => {
-        const width = Math.max(3, Math.round((Math.max(0, row.adjustedMuChange) / maxAdjusted) * 100));
-        const adjustedDisplay = formatDisplayDeltaFromModelDelta(row.adjustedMuChange);
-        const rawDisplay = formatDisplayDeltaFromModelDelta(row.rawMuChange);
-        const adjustedMuText = formatModelDelta(row.adjustedMuChange);
-        const rawMuText = formatModelDelta(row.rawMuChange);
-        const confidencePct = Math.round(row.confidence * 100);
-        const smallSample = row.gamesSinceDate < LEADERBOARD_MINIMUM_GAMES;
-        const newText = row.isNewThisSeason ? ' · new this season' : '';
-
-        const div = document.createElement('div');
-        div.className = 'season-mover-row';
-        div.innerHTML = `
-          <div class="season-mover-header">
-            <div class="season-mover-rank">${index + 1}</div>
-            <div class="season-mover-name">${escapeHtml(row.name)}</div>
-            <div class="season-mover-score">${adjustedDisplay}</div>
-          </div>
-          <div class="season-mover-bar-track">
-            <div class="season-mover-bar" style="width: ${width}%"></div>
-          </div>
-          <div class="season-mover-meta">
-            adjusted ${adjustedDisplay} display pts / mu ${adjustedMuText} · raw ${rawDisplay} display pts / mu ${rawMuText} · ${row.gamesSinceDate} game${row.gamesSinceDate === 1 ? '' : 's'} since start · confidence ${confidencePct}%${newText}
-            ${smallSample ? '<span class="season-sample-pill">small sample</span>' : ''}
-          </div>
-        `;
-
-        seasonMoversListEl.appendChild(div);
+        seasonMoversListEl.appendChild(createSeasonMoverRow(row, {
+          rank: String(index + 1),
+          maxAdjusted,
+          showMeta: false
+        }));
       });
     }
 
@@ -1922,10 +2105,7 @@
     }
 
     async function fetchJsonFromGoogleStatsEndpoint() {
-      const url = new URL(GOOGLE_STATS_ENDPOINT);
-      url.searchParams.set('_cacheBust', String(Date.now()));
-
-      const response = await fetch(url.toString(), { cache: 'no-store' });
+      const response = await fetch(GOOGLE_STATS_ENDPOINT, { cache: 'no-store' });
 
       if (!response.ok) {
         throw new Error('Could not load Google Drive stats.');
@@ -2084,7 +2264,10 @@
       saveGames(meta.games);
 
       if (isValidDateString(meta.seasonStartDate)) {
-        setSeasonStartDate(meta.seasonStartDate);
+        saveSeasonStartDate(meta.seasonStartDate);
+        if (seasonStartDateInputEl) {
+          seasonStartDateInputEl.value = meta.seasonStartDate;
+        }
       }
 
       renderAll();
@@ -2117,6 +2300,23 @@
       updateSeasonStartDateStatus('saved locally');
       renderSeasonMovers();
     });
+
+    if (seasonPlayerLookupInputEl) {
+      seasonPlayerLookupInputEl.addEventListener('input', () => {
+        localStorage.setItem(SEASON_PLAYER_LOOKUP_STORAGE_KEY, seasonPlayerLookupInputEl.value);
+        renderSeasonMovers();
+      });
+    }
+
+    if (clearSeasonPlayerLookupButtonEl) {
+      clearSeasonPlayerLookupButtonEl.addEventListener('click', () => {
+        if (seasonPlayerLookupInputEl) {
+          seasonPlayerLookupInputEl.value = '';
+        }
+        localStorage.removeItem(SEASON_PLAYER_LOOKUP_STORAGE_KEY);
+        renderSeasonMovers();
+      });
+    }
 
     document.getElementById('exportDatabaseButton').addEventListener('click', exportDatabase);
     document.getElementById('importDatabaseButton').addEventListener('click', () => importFileInput.click());
@@ -2207,10 +2407,15 @@
     showSeasonLengthSliderToggleEl.checked = loadBooleanSetting(SHOW_SEASON_LENGTH_SLIDER_STORAGE_KEY, false);
     showConfidenceSliderToggleEl.checked = loadBooleanSetting(SHOW_CONFIDENCE_SLIDER_STORAGE_KEY, false);
 
+    if (seasonPlayerLookupInputEl) {
+      seasonPlayerLookupInputEl.value = localStorage.getItem(SEASON_PLAYER_LOOKUP_STORAGE_KEY) || '';
+    }
+
     volleyballAdjustedToggleEl.checked = loadVolleyballAdjustedEnabled();
     includeLeagueGamesToggleEl.checked = loadIncludeLeagueGamesEnabled();
 
-    setSeasonStartDate(loadSeasonStartDate());
+    seasonStartDateInputEl.value = loadSeasonStartDate();
+    updateSeasonStartDateStatus();
 
     updateConfidenceSliderUI();
     setStatsTab('overall');

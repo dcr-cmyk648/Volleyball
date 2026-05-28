@@ -659,7 +659,7 @@
 
       <section id="seasonMoversPanel" class="tab-panel hidden">
         <div class="small">
-          Ranks the top 10 improvers since the selected season start date. The score uses rating gain, games played since the date, and current uncertainty so tiny samples do not dominate the list.
+          Ranks the top 10 improvers since the selected season start date. The score uses mu movement, games played since the date, and current sigma uncertainty so tiny samples do not dominate the list.
         </div>
 
         <div class="season-movers-controls">
@@ -732,6 +732,8 @@
     const DEFAULT_SERVER_DATABASE_BUTTON_TEXT = 'download database from server';
     const NEW_SERVER_GAMES_BUTTON_TEXT = 'new games are available to sync';
     const LEAGUE_TEAM_SIZE = 6;
+    const DEFAULT_MODEL_MU = 25;
+    const DEFAULT_MODEL_SIGMA = 25 / 3;
 
     const DEFAULT_SEASON_LENGTH_MONTHS = 6;
     const DEFAULT_CONFIDENCE_SLIDER_POSITION = 50;
@@ -1080,11 +1082,28 @@
       });
     }
 
-    function getRawOrdinalFromStanding(player) {
-      if (!player) return 0;
-      if (typeof player.rawOrdinal === 'number') return player.rawOrdinal;
-      if (typeof player.rating === 'number') return player.rating;
-      return 0;
+    function getModelMuFromStanding(player, fallback = DEFAULT_MODEL_MU) {
+      const value = Number(player?.mu);
+      return Number.isFinite(value) ? value : fallback;
+    }
+
+    function getModelSigmaFromStanding(player, fallback = DEFAULT_MODEL_SIGMA) {
+      const value = Number(player?.sigma);
+      return Number.isFinite(value) ? value : fallback;
+    }
+
+    function formatDisplayDeltaFromModelDelta(modelDelta) {
+      const value = Number(modelDelta);
+      if (!Number.isFinite(value)) return '+0';
+
+      const displayDelta = Math.round(value * 50);
+      return `${displayDelta >= 0 ? '+' : ''}${displayDelta}`;
+    }
+
+    function formatModelDelta(value) {
+      const modelDelta = Number(value);
+      if (!Number.isFinite(modelDelta)) return '+0.00';
+      return `${modelDelta >= 0 ? '+' : ''}${modelDelta.toFixed(2)}`;
     }
 
     function getGameDateValue(game) {
@@ -1154,40 +1173,53 @@
           const id = String(player.id);
           const gamesSinceDate = gamesSinceMap.get(id) || 0;
           const startPlayer = startMap.get(id);
-          const startRawOrdinal = getRawOrdinalFromStanding(startPlayer);
-          const currentRawOrdinal = getRawOrdinalFromStanding(player);
-          const rawChange = currentRawOrdinal - startRawOrdinal;
+          const hadPreSeasonModelState = Boolean(startPlayer && Number(startPlayer.games) > 0);
 
-          const sigma = Number(player.sigma);
-          const uncertainty = Number.isFinite(sigma)
-            ? clamp((sigma - LEADERBOARD_LOW_SIGMA) / Math.max(0.01, LEADERBOARD_HIGH_SIGMA - LEADERBOARD_LOW_SIGMA), 0, 1)
-            : 1;
+          const startMu = hadPreSeasonModelState
+            ? getModelMuFromStanding(startPlayer)
+            : DEFAULT_MODEL_MU;
+
+          const currentMu = getModelMuFromStanding(player, NaN);
+          const currentSigma = getModelSigmaFromStanding(player);
+
+          if (!Number.isFinite(currentMu)) {
+            return null;
+          }
+
+          const rawMuChange = currentMu - startMu;
+          const uncertainty = clamp(
+            (currentSigma - LEADERBOARD_LOW_SIGMA) /
+              Math.max(0.01, LEADERBOARD_HIGH_SIGMA - LEADERBOARD_LOW_SIGMA),
+            0,
+            1
+          );
 
           const gamesConfidence = gamesSinceDate / (gamesSinceDate + 4);
           const certaintyConfidence = 1 - 0.35 * uncertainty;
           const confidence = gamesConfidence * certaintyConfidence;
-          const adjustedRawChange = rawChange * confidence;
+          const adjustedMuChange = rawMuChange * confidence;
 
           return {
             ...player,
             gamesSinceDate,
-            startRawOrdinal,
-            currentRawOrdinal,
-            rawChange,
-            adjustedRawChange,
+            startMu,
+            currentMu,
+            currentSigma,
+            rawMuChange,
+            adjustedMuChange,
             confidence,
             gamesConfidence,
             certaintyConfidence,
-            isNewThisSeason: !startPlayer || Number(startPlayer.games) === 0
+            isNewThisSeason: !hadPreSeasonModelState
           };
         })
-        .filter(player => player.gamesSinceDate >= 2 && player.rawChange > 0)
+        .filter(player => player && player.gamesSinceDate >= 2 && player.rawMuChange > 0)
         .sort((a, b) => {
-          if (b.adjustedRawChange !== a.adjustedRawChange) {
-            return b.adjustedRawChange - a.adjustedRawChange;
+          if (b.adjustedMuChange !== a.adjustedMuChange) {
+            return b.adjustedMuChange - a.adjustedMuChange;
           }
 
-          if (b.rawChange !== a.rawChange) return b.rawChange - a.rawChange;
+          if (b.rawMuChange !== a.rawMuChange) return b.rawMuChange - a.rawMuChange;
           if (b.gamesSinceDate !== a.gamesSinceDate) return b.gamesSinceDate - a.gamesSinceDate;
           return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
         })
@@ -1206,19 +1238,21 @@
 
       if (!rows.length) {
         seasonMoversSummaryEl.textContent =
-          `No season movers found since ${seasonStartDate}. Players need at least 2 games and a positive rating change to appear here.`;
+          `No season movers found since ${seasonStartDate}. Players need at least 2 games and a positive mu change to appear here.`;
         return;
       }
 
-      const maxAdjusted = Math.max(...rows.map(row => Math.max(0, row.adjustedRawChange)), 0.01);
+      const maxAdjusted = Math.max(...rows.map(row => Math.max(0, row.adjustedMuChange)), 0.01);
 
       seasonMoversSummaryEl.textContent =
-        `Top ${rows.length} season movers since ${seasonStartDate}. Adjusted score shrinks raw rating gain for small samples and high uncertainty.`;
+        `Top ${rows.length} season movers since ${seasonStartDate}. Ranking uses mu change adjusted for games played and current sigma uncertainty. Displayed points are converted only for rendering.`;
 
       rows.forEach((row, index) => {
-        const width = Math.max(3, Math.round((Math.max(0, row.adjustedRawChange) / maxAdjusted) * 100));
-        const adjustedDisplay = formatDisplayedRating(row.adjustedRawChange);
-        const rawDisplay = formatDisplayedRating(row.rawChange);
+        const width = Math.max(3, Math.round((Math.max(0, row.adjustedMuChange) / maxAdjusted) * 100));
+        const adjustedDisplay = formatDisplayDeltaFromModelDelta(row.adjustedMuChange);
+        const rawDisplay = formatDisplayDeltaFromModelDelta(row.rawMuChange);
+        const adjustedMuText = formatModelDelta(row.adjustedMuChange);
+        const rawMuText = formatModelDelta(row.rawMuChange);
         const confidencePct = Math.round(row.confidence * 100);
         const smallSample = row.gamesSinceDate < LEADERBOARD_MINIMUM_GAMES;
         const newText = row.isNewThisSeason ? ' · new this season' : '';
@@ -1229,13 +1263,13 @@
           <div class="season-mover-header">
             <div class="season-mover-rank">${index + 1}</div>
             <div class="season-mover-name">${escapeHtml(row.name)}</div>
-            <div class="season-mover-score">+${adjustedDisplay}</div>
+            <div class="season-mover-score">${adjustedDisplay}</div>
           </div>
           <div class="season-mover-bar-track">
             <div class="season-mover-bar" style="width: ${width}%"></div>
           </div>
           <div class="season-mover-meta">
-            raw +${rawDisplay} · ${row.gamesSinceDate} game${row.gamesSinceDate === 1 ? '' : 's'} since start · confidence ${confidencePct}%${newText}
+            adjusted ${adjustedDisplay} display pts / mu ${adjustedMuText} · raw ${rawDisplay} display pts / mu ${rawMuText} · ${row.gamesSinceDate} game${row.gamesSinceDate === 1 ? '' : 's'} since start · confidence ${confidencePct}%${newText}
             ${smallSample ? '<span class="season-sample-pill">small sample</span>' : ''}
           </div>
         `;

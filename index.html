@@ -597,13 +597,13 @@
 
   <dialog id="defaultDatabaseDialog">
     <div class="dialog-content">
-      <h2>Load Newest Stats?</h2>
+      <h2>Load Default Database?</h2>
       <div id="defaultDatabaseText" class="small">
-        Newest stats can be loaded from Google Drive.
+        A bundled default database is available.
       </div>
-      <div id="defaultDatabaseStatus" class="status">Checking Google Drive stats...</div>
+      <div id="defaultDatabaseStatus" class="status">Checking default database...</div>
       <div class="dialog-actions">
-        <button id="confirmLoadDefaultDatabaseButton" class="success">Yes, Load Newest Stats</button>
+        <button id="confirmLoadDefaultDatabaseButton" class="success">Yes, Load Default Database</button>
         <button id="declineLoadDefaultDatabaseButton" class="secondary">No</button>
       </div>
     </div>
@@ -630,7 +630,6 @@
 
   const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
   const DEFAULT_DB_SOURCE_PATH = './default_database';
-  const GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyZ1jU8iYn0MpOE1ydGU2pg1RIQWKQ2echsy9e_NR5-b5AcCiVMNCCg2UVPG827jvTb/exec';
   const DEFAULT_BALANCE_ATTEMPTS = 10;
 
   const DEFAULT_SEASON_LENGTH_MONTHS = 6;
@@ -1782,6 +1781,16 @@
     return null;
   }
 
+  function applyCurrentGameMetadata(record) {
+    record.courtType = getCourtType();
+
+    if (record.isLeagueGame && getLeagueLevel() === 'intermediate') {
+      record.level = 'intermediate';
+    }
+
+    return record;
+  }
+
   function buildGameRecordFromColors(winnerColor, loserColor = null) {
     const scoreA = parseOptionalScore(redScoreEl.value);
     const scoreB = parseOptionalScore(blueScoreEl.value);
@@ -1793,7 +1802,7 @@
       const scoreError = validateScorePair(scoreA, scoreB, true);
       if (scoreError) return { error: scoreError };
 
-      return {
+      const record = {
         id: Date.now(),
         date: new Date().toISOString().slice(0, 10),
         redTeam: getPlainTeamPlayers(winnerColor),
@@ -1806,6 +1815,8 @@
         displayWinnerColor: winnerColor,
         displayLoserColor: loserColor
       };
+
+      return applyCurrentGameMetadata(record);
     }
 
     const teamError = validateStandardTeamSetup();
@@ -1835,15 +1846,7 @@
         : null
     };
 
-    if (isLeagueGame && getLeagueLevel() === 'intermediate') {
-      record.level = 'intermediate';
-    }
-
-    if (getCourtType() === 'sand') {
-      record.courtType = 'sand';
-    }
-
-    return record;
+    return applyCurrentGameMetadata(record);
   }
 
   function getRecordWinnerSide(record) {
@@ -2373,6 +2376,10 @@
       .filter(player => player.name.length > 0);
   }
 
+  function normalizeImportedCourtType(value) {
+    return value === 'sand' ? 'sand' : 'indoor';
+  }
+
   function normalizeImportedGames(gamesList) {
     return gamesList
       .filter(game => game && typeof game === 'object')
@@ -2386,7 +2393,7 @@
         winner: game.winner === 'blue' ? 'blue' : 'red',
         isLeagueGame: Boolean(game.isLeagueGame),
         level: game.level === 'intermediate' ? 'intermediate' : undefined,
-        courtType: game.courtType === 'sand' ? 'sand' : undefined,
+        courtType: normalizeImportedCourtType(game.courtType),
         displayWinnerColor: TEAM_COLORS.includes(game.displayWinnerColor) ? game.displayWinnerColor : undefined,
         displayLoserColor: TEAM_COLORS.includes(game.displayLoserColor) ? game.displayLoserColor : undefined,
         leagueOpponent: game.isLeagueGame
@@ -2399,7 +2406,6 @@
       }))
       .map(game => {
         if (typeof game.level === 'undefined') delete game.level;
-        if (typeof game.courtType === 'undefined') delete game.courtType;
         if (typeof game.displayWinnerColor === 'undefined') delete game.displayWinnerColor;
         if (typeof game.displayLoserColor === 'undefined') delete game.displayLoserColor;
         return game;
@@ -2418,47 +2424,30 @@
     return latest || 'unknown date';
   }
 
-  async function fetchGoogleDriveStats() {
-    if (!GOOGLE_STATS_ENDPOINT || GOOGLE_STATS_ENDPOINT.includes('PASTE_')) {
-      throw new Error('Google Drive stats endpoint is not configured.');
-    }
-
-    const response = await fetch(GOOGLE_STATS_ENDPOINT, { cache: 'no-store' });
-
+  async function fetchDefaultDatabase() {
+    const response = await fetch(DEFAULT_DB_SOURCE_PATH, { cache: 'no-store' });
     if (!response.ok) {
-      throw new Error(`Google Drive stats request failed with HTTP ${response.status}.`);
+      throw new Error('Could not load the default database file.');
     }
 
     const parsed = await response.json();
 
     if (!parsed || typeof parsed !== 'object') {
-      throw new Error('Google Drive stats response was not valid JSON.');
+      throw new Error('Default database file is invalid.');
     }
 
-    if (parsed.ok === false) {
-      throw new Error(parsed.error || 'Google Drive stats endpoint returned an error.');
-    }
+    const normalizedPlayers = normalizeImportedPlayers(
+      Array.isArray(parsed.players) ? parsed.players : []
+    );
 
-    if (!Array.isArray(parsed.players) || !Array.isArray(parsed.games)) {
-      throw new Error('Google Drive stats response must include players[] and games[].');
-    }
-
-    return parsed;
-  }
-
-  async function fetchDefaultDatabase() {
-    const parsed = await fetchGoogleDriveStats();
-
-    const normalizedPlayers = normalizeImportedPlayers(parsed.players);
-    const normalizedGames = normalizeImportedGames(parsed.games);
+    const normalizedGames = normalizeImportedGames(
+      Array.isArray(parsed.games) ? parsed.games : []
+    );
 
     return {
       players: normalizedPlayers,
       games: normalizedGames,
-      latestGameDate: getLatestGameDate(normalizedGames),
-      sourceFileName: parsed.source?.fileName || '',
-      sourceLastUpdated: parsed.source?.lastUpdated || '',
-      sourceLabel: 'Google Drive'
+      latestGameDate: getLatestGameDate(normalizedGames)
     };
   }
 
@@ -2472,17 +2461,11 @@
   }
 
   function openDefaultDatabaseDialog(meta) {
-    const sourceText = meta.sourceFileName
-      ? ` from ${meta.sourceFileName}`
-      : meta.sourceLabel
-        ? ` via ${meta.sourceLabel}`
-        : '';
-
     defaultDatabaseTextEl.textContent =
-      `The newest stats file includes games through ${meta.latestGameDate}${sourceText}.`;
+      `The bundled default database includes games through ${meta.latestGameDate}.`;
 
     defaultDatabaseStatusEl.textContent =
-      `Google Drive stats file has ${meta.players.length} players and ${meta.games.length} games.`;
+      `Default database has ${meta.players.length} players and ${meta.games.length} games.`;
 
     confirmLoadDefaultDatabaseButtonEl.disabled = false;
     defaultDatabaseDialog.showModal();
@@ -2498,13 +2481,13 @@
     }
 
     try {
-      defaultDatabaseStatusEl.textContent = 'Checking Google Drive stats...';
+      defaultDatabaseStatusEl.textContent = 'Checking default database...';
       confirmLoadDefaultDatabaseButtonEl.disabled = true;
       const meta = await prepareDefaultDatabaseMeta();
       openDefaultDatabaseDialog(meta);
     } catch {
-      defaultDatabaseTextEl.textContent = 'Newest stats can be loaded from Google Drive.';
-      defaultDatabaseStatusEl.textContent = 'Could not read Google Drive stats. Check the Apps Script deployment, permissions, and Drive folder access.';
+      defaultDatabaseTextEl.textContent = 'A bundled default database is available.';
+      defaultDatabaseStatusEl.textContent = 'Could not read the default database file.';
       confirmLoadDefaultDatabaseButtonEl.disabled = true;
       defaultDatabaseDialog.showModal();
     }
@@ -2629,12 +2612,12 @@
   confirmLoadDefaultDatabaseButtonEl.addEventListener('click', async () => {
     try {
       confirmLoadDefaultDatabaseButtonEl.disabled = true;
-      defaultDatabaseStatusEl.textContent = 'Loading newest stats from Google Drive...';
+      defaultDatabaseStatusEl.textContent = 'Loading default database...';
       await loadDefaultDatabaseIntoStorage();
       defaultDatabaseDialog.close();
-      alert('Newest stats loaded from Google Drive.');
+      alert('Default database loaded.');
     } catch {
-      defaultDatabaseStatusEl.textContent = 'Failed to load newest stats from Google Drive. Check Apps Script auth/deployment and Drive folder access.';
+      defaultDatabaseStatusEl.textContent = 'Failed to load the default database.';
       confirmLoadDefaultDatabaseButtonEl.disabled = false;
     }
   });

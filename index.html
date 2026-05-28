@@ -127,6 +127,18 @@
       border-color: rgba(34, 197, 94, 0.35);
     }
 
+    button.danger {
+      background: rgba(239, 68, 68, 0.16);
+      color: #fecaca;
+      border-color: rgba(239, 68, 68, 0.35);
+    }
+
+    .server-warning {
+      color: #fecaca;
+      border-color: rgba(239, 68, 68, 0.45);
+      background: rgba(239, 68, 68, 0.12);
+    }
+
     .controls {
       display: flex;
       gap: 10px;
@@ -597,13 +609,13 @@
 
   <dialog id="defaultDatabaseDialog">
     <div class="dialog-content">
-      <h2>Load Default Database?</h2>
+      <h2>Load Newest Stats?</h2>
       <div id="defaultDatabaseText" class="small">
-        A bundled default database is available.
+        Checking Google Drive stats...
       </div>
-      <div id="defaultDatabaseStatus" class="status">Checking default database...</div>
+      <div id="defaultDatabaseStatus" class="status">Checking server connection...</div>
       <div class="dialog-actions">
-        <button id="confirmLoadDefaultDatabaseButton" class="success">Yes, Load Default Database</button>
+        <button id="confirmLoadDefaultDatabaseButton" class="success">Load Newest Stats</button>
         <button id="declineLoadDefaultDatabaseButton" class="secondary">No</button>
       </div>
     </div>
@@ -630,6 +642,7 @@
 
   const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
   const DEFAULT_DB_SOURCE_PATH = './default_database';
+  const GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyZ1jU8iYn0MpOE1ydGU2pg1RIQWKQ2echsy9e_NR5-b5AcCiVMNCCg2UVPG827jvTb/exec';
   const DEFAULT_BALANCE_ATTEMPTS = 10;
 
   const DEFAULT_SEASON_LENGTH_MONTHS = 6;
@@ -2424,18 +2437,51 @@
     return latest || 'unknown date';
   }
 
-  async function fetchDefaultDatabase() {
-    const response = await fetch(DEFAULT_DB_SOURCE_PATH, { cache: 'no-store' });
+  async function fetchGoogleDriveStats() {
+    if (!GOOGLE_STATS_ENDPOINT || GOOGLE_STATS_ENDPOINT.includes('PASTE_')) {
+      throw new Error('Google Drive stats endpoint is not configured.');
+    }
+
+    const response = await fetch(GOOGLE_STATS_ENDPOINT, { cache: 'no-store' });
+
     if (!response.ok) {
-      throw new Error('Could not load the default database file.');
+      throw new Error(`Google Drive stats request failed with HTTP ${response.status}.`);
     }
 
     const parsed = await response.json();
 
     if (!parsed || typeof parsed !== 'object') {
-      throw new Error('Default database file is invalid.');
+      throw new Error('Google Drive stats response was not valid JSON.');
     }
 
+    if (parsed.ok === false) {
+      throw new Error(parsed.error || 'Google Drive stats endpoint returned an error.');
+    }
+
+    if (!Array.isArray(parsed.players) || !Array.isArray(parsed.games)) {
+      throw new Error('Google Drive stats response must include players[] and games[].');
+    }
+
+    return parsed;
+  }
+
+  async function fetchBundledDefaultDatabase() {
+    const response = await fetch(DEFAULT_DB_SOURCE_PATH, { cache: 'no-store' });
+
+    if (!response.ok) {
+      throw new Error(`Bundled default database request failed with HTTP ${response.status}.`);
+    }
+
+    const parsed = await response.json();
+
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error('Bundled default database file is invalid.');
+    }
+
+    return parsed;
+  }
+
+  function normalizeServerDatabase(parsed, options = {}) {
     const normalizedPlayers = normalizeImportedPlayers(
       Array.isArray(parsed.players) ? parsed.players : []
     );
@@ -2447,8 +2493,34 @@
     return {
       players: normalizedPlayers,
       games: normalizedGames,
-      latestGameDate: getLatestGameDate(normalizedGames)
+      latestGameDate: getLatestGameDate(normalizedGames),
+      sourceLabel: options.sourceLabel || 'server',
+      sourceFileName: parsed.source?.fileName || '',
+      sourceLastUpdated: parsed.source?.lastUpdated || '',
+      serverConnectionError: options.serverConnectionError || '',
+      usedFallback: Boolean(options.usedFallback)
     };
+  }
+
+  async function fetchDefaultDatabase() {
+    try {
+      const parsed = await fetchGoogleDriveStats();
+      return normalizeServerDatabase(parsed, {
+        sourceLabel: 'Google Drive',
+        usedFallback: false,
+        serverConnectionError: ''
+      });
+    } catch (googleError) {
+      console.error('Google Drive stats failed; falling back to bundled default_database:', googleError);
+
+      const fallback = await fetchBundledDefaultDatabase();
+
+      return normalizeServerDatabase(fallback, {
+        sourceLabel: 'bundled fallback default_database',
+        usedFallback: true,
+        serverConnectionError: String(googleError && googleError.message ? googleError.message : googleError)
+      });
+    }
   }
 
   async function prepareDefaultDatabaseMeta() {
@@ -2460,13 +2532,38 @@
     return defaultDatabaseMeta;
   }
 
-  function openDefaultDatabaseDialog(meta) {
+  function setDefaultDatabaseDialogState(meta) {
+    defaultDatabaseStatusEl.classList.toggle('server-warning', Boolean(meta.usedFallback));
+    confirmLoadDefaultDatabaseButtonEl.classList.toggle('danger', Boolean(meta.usedFallback));
+    confirmLoadDefaultDatabaseButtonEl.classList.toggle('success', !meta.usedFallback);
+
+    if (meta.usedFallback) {
+      defaultDatabaseTextEl.textContent = 'Unable to connect to server.';
+      defaultDatabaseStatusEl.textContent = [
+        `Using bundled fallback database instead.`,
+        `Fallback has ${meta.players.length} players and ${meta.games.length} games through ${meta.latestGameDate}.`,
+        '',
+        `Server error: ${meta.serverConnectionError}`
+      ].join('\n');
+      confirmLoadDefaultDatabaseButtonEl.textContent = 'Load Bundled Fallback Database';
+      return;
+    }
+
+    const sourceText = meta.sourceFileName
+      ? ` from ${meta.sourceFileName}`
+      : ' from Google Drive';
+
     defaultDatabaseTextEl.textContent =
-      `The bundled default database includes games through ${meta.latestGameDate}.`;
+      `The newest cloud stats file includes games through ${meta.latestGameDate}${sourceText}.`;
 
     defaultDatabaseStatusEl.textContent =
-      `Default database has ${meta.players.length} players and ${meta.games.length} games.`;
+      `Google Drive stats file has ${meta.players.length} players and ${meta.games.length} games.`;
 
+    confirmLoadDefaultDatabaseButtonEl.textContent = 'Load Newest Stats';
+  }
+
+  function openDefaultDatabaseDialog(meta) {
+    setDefaultDatabaseDialogState(meta);
     confirmLoadDefaultDatabaseButtonEl.disabled = false;
     defaultDatabaseDialog.showModal();
   }
@@ -2481,14 +2578,20 @@
     }
 
     try {
-      defaultDatabaseStatusEl.textContent = 'Checking default database...';
+      defaultDatabaseStatusEl.classList.remove('server-warning');
+      defaultDatabaseStatusEl.textContent = 'Checking Google Drive stats...';
+      defaultDatabaseTextEl.textContent = 'Checking server connection...';
       confirmLoadDefaultDatabaseButtonEl.disabled = true;
       const meta = await prepareDefaultDatabaseMeta();
       openDefaultDatabaseDialog(meta);
-    } catch {
-      defaultDatabaseTextEl.textContent = 'A bundled default database is available.';
-      defaultDatabaseStatusEl.textContent = 'Could not read the default database file.';
+    } catch (error) {
+      defaultDatabaseTextEl.textContent = 'Unable to load a database.';
+      defaultDatabaseStatusEl.classList.add('server-warning');
+      defaultDatabaseStatusEl.textContent = `Could not read Google Drive stats or bundled fallback database.\n\nError: ${String(error && error.message ? error.message : error)}`;
       confirmLoadDefaultDatabaseButtonEl.disabled = true;
+      confirmLoadDefaultDatabaseButtonEl.classList.remove('success');
+      confirmLoadDefaultDatabaseButtonEl.classList.add('danger');
+      confirmLoadDefaultDatabaseButtonEl.textContent = 'Database Unavailable';
       defaultDatabaseDialog.showModal();
     }
   }
@@ -2524,6 +2627,10 @@
 
     renderPlayers();
     updateBalanceStatus();
+
+    defaultDatabaseStatusEl.textContent = meta.usedFallback
+      ? `Loaded bundled fallback database with ${meta.players.length} players and ${meta.games.length} games. Server connection is still failing.`
+      : `Loaded newest cloud stats with ${meta.players.length} players and ${meta.games.length} games.`;
   }
 
   balanceSliderEl.addEventListener('input', () => {
@@ -2612,12 +2719,15 @@
   confirmLoadDefaultDatabaseButtonEl.addEventListener('click', async () => {
     try {
       confirmLoadDefaultDatabaseButtonEl.disabled = true;
-      defaultDatabaseStatusEl.textContent = 'Loading default database...';
+      const meta = await prepareDefaultDatabaseMeta();
+      defaultDatabaseStatusEl.textContent = meta.usedFallback
+        ? 'Loading bundled fallback database...'
+        : 'Loading newest stats from Google Drive...';
       await loadDefaultDatabaseIntoStorage();
       defaultDatabaseDialog.close();
-      alert('Default database loaded.');
+      alert(meta.usedFallback ? 'Bundled fallback database loaded. Server connection is still failing.' : 'Newest stats loaded from Google Drive.');
     } catch {
-      defaultDatabaseStatusEl.textContent = 'Failed to load the default database.';
+      defaultDatabaseStatusEl.textContent = 'Failed to load database.';
       confirmLoadDefaultDatabaseButtonEl.disabled = false;
     }
   });

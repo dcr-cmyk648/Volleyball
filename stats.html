@@ -430,7 +430,7 @@
         <button id="exportDatabaseButton">Export Database</button>
         <button id="importDatabaseButton" class="secondary">Import Database</button>
         <div class="server-stats-control">
-          <button id="loadDefaultDatabaseButton" class="ghost">Load newest stats from server</button>
+          <button id="loadDefaultDatabaseButton" class="ghost">download database from server</button>
           <div id="serverStatsDate" class="server-stats-date">Checking server date...</div>
         </div>
         <input type="file" id="importFileInput" accept=".json" hidden />
@@ -572,6 +572,8 @@
     const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
     const DEFAULT_DB_SOURCE_PATH = './default_database';
     const GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyZ1jU8iYn0MpOE1ydGU2pg1RIQWKQ2echsy9e_NR5-b5AcCiVMNCCg2UVPG827jvTb/exec';
+    const DEFAULT_SERVER_DATABASE_BUTTON_TEXT = 'download database from server';
+    const NEW_SERVER_GAMES_BUTTON_TEXT = 'new games are available to sync';
     const LEAGUE_TEAM_SIZE = 6;
 
     const DEFAULT_SEASON_LENGTH_MONTHS = 6;
@@ -1106,6 +1108,7 @@
       updateModeDescriptions();
       renderStats();
       renderHistory();
+      updateServerSyncButton();
     }
 
     function exportDatabase() {
@@ -1273,6 +1276,61 @@
       return latest || 'unknown date';
     }
 
+    function getGameIdentity(game) {
+      if (!game || typeof game !== 'object') return '';
+
+      if (game.id !== null && typeof game.id !== 'undefined' && String(game.id).trim() !== '') {
+        return `id:${String(game.id)}`;
+      }
+
+      const redIds = Array.isArray(game.redTeam)
+        ? game.redTeam.map(player => String(player?.id ?? player?.name ?? '')).sort().join(',')
+        : '';
+
+      const blueIds = Array.isArray(game.blueTeam)
+        ? game.blueTeam.map(player => String(player?.id ?? player?.name ?? '')).sort().join(',')
+        : '';
+
+      return [
+        'fallback',
+        game.date || '',
+        game.winner || '',
+        typeof game.scoreRed === 'undefined' ? '' : String(game.scoreRed),
+        typeof game.scoreBlue === 'undefined' ? '' : String(game.scoreBlue),
+        game.isLeagueGame ? 'league' : 'standard',
+        redIds,
+        blueIds
+      ].join('|');
+    }
+
+    function getServerGamesMissingLocally(meta) {
+      if (!meta || !Array.isArray(meta.games)) return [];
+
+      const localGameIds = new Set(
+        loadGames()
+          .map(getGameIdentity)
+          .filter(Boolean)
+      );
+
+      return meta.games.filter(game => {
+        const identity = getGameIdentity(game);
+        return identity && !localGameIds.has(identity);
+      });
+    }
+
+    function updateServerSyncButton(meta = defaultDatabaseMeta) {
+      if (!loadDefaultDatabaseButtonEl) return;
+
+      const missingServerGames = getServerGamesMissingLocally(meta);
+      const hasNewServerGames = missingServerGames.length > 0;
+
+      loadDefaultDatabaseButtonEl.classList.toggle('success', hasNewServerGames);
+      loadDefaultDatabaseButtonEl.classList.toggle('ghost', !hasNewServerGames);
+      loadDefaultDatabaseButtonEl.textContent = hasNewServerGames
+        ? NEW_SERVER_GAMES_BUTTON_TEXT
+        : DEFAULT_SERVER_DATABASE_BUTTON_TEXT;
+    }
+
     function updateServerStatsDate(meta) {
       if (!serverStatsDateEl) return;
 
@@ -1287,8 +1345,15 @@
           ? ` via ${meta.sourceLabel}`
           : '';
 
+      const missingServerGames = getServerGamesMissingLocally(meta);
+      const newGameText = missingServerGames.length
+        ? ` · ${missingServerGames.length} new game${missingServerGames.length === 1 ? '' : 's'} available`
+        : '';
+
       serverStatsDateEl.textContent =
-        `Newest server game: ${meta.latestGameDate}${sourceText}`;
+        `Newest server game: ${meta.latestGameDate}${sourceText}${newGameText}`;
+
+      updateServerSyncButton(meta);
     }
 
     async function fetchJsonFromGoogleStatsEndpoint() {
@@ -1503,6 +1568,7 @@
 
     prepareDefaultDatabaseMeta().catch(() => {
       if (serverStatsDateEl) serverStatsDateEl.textContent = 'Server date unavailable';
+      updateServerSyncButton(null);
     });
 
     maybeOfferDefaultDatabase();

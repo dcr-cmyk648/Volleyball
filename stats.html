@@ -705,11 +705,11 @@
       </div>
 
       <div class="tab-row" role="tablist" aria-label="Stats views">
-        <button id="overallStandingsTabButton" class="tab-button active" type="button">Overall Standings</button>
-        <button id="seasonMoversTabButton" class="tab-button" type="button">Season Movers</button>
+        <button id="seasonMoversTabButton" class="tab-button active" type="button">Season Movers</button>
+        <button id="overallStandingsTabButton" class="tab-button" type="button">Overall Standings</button>
       </div>
 
-      <section id="overallStandingsPanel" class="tab-panel">
+      <section id="overallStandingsPanel" class="tab-panel hidden">
         <div class="small" id="rankingModeDescription">
           Sorted by experimental leaderboard-adjusted Rating. Backend ratings and balancing still use OpenSkill mu/sigma.
         </div>
@@ -795,7 +795,7 @@
         </div>
       </section>
 
-      <section id="seasonMoversPanel" class="tab-panel hidden">
+      <section id="seasonMoversPanel" class="tab-panel">
         <div class="small">
           Ranks the top 10 improvers since the selected season start date. The score uses mu movement, games played since the date, and current sigma uncertainty so tiny samples do not dominate the list.
         </div>
@@ -963,7 +963,7 @@
     let defaultDatabaseDialogMode = 'prompt';
     let defaultDatabaseDialogRequestInFlight = false;
     let isLoadingDefaultDatabase = false;
-    let activeStatsTab = 'overall';
+    let activeStatsTab = 'seasonMovers';
 
     function loadPlayers() {
       const saved = localStorage.getItem(PLAYER_STORAGE_KEY);
@@ -2418,7 +2418,7 @@
     updateSeasonStartDateStatus();
 
     updateConfidenceSliderUI();
-    setStatsTab('overall');
+    setStatsTab('seasonMovers');
     renderAll();
 
     prepareDefaultDatabaseMeta().catch(() => {

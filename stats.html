@@ -797,7 +797,7 @@
 
       <section id="seasonMoversPanel" class="tab-panel">
         <div class="small">
-          Ranks the top 10 improvers since the selected season start date. The score uses mu movement, games played since the date, and current sigma uncertainty so tiny samples do not dominate the list.
+          Players need 5 total non-league games to establish a baseline ranking; Season Movers count changes starting with game 6.
         </div>
 
         <div class="season-movers-controls">
@@ -903,6 +903,7 @@
     const LEADERBOARD_MAX_SIGMA_PENALTY_STRENGTH = 6;
     const LEADERBOARD_MINIMUM_GAMES = 6;
     const LEADERBOARD_MISSING_GAME_PENALTY_AT_FULL_STRENGTH = 0.35;
+    const SEASON_MOVER_BASELINE_NON_LEAGUE_GAMES = 5;
 
     const TEAM_COLORS = ['red', 'blue', 'green', 'yellow'];
     const TEAM_LABELS = {
@@ -1336,6 +1337,77 @@
       return counts;
     }
 
+    function getSeasonGamesSortedOldestFirst(games) {
+      return [...games]
+        .map((game, originalIndex) => ({ game, originalIndex }))
+        .sort((a, b) => {
+          const dateA = getGameDateValue(a.game);
+          const dateB = getGameDateValue(b.game);
+
+          if (dateA !== dateB) {
+            return dateA.localeCompare(dateB);
+          }
+
+          return b.originalIndex - a.originalIndex;
+        })
+        .map(entry => entry.game);
+    }
+
+    function getSeasonMoverBaselineMap(games) {
+      const counts = new Map();
+      const baselineMap = new Map();
+
+      games.forEach((game, index) => {
+        getPlayerIdsForGame(game).forEach(id => {
+          const nextCount = (counts.get(id) || 0) + 1;
+          counts.set(id, nextCount);
+
+          if (nextCount === SEASON_MOVER_BASELINE_NON_LEAGUE_GAMES && !baselineMap.has(id)) {
+            baselineMap.set(id, {
+              baselineReached: true,
+              baselineGameIndex: index,
+              baselineDate: getGameDateValue(game),
+              totalNonLeagueGames: nextCount
+            });
+          }
+        });
+      });
+
+      counts.forEach((count, id) => {
+        const existing = baselineMap.get(id) || { baselineReached: false };
+        baselineMap.set(id, {
+          ...existing,
+          totalNonLeagueGames: count
+        });
+      });
+
+      return baselineMap;
+    }
+
+    function getLastGameIndexBeforeDate(games, dateString) {
+      let lastIndex = -1;
+
+      games.forEach((game, index) => {
+        if (isGameBeforeDate(game, dateString)) {
+          lastIndex = index;
+        }
+      });
+
+      return lastIndex;
+    }
+
+    function countPlayerGamesAfterIndex(games, playerId, startIndex) {
+      const id = String(playerId);
+      let count = 0;
+
+      games.forEach((game, index) => {
+        if (index <= startIndex) return;
+        if (getPlayerIdsForGame(game).has(id)) count += 1;
+      });
+
+      return count;
+    }
+
     function getStandingsMap(result) {
       const map = new Map();
 
@@ -1352,23 +1424,29 @@
 
     function getSeasonMoverCandidateRows() {
       const seasonStartDate = getSeasonStartDate();
-      const allGames = loadGames().filter(isSeasonMoversGame);
-      const gamesBeforeSeason = allGames.filter(game => isGameBeforeDate(game, seasonStartDate));
-      const startResult = getReplayResultForGames(gamesBeforeSeason);
+      const allGames = getSeasonGamesSortedOldestFirst(loadGames().filter(isSeasonMoversGame));
       const currentResult = getReplayResultForGames(allGames);
-      const startMap = getStandingsMap(startResult);
-      const gamesSinceMap = getGamesPlayedSinceDateByPlayer(allGames, seasonStartDate);
+      const baselineMap = getSeasonMoverBaselineMap(allGames);
+      const lastBeforeSeasonIndex = getLastGameIndexBeforeDate(allGames, seasonStartDate);
+      const startResultCache = new Map();
+
+      function getStartStandingMapForIndex(index) {
+        const safeIndex = Math.max(-1, Number(index));
+        if (!startResultCache.has(safeIndex)) {
+          const startGames = safeIndex >= 0 ? allGames.slice(0, safeIndex + 1) : [];
+          startResultCache.set(safeIndex, getStandingsMap(getReplayResultForGames(startGames)));
+        }
+
+        return startResultCache.get(safeIndex);
+      }
 
       return (currentResult.standings || [])
         .map(player => {
           const id = String(player.id);
-          const gamesSinceDate = gamesSinceMap.get(id) || 0;
-          const startPlayer = startMap.get(id);
-          const hadPreSeasonModelState = Boolean(startPlayer && Number(startPlayer.games) > 0);
-
-          const startMu = hadPreSeasonModelState
-            ? getModelMuFromStanding(startPlayer)
-            : DEFAULT_MODEL_MU;
+          const baselineInfo = baselineMap.get(id) || {
+            baselineReached: false,
+            totalNonLeagueGames: Number(player.games) || 0
+          };
 
           const currentMu = getModelMuFromStanding(player, NaN);
           const currentSigma = getModelSigmaFromStanding(player);
@@ -1376,6 +1454,36 @@
           if (!Number.isFinite(currentMu)) {
             return null;
           }
+
+          if (!baselineInfo.baselineReached) {
+            return {
+              ...player,
+              gamesSinceDate: 0,
+              totalNonLeagueGames: Number(baselineInfo.totalNonLeagueGames) || 0,
+              baselineReached: false,
+              baselineDate: '',
+              startMu: DEFAULT_MODEL_MU,
+              currentMu,
+              currentSigma,
+              rawMuChange: 0,
+              adjustedMuChange: 0,
+              confidence: 0,
+              gamesConfidence: 0,
+              certaintyConfidence: 0,
+              isNewThisSeason: true
+            };
+          }
+
+          const deltaStartIndex = Math.max(
+            Number(baselineInfo.baselineGameIndex),
+            lastBeforeSeasonIndex
+          );
+          const startMap = getStartStandingMapForIndex(deltaStartIndex);
+          const startPlayer = startMap.get(id);
+          const startMu = startPlayer
+            ? getModelMuFromStanding(startPlayer)
+            : DEFAULT_MODEL_MU;
+          const gamesSinceDate = countPlayerGamesAfterIndex(allGames, id, deltaStartIndex);
 
           const rawMuChange = currentMu - startMu;
           const uncertainty = clamp(
@@ -1393,6 +1501,10 @@
           return {
             ...player,
             gamesSinceDate,
+            totalNonLeagueGames: Number(baselineInfo.totalNonLeagueGames) || 0,
+            baselineReached: true,
+            baselineDate: baselineInfo.baselineDate || '',
+            deltaStartIndex,
             startMu,
             currentMu,
             currentSigma,
@@ -1401,7 +1513,7 @@
             confidence,
             gamesConfidence,
             certaintyConfidence,
-            isNewThisSeason: !hadPreSeasonModelState
+            isNewThisSeason: false
           };
         })
         .filter(Boolean);
@@ -1421,7 +1533,11 @@
 
     function getSeasonMoverRows(candidateRows = getSeasonMoverCandidateRows()) {
       return sortSeasonMoverRows(
-        candidateRows.filter(player => player.gamesSinceDate >= 2 && player.rawMuChange > 0)
+        candidateRows.filter(player =>
+          player.baselineReached &&
+          player.gamesSinceDate >= 1 &&
+          player.rawMuChange > 0
+        )
       ).slice(0, 10);
     }
 
@@ -1452,12 +1568,14 @@
       const bits = [
         `adjusted ${adjustedDisplay} display pts / mu ${adjustedMuText}`,
         `raw ${rawDisplay} display pts / mu ${rawMuText}`,
-        `${row.gamesSinceDate} non-league game${row.gamesSinceDate === 1 ? '' : 's'} since start`,
+        `${row.totalNonLeagueGames || 0} total non-league game${(row.totalNonLeagueGames || 0) === 1 ? '' : 's'}`,
+        `${row.gamesSinceDate} eligible post-baseline game${row.gamesSinceDate === 1 ? '' : 's'}`,
         `confidence ${confidencePct}%`
       ];
 
-      if (row.isNewThisSeason) bits.push('new this season');
-      if (includeEligibility && row.gamesSinceDate < 2) bits.push('needs at least 2 non-league games for top 10');
+      if (row.baselineDate) bits.push(`baseline after ${row.baselineDate}`);
+      if (includeEligibility && !row.baselineReached) bits.push(`needs ${SEASON_MOVER_BASELINE_NON_LEAGUE_GAMES} baseline non-league games`);
+      if (includeEligibility && row.baselineReached && row.gamesSinceDate < 1) bits.push('needs a post-baseline non-league game');
       if (includeEligibility && row.rawMuChange <= 0) bits.push('not a positive mover');
 
       return `${bits.map(escapeHtml).join(' · ')}${smallSample ? '<span class="season-sample-pill">small sample</span>' : ''}`;
@@ -1537,12 +1655,12 @@
 
       if (!rows.length) {
         seasonMoversSummaryEl.textContent =
-          `No season movers found since ${seasonStartDate}. Players need at least 2 non-league games and a positive mu change to appear here.`;
+          `No season movers found since ${seasonStartDate}. Players need 5 baseline non-league games, then a positive change after that.`;
         return;
       }
 
       seasonMoversSummaryEl.textContent =
-        `Top ${rows.length} season movers since ${seasonStartDate}. League games are excluded.`;
+        `Top ${rows.length} season movers since ${seasonStartDate}. League games are excluded; changes start after each player's 5-game baseline.`;
 
       rows.forEach((row, index) => {
         seasonMoversListEl.appendChild(createSeasonMoverRow(row, {

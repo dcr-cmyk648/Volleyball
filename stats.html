@@ -786,6 +786,15 @@
         <div class="small">
           Click a name to open the detailed trend page with wins, mu, sigma, rating changes, and game-by-game model details.
         </div>
+
+        <div class="season-player-lookup">
+          <label for="overallPlayerLookupInput">Look up any player</label>
+          <div class="season-player-lookup-row">
+            <input type="search" id="overallPlayerLookupInput" placeholder="Type a player name..." autocomplete="off" />
+            <button id="clearOverallPlayerLookupButton" class="ghost" type="button">Clear</button>
+          </div>
+          <div id="overallPlayerLookupResult" class="season-player-lookup-result"></div>
+        </div>
       </section>
 
       <section id="seasonMoversPanel" class="tab-panel">
@@ -799,17 +808,17 @@
 
 
 
+        <div id="seasonMoversSummary" class="status">Choose a season start date to calculate season movers.</div>
+        <div id="seasonMoversList" class="season-movers-list"></div>
+
         <div class="season-player-lookup">
-          <label for="seasonPlayerLookupInput">Look up a player</label>
+          <label for="seasonPlayerLookupInput">Look up any player</label>
           <div class="season-player-lookup-row">
             <input type="search" id="seasonPlayerLookupInput" placeholder="Type a player name..." autocomplete="off" />
             <button id="clearSeasonPlayerLookupButton" class="ghost" type="button">Clear</button>
           </div>
           <div id="seasonPlayerLookupResult" class="season-player-lookup-result"></div>
         </div>
-
-        <div id="seasonMoversSummary" class="status">Choose a season start date to calculate season movers.</div>
-        <div id="seasonMoversList" class="season-movers-list"></div>
       </section>
     </div>
 
@@ -884,6 +893,7 @@
     const SHOW_SEASON_LENGTH_SLIDER_STORAGE_KEY = 'gameDayStatsShowSeasonLengthSlider';
     const SHOW_CONFIDENCE_SLIDER_STORAGE_KEY = 'gameDayStatsShowConfidenceSlider';
     const SEASON_PLAYER_LOOKUP_STORAGE_KEY = 'gameDaySeasonPlayerLookup';
+    const OVERALL_PLAYER_LOOKUP_STORAGE_KEY = 'gameDayOverallPlayerLookup';
 
     const LEADERBOARD_LOW_SIGMA = 6.4;
     const LEADERBOARD_HIGH_SIGMA = 8.4;
@@ -893,6 +903,7 @@
     const LEADERBOARD_MISSING_GAME_PENALTY_AT_FULL_STRENGTH = 0.35;
     const SEASON_MOVER_BASELINE_NON_LEAGUE_GAMES = 5;
     const SEASON_MOVER_POST_BASELINE_CONFIDENCE_GAMES = 8;
+    const OVERALL_STANDINGS_MIN_GAMES = 5;
 
     const TEAM_COLORS = ['red', 'blue', 'green', 'yellow'];
     const TEAM_LABELS = {
@@ -903,6 +914,9 @@
     };
 
     const statsTableBody = document.getElementById('statsTableBody');
+    const overallPlayerLookupInputEl = document.getElementById('overallPlayerLookupInput');
+    const clearOverallPlayerLookupButtonEl = document.getElementById('clearOverallPlayerLookupButton');
+    const overallPlayerLookupResultEl = document.getElementById('overallPlayerLookupResult');
     const historyList = document.getElementById('historyList');
     const databaseStatus = document.getElementById('databaseStatus');
     const seasonStartDateStatusEl = document.getElementById('seasonStartDateStatus');
@@ -1228,7 +1242,7 @@
 
     function getSortedStandingsRows(result) {
       return result.standings
-        .filter(player => player.games > 0)
+        .filter(player => player.games >= OVERALL_STANDINGS_MIN_GAMES)
         .map(player => ({
           ...player,
           experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player)
@@ -1807,9 +1821,75 @@
       return entries.reduce((sum, p) => sum + Number(p.rating), 0) / entries.length;
     }
 
+    function getOverallPlayerLookupQuery() {
+      return (overallPlayerLookupInputEl?.value || '').trim();
+    }
+
+    function findOverallLookupPlayer(rows, query) {
+      const normalized = query.trim().toLowerCase();
+      if (!normalized) return null;
+
+      return (
+        rows.find(row => row.name.toLowerCase() === normalized) ||
+        rows.find(row => row.name.toLowerCase().startsWith(normalized)) ||
+        rows.find(row => row.name.toLowerCase().includes(normalized)) ||
+        null
+      );
+    }
+
+    function createOverallLookupResult(player) {
+      const div = document.createElement('div');
+      div.className = 'season-mover-row';
+
+      const ratingRaw = getExperimentalLeaderboardRaw(player);
+      const ratingText = formatDisplayedRating(ratingRaw);
+      const eligibilityText = player.games >= OVERALL_STANDINGS_MIN_GAMES
+        ? 'Shown in Overall Standings.'
+        : `Needs ${OVERALL_STANDINGS_MIN_GAMES} games to appear in Overall Standings.`;
+
+      div.innerHTML = `
+        <div class="season-mover-header">
+          <div class="season-mover-rank">—</div>
+          <div class="season-mover-name">${formatPlayerNameCell(player)}</div>
+          <div class="season-mover-score">${escapeHtml(ratingText)}</div>
+        </div>
+        <div class="season-mover-meta">${escapeHtml(player.games)} game${player.games === 1 ? '' : 's'} · ${escapeHtml(eligibilityText)}</div>
+      `;
+
+      return div;
+    }
+
+    function renderOverallPlayerLookup(result) {
+      if (!overallPlayerLookupResultEl) return;
+
+      const query = getOverallPlayerLookupQuery();
+      overallPlayerLookupResultEl.innerHTML = '';
+
+      if (!query) return;
+
+      const rows = (result?.standings || [])
+        .map(player => ({
+          ...player,
+          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player)
+        }));
+
+      const match = findOverallLookupPlayer(rows, query);
+
+      if (!match) {
+        const empty = document.createElement('div');
+        empty.className = 'empty-state';
+        empty.textContent = `No player found matching "${query}".`;
+        overallPlayerLookupResultEl.appendChild(empty);
+        return;
+      }
+
+      overallPlayerLookupResultEl.appendChild(createOverallLookupResult(match));
+    }
+
     function renderStats() {
       const result = getReplayResult();
       const rows = getSortedStandingsRows(result);
+      renderOverallPlayerLookup(result);
 
       statsTableBody.innerHTML = '';
 
@@ -1817,7 +1897,7 @@
         const tr = document.createElement('tr');
         const td = document.createElement('td');
         td.colSpan = 4;
-        td.innerHTML = '<div class="empty-state">No players or league teams found for the current model.</div>';
+        td.innerHTML = '<div class="empty-state">No players have at least 5 games in the current model.</div>';
         tr.appendChild(td);
         statsTableBody.appendChild(tr);
         return;
@@ -2416,6 +2496,23 @@
       renderSeasonMovers();
     });
 
+    if (overallPlayerLookupInputEl) {
+      overallPlayerLookupInputEl.addEventListener('input', () => {
+        localStorage.setItem(OVERALL_PLAYER_LOOKUP_STORAGE_KEY, overallPlayerLookupInputEl.value);
+        renderStats();
+      });
+    }
+
+    if (clearOverallPlayerLookupButtonEl) {
+      clearOverallPlayerLookupButtonEl.addEventListener('click', () => {
+        if (overallPlayerLookupInputEl) {
+          overallPlayerLookupInputEl.value = '';
+        }
+        localStorage.removeItem(OVERALL_PLAYER_LOOKUP_STORAGE_KEY);
+        renderStats();
+      });
+    }
+
     if (seasonPlayerLookupInputEl) {
       seasonPlayerLookupInputEl.addEventListener('input', () => {
         localStorage.setItem(SEASON_PLAYER_LOOKUP_STORAGE_KEY, seasonPlayerLookupInputEl.value);
@@ -2521,6 +2618,10 @@
     showAdvancedSettingsToggleEl.checked = loadBooleanSetting(SHOW_ADVANCED_SETTINGS_STORAGE_KEY, false);
     showSeasonLengthSliderToggleEl.checked = loadBooleanSetting(SHOW_SEASON_LENGTH_SLIDER_STORAGE_KEY, false);
     showConfidenceSliderToggleEl.checked = loadBooleanSetting(SHOW_CONFIDENCE_SLIDER_STORAGE_KEY, false);
+
+    if (overallPlayerLookupInputEl) {
+      overallPlayerLookupInputEl.value = localStorage.getItem(OVERALL_PLAYER_LOOKUP_STORAGE_KEY) || '';
+    }
 
     if (seasonPlayerLookupInputEl) {
       seasonPlayerLookupInputEl.value = localStorage.getItem(SEASON_PLAYER_LOOKUP_STORAGE_KEY) || '';

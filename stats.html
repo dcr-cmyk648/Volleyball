@@ -867,6 +867,7 @@
     const GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwI-bqWAzCHWMZ_InGZq6mtx45QFELrvzfXnim10pSaWmvFS9b524rx2EnosslBNu4V/exec';
     const DEFAULT_SERVER_DATABASE_BUTTON_TEXT = 'download database from server';
     const NEW_SERVER_GAMES_BUTTON_TEXT = 'new games are available to sync';
+    const UP_TO_DATE_SERVER_DATABASE_BUTTON_TEXT = 'you are up to date';
     const LEAGUE_TEAM_SIZE = 6;
     const DEFAULT_MODEL_MU = 25;
     const DEFAULT_MODEL_SIGMA = 25 / 3;
@@ -891,6 +892,7 @@
     const LEADERBOARD_MINIMUM_GAMES = 6;
     const LEADERBOARD_MISSING_GAME_PENALTY_AT_FULL_STRENGTH = 0.35;
     const SEASON_MOVER_BASELINE_NON_LEAGUE_GAMES = 5;
+    const SEASON_MOVER_POST_BASELINE_CONFIDENCE_GAMES = 8;
 
     const TEAM_COLORS = ['red', 'blue', 'green', 'yellow'];
     const TEAM_LABELS = {
@@ -1452,6 +1454,7 @@
             return {
               ...player,
               gamesSinceDate: 0,
+              postBaselineGames: 0,
               totalNonLeagueGames: Number(baselineInfo.totalNonLeagueGames) || 0,
               baselineReached: false,
               baselineDate: '',
@@ -1486,7 +1489,8 @@
             1
           );
 
-          const gamesConfidence = gamesSinceDate / (gamesSinceDate + 4);
+          const postBaselineGames = gamesSinceDate;
+          const gamesConfidence = postBaselineGames / (postBaselineGames + SEASON_MOVER_POST_BASELINE_CONFIDENCE_GAMES);
           const certaintyConfidence = 1 - 0.35 * uncertainty;
           const confidence = gamesConfidence * certaintyConfidence;
           const adjustedMuChange = rawMuChange * confidence;
@@ -1494,6 +1498,7 @@
           return {
             ...player,
             gamesSinceDate,
+            postBaselineGames,
             totalNonLeagueGames: Number(baselineInfo.totalNonLeagueGames) || 0,
             baselineReached: true,
             baselineDate: baselineInfo.baselineDate || '',
@@ -1563,7 +1568,7 @@
         `raw ${rawDisplay} display pts / mu ${rawMuText}`,
         `${row.totalNonLeagueGames || 0} total non-league game${(row.totalNonLeagueGames || 0) === 1 ? '' : 's'}`,
         `${row.gamesSinceDate} eligible post-baseline game${row.gamesSinceDate === 1 ? '' : 's'}`,
-        `confidence ${confidencePct}%`
+        `post-baseline confidence ${confidencePct}%`
       ];
 
       if (row.baselineDate) bits.push(`baseline after ${row.baselineDate}`);
@@ -1648,12 +1653,12 @@
 
       if (!rows.length) {
         seasonMoversSummaryEl.textContent =
-          `No season movers found since ${seasonStartDate}. Requires 5 baseline non-league games; changes count starting with game 6.`;
+          `No season movers found since ${seasonStartDate}. Requires 5 baseline non-league games; changes count from game 6 and are weighted by post-baseline volume.`;
         return;
       }
 
       seasonMoversSummaryEl.textContent =
-        `Top ${rows.length} season movers since ${seasonStartDate}. Requires 5 baseline non-league games; changes count starting with game 6.`;
+        `Top ${rows.length} season movers since ${seasonStartDate}. Requires 5 baseline non-league games; changes count from game 6 and are weighted by post-baseline volume.`;
 
       rows.forEach((row, index) => {
         seasonMoversListEl.appendChild(createSeasonMoverRow(row, {
@@ -2177,6 +2182,13 @@
     function updateServerSyncButton(meta = defaultDatabaseMeta) {
       if (!loadDefaultDatabaseButtonEl) return;
 
+      if (!meta || !Array.isArray(meta.games)) {
+        loadDefaultDatabaseButtonEl.classList.remove('success');
+        loadDefaultDatabaseButtonEl.classList.add('ghost');
+        loadDefaultDatabaseButtonEl.textContent = DEFAULT_SERVER_DATABASE_BUTTON_TEXT;
+        return;
+      }
+
       const missingServerGames = getServerGamesMissingLocally(meta);
       const hasNewServerGames = missingServerGames.length > 0;
 
@@ -2184,7 +2196,7 @@
       loadDefaultDatabaseButtonEl.classList.toggle('ghost', !hasNewServerGames);
       loadDefaultDatabaseButtonEl.textContent = hasNewServerGames
         ? NEW_SERVER_GAMES_BUTTON_TEXT
-        : DEFAULT_SERVER_DATABASE_BUTTON_TEXT;
+        : UP_TO_DATE_SERVER_DATABASE_BUTTON_TEXT;
     }
 
     function updateServerStatsDate(meta) {
@@ -2201,12 +2213,8 @@
           ? ` via ${meta.sourceLabel}`
           : '';
 
-      const missingServerGames = getServerGamesMissingLocally(meta);
-      const newGameText = missingServerGames.length
-        ? ` · ${missingServerGames.length} new game${missingServerGames.length === 1 ? '' : 's'} available`
-        : '';
       serverStatsDateEl.textContent =
-        `Newest server game: ${meta.latestGameDate}${sourceText}${newGameText}`;
+        `Newest server game: ${meta.latestGameDate}${sourceText}`;
 
       updateServerSyncButton(meta);
     }
@@ -2378,6 +2386,7 @@
       }
 
       renderAll();
+      updateServerStatsDate(meta);
 
       setDatabaseStatus(`Loaded newest stats from server with ${meta.players.length} players and ${meta.games.length} games. Season start date: ${getSeasonStartDate()}.`);
     }

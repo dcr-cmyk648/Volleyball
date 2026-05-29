@@ -682,8 +682,6 @@
     <div class="card">
       <h2>Database</h2>
       <div class="controls">
-        <button id="exportDatabaseButton">Export Database</button>
-        <button id="importDatabaseButton" class="secondary">Import Database</button>
         <div class="server-stats-control">
           <button id="loadDefaultDatabaseButton" class="ghost">download database from server</button>
           <div id="serverStatsDate" class="server-stats-date">Checking server date...</div>
@@ -691,11 +689,8 @@
         <input type="file" id="importFileInput" accept=".json" hidden />
       </div>
 
-      <div class="small">
-        Export saves the full database as JSON: all players, all games, and the shared season start date. Import replaces the current database with the file you choose.
-      </div>
-      <div id="seasonStartDateStatus" class="season-start-status">Season start date: checking...</div>
-      <div id="databaseStatus" class="status">Ready.</div>
+      <div id="seasonStartDateStatus" class="season-start-status hidden"></div>
+      <div id="databaseStatus" class="status hidden"></div>
     </div>
 
     <div class="card">
@@ -710,9 +705,7 @@
       </div>
 
       <section id="overallStandingsPanel" class="tab-panel hidden">
-        <div class="small" id="rankingModeDescription">
-          Sorted by experimental leaderboard-adjusted Rating. Backend ratings and balancing still use OpenSkill mu/sigma.
-        </div>
+        <div class="small hidden" id="rankingModeDescription"></div>
 
         <div class="advanced-settings-control">
           <label for="showAdvancedSettingsToggle">
@@ -773,9 +766,7 @@
           </div>
         </div>
 
-        <div class="small" id="modelHelpText">
-          Rating on this page uses an experimental nonlinear uncertainty adjustment for leaderboard display only. Advanced settings are hidden by default and saved on this device. This does not affect OpenSkill updates or team balancing.
-        </div>
+        <div class="small hidden" id="modelHelpText"></div>
 
         <div class="table-wrap standings-wrap" style="margin-top: 12px;">
           <table>
@@ -796,10 +787,6 @@
       </section>
 
       <section id="seasonMoversPanel" class="tab-panel">
-        <div class="small">
-          Players need 5 total non-league games to establish a baseline ranking; Season Movers count changes starting with game 6.
-        </div>
-
         <div class="season-movers-controls">
           <div class="season-date-field">
             <label for="seasonStartDateInput">Season start date</label>
@@ -826,9 +813,7 @@
 
     <div class="card">
       <h2>Game History</h2>
-      <div class="small" id="historyModeDescription">
-        Newest games at the top. Delete removes the game from history and updates all derived stats automatically.
-      </div>
+      <div class="small hidden" id="historyModeDescription"></div>
       <div id="historyList" class="history-list" style="margin-top: 12px;"></div>
     </div>
   </div>
@@ -965,6 +950,12 @@
     let defaultDatabaseDialogRequestInFlight = false;
     let isLoadingDefaultDatabase = false;
     let activeStatsTab = 'seasonMovers';
+
+    function setDatabaseStatus(message, { visible = true } = {}) {
+      if (!databaseStatus) return;
+      databaseStatus.textContent = message;
+      databaseStatus.classList.toggle('hidden', !visible || !message);
+    }
 
     function loadPlayers() {
       const saved = localStorage.getItem(PLAYER_STORAGE_KEY);
@@ -1655,12 +1646,12 @@
 
       if (!rows.length) {
         seasonMoversSummaryEl.textContent =
-          `No season movers found since ${seasonStartDate}. Players need 5 baseline non-league games, then a positive change after that.`;
+          `No season movers found since ${seasonStartDate}. Requires 5 baseline non-league games; changes count starting with game 6.`;
         return;
       }
 
       seasonMoversSummaryEl.textContent =
-        `Top ${rows.length} season movers since ${seasonStartDate}. League games are excluded; changes start after each player's 5-game baseline.`;
+        `Top ${rows.length} season movers since ${seasonStartDate}. Requires 5 baseline non-league games; changes count starting with game 6.`;
 
       rows.forEach((row, index) => {
         seasonMoversListEl.appendChild(createSeasonMoverRow(row, {
@@ -1705,11 +1696,8 @@
         : 'league games excluded'
       );
 
-      rankingModeDescriptionEl.textContent =
-        `Sorted by experimental nonlinear leaderboard Rating using ${modes.join(' + ')}. Confidence slider position: ${getConfidenceSliderPosition()} / 100, penalty strength: ${getUncertaintyPenaltyStrength().toFixed(2)}. Backend ratings and balancing still use OpenSkill mu/sigma.`;
-
-      historyModeDescriptionEl.textContent =
-        `Newest games at the top. Delete removes the game from history and updates all derived stats automatically. Active mode: ${modes.join(' + ')}.`;
+      if (rankingModeDescriptionEl) rankingModeDescriptionEl.textContent = '';
+      if (historyModeDescriptionEl) historyModeDescriptionEl.textContent = '';
     }
 
     function escapeHtml(value) {
@@ -1987,7 +1975,7 @@
       a.click();
       URL.revokeObjectURL(url);
 
-      databaseStatus.textContent = `Exported ${payload.players.length} players and ${payload.games.length} games. Season start date included: ${seasonStartDate}.`;
+      setDatabaseStatus(`Exported ${payload.players.length} players and ${payload.games.length} games. Season start date included: ${seasonStartDate}.`);
       updateSeasonStartDateStatus('included in export');
     }
 
@@ -2067,10 +2055,9 @@
             ? ` Season start date imported: ${importedSeasonStartDate}.`
             : ` No season start date found in file; current season start date kept: ${getSeasonStartDate()}.`;
 
-          databaseStatus.textContent =
-            `Imported ${normalizedPlayers.length} players and ${normalizedGames.length} games.${seasonText}`;
+          setDatabaseStatus(`Imported ${normalizedPlayers.length} players and ${normalizedGames.length} games.${seasonText}`);
         } catch {
-          databaseStatus.textContent = 'Import failed. File must be valid JSON with players and games.';
+          setDatabaseStatus('Import failed. File must be valid JSON with players and games.');
         }
       };
 
@@ -2093,7 +2080,7 @@
 
     function confirmDeleteGame() {
       if (deleteGameInput.value !== 'delete') {
-        databaseStatus.textContent = 'Delete cancelled. You must type delete exactly.';
+        setDatabaseStatus('Delete cancelled. You must type delete exactly.');
         return;
       }
 
@@ -2102,7 +2089,7 @@
       saveGames(games);
       closeDeleteGameDialog();
       renderAll();
-      databaseStatus.textContent = 'Game deleted.';
+      setDatabaseStatus('Game deleted.');
     }
 
     function getPromptChoice() {
@@ -2390,8 +2377,7 @@
 
       renderAll();
 
-      databaseStatus.textContent =
-        `Loaded newest stats from server with ${meta.players.length} players and ${meta.games.length} games. Season start date: ${getSeasonStartDate()}.`;
+      setDatabaseStatus(`Loaded newest stats from server with ${meta.players.length} players and ${meta.games.length} games. Season start date: ${getSeasonStartDate()}.`);
     }
 
     overallStandingsTabButtonEl.addEventListener('click', () => setStatsTab('overall'));
@@ -2401,14 +2387,14 @@
       const date = seasonStartDateInputEl.value;
 
       if (!isValidDateString(date)) {
-        databaseStatus.textContent = 'Enter a valid season start date.';
+        setDatabaseStatus('Enter a valid season start date.');
         return;
       }
 
       saveSeasonStartDate(date);
       renderSeasonMovers();
       updateSeasonStartDateStatus('saved locally');
-      databaseStatus.textContent = `Season start date set to ${date}. This date will be included in future database exports.`;
+      setDatabaseStatus(`Season start date set to ${date}.`);
     });
 
     seasonStartDateInputEl.addEventListener('change', () => {
@@ -2436,8 +2422,8 @@
       });
     }
 
-    document.getElementById('exportDatabaseButton').addEventListener('click', exportDatabase);
-    document.getElementById('importDatabaseButton').addEventListener('click', () => importFileInput.click());
+    document.getElementById('exportDatabaseButton')?.addEventListener('click', exportDatabase);
+    document.getElementById('importDatabaseButton')?.addEventListener('click', () => importFileInput.click());
     loadDefaultDatabaseButtonEl.addEventListener('click', openManualDefaultDatabaseDialog);
 
     importFileInput.addEventListener('change', (event) => {

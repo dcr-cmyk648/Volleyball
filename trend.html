@@ -857,11 +857,9 @@
       const entity = player || leagueContext;
       const isLeagueContext = Boolean(leagueContext);
       const seasonLengthMonths = loadSeasonLengthMonths();
-      const confidenceSliderPosition = loadConfidenceSliderPosition();
       const seasonal = true;
       const volleyballAdjusted = loadVolleyballAdjustedEnabled();
       const includeLeagueGames = loadIncludeLeagueGamesEnabled();
-      const confidenceSliderPosition = 50; // kept for URL compat but no longer displayed
 
       if (!playerId || !entity) {
         pageTitleEl.textContent = 'Rating Not Found';

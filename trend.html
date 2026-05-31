@@ -141,7 +141,7 @@
       overflow-y: auto;
     }
 
-    table { width: 100%; border-collapse: collapse; min-width: 1240px; }
+    table { width: 100%; border-collapse: collapse; min-width: 1400px; }
 
     th, td {
       text-align: left;
@@ -262,10 +262,9 @@
               <th>Court / Context</th>
               <th>Score</th>
               <th>Rating</th>
-              <th>Mu</th>
-              <th>Sigma</th>
+              <th>Mu / Sigma</th>
               <th>Change</th>
-              <th>Model Details</th>
+              <th>Teams</th>
             </tr>
           </thead>
           <tbody id="timelineTableBody"></tbody>
@@ -286,19 +285,10 @@
     } from './ratings.js';
 
     const DEFAULT_SEASON_LENGTH_MONTHS = 6;
-    const DEFAULT_CONFIDENCE_SLIDER_POSITION = 50;
 
     const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
-    const CONFIDENCE_SLIDER_STORAGE_KEY = 'gameDayLeaderboardConfidenceSliderPosition';
     const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
     const INCLUDE_LEAGUE_GAMES_STORAGE_KEY = 'gameDayIncludeLeagueGamesEnabled';
-
-    const LEADERBOARD_LOW_SIGMA = 6.4;
-    const LEADERBOARD_HIGH_SIGMA = 8.4;
-    const LEADERBOARD_SIGMA_POWER = 2;
-    const LEADERBOARD_MAX_SIGMA_PENALTY_STRENGTH = 6;
-    const LEADERBOARD_MINIMUM_GAMES = 6;
-    const LEADERBOARD_MISSING_GAME_PENALTY_AT_FULL_STRENGTH = 0.35;
 
     const TEAM_COLORS = ['red', 'blue', 'green', 'yellow'];
     const TEAM_LABELS = {
@@ -376,25 +366,6 @@
       return Math.round(saved);
     }
 
-    function loadConfidenceSliderPosition() {
-      const params = getUrlParams();
-      const fromUrl = Number(params.get('confidenceSlider'));
-
-      if (Number.isFinite(fromUrl) && fromUrl >= 0 && fromUrl <= 100) {
-        return Math.round(fromUrl);
-      }
-
-      const raw = localStorage.getItem(CONFIDENCE_SLIDER_STORAGE_KEY);
-      if (raw === null) return DEFAULT_CONFIDENCE_SLIDER_POSITION;
-
-      const saved = Number(raw);
-      if (!Number.isFinite(saved) || saved < 0 || saved > 100) {
-        return DEFAULT_CONFIDENCE_SLIDER_POSITION;
-      }
-
-      return Math.round(saved);
-    }
-
     function getSeasonalTaperDays() {
       return Math.round(loadSeasonLengthMonths() * 30.4375);
     }
@@ -466,56 +437,6 @@
 
     function toDisplayRating(rawOrdinal) {
       return 1500 + Number(rawOrdinal) * 50;
-    }
-
-    function getUncertaintyPenaltyStrength(sliderPosition) {
-      const normalized = sliderPosition / 100;
-      return LEADERBOARD_MAX_SIGMA_PENALTY_STRENGTH * normalized * normalized;
-    }
-
-    function getUncertaintyPenaltyScale(sliderPosition) {
-      return getUncertaintyPenaltyStrength(sliderPosition) / LEADERBOARD_MAX_SIGMA_PENALTY_STRENGTH;
-    }
-
-    function getExperimentalLeaderboardRaw(player, sliderPosition) {
-      if (!player) return null;
-
-      const rawOrdinal =
-        typeof player.rawOrdinal === 'number'
-          ? player.rawOrdinal
-          : typeof player.rating === 'number'
-            ? player.rating
-            : 0;
-
-      const sigma = Number(player.sigma);
-      const games = Number(player.games) || 0;
-      const penaltyStrength = getUncertaintyPenaltyStrength(sliderPosition);
-      const penaltyScale = getUncertaintyPenaltyScale(sliderPosition);
-
-      const uncertainty = Number.isFinite(sigma)
-        ? clamp(
-            (sigma - LEADERBOARD_LOW_SIGMA) /
-              Math.max(0.01, LEADERBOARD_HIGH_SIGMA - LEADERBOARD_LOW_SIGMA),
-            0,
-            1
-          )
-        : 1;
-
-      const sigmaPenalty =
-        penaltyStrength * Math.pow(uncertainty, LEADERBOARD_SIGMA_POWER);
-
-      const missingGamePenalty =
-        Math.max(0, LEADERBOARD_MINIMUM_GAMES - games) *
-        LEADERBOARD_MISSING_GAME_PENALTY_AT_FULL_STRENGTH *
-        penaltyScale;
-
-      return rawOrdinal - sigmaPenalty - missingGamePenalty;
-    }
-
-    function getExperimentalLeaderboardDisplayRating(player, sliderPosition) {
-      const raw = getExperimentalLeaderboardRaw(player, sliderPosition);
-      if (raw === null) return null;
-      return toDisplayRating(raw);
     }
 
     function getCourtTypeLabel(row) {
@@ -611,31 +532,12 @@
       return `${date} #${index + 1}`;
     }
 
-    function getModeText({
-      volleyballAdjusted,
-      includeLeagueGames,
-      seasonLengthMonths,
-      confidenceSliderPosition
-    }) {
-      const modes = [
+    function getModeText({ volleyballAdjusted, includeLeagueGames, seasonLengthMonths }) {
+      return [
         `${seasonLengthMonths}-month seasonal ranking`,
-        `confidence slider ${confidenceSliderPosition}/100`,
-        `penalty strength ${getUncertaintyPenaltyStrength(confidenceSliderPosition).toFixed(2)}`
-      ];
-
-      modes.push(
-        volleyballAdjusted
-          ? 'Volleyball-adjusted model'
-          : 'Standard OpenSkill model'
-      );
-
-      modes.push(
-        includeLeagueGames
-          ? 'League games included by context'
-          : 'League games excluded'
-      );
-
-      return modes.join(' + ');
+        volleyballAdjusted ? 'Volleyball-adjusted model' : 'Standard OpenSkill model',
+        includeLeagueGames ? 'League games included' : 'League games excluded',
+      ].join(' + ');
     }
 
     function getContextCell(row) {
@@ -726,10 +628,11 @@
         includeLeagueGames
       });
 
+      // standings entries now include carryScore, carryConfidence, etc. from replayRatings
       return replay.standings.find(row => String(row.id) === String(playerId)) || null;
     }
 
-    function renderSummary(timeline, standingsEntry, confidenceSliderPosition) {
+    function renderSummary(timeline, standingsEntry) {
       summaryGridEl.innerHTML = '';
 
       if (timeline.length === 0) {
@@ -744,13 +647,18 @@
       const ratingChange = latest.displayRatingAfter - first.displayRatingBefore;
       const muChange = latest.muAfter - first.muBefore;
       const sigmaChange = latest.sigmaAfter - first.sigmaBefore;
-      const leaderboardRating = getExperimentalLeaderboardDisplayRating(standingsEntry, confidenceSliderPosition);
+      const leaderboardRating = standingsEntry?.leaderboardRating;
+
+      const carryScore = standingsEntry?.carryScore;
+      const carryConfidence = standingsEntry?.carryConfidence;
+      const carryGames = standingsEntry?.carryGames ?? 0;
+      const carryScoreLabel = carryScore !== undefined && carryGames > 0
+        ? `${carryScore >= 0 ? '+' : ''}${carryScore.toFixed(3)} (${formatPercent(carryConfidence)} conf.)`
+        : 'n/a';
 
       const items = [
         ['Current Rating', formatRating(latest.displayRatingAfter)],
-        ['Leaderboard Rating', leaderboardRating === null ? 'n/a' : formatRating(leaderboardRating)],
-        ['Confidence Slider', `${confidenceSliderPosition}/100`],
-        ['Penalty Strength', getUncertaintyPenaltyStrength(confidenceSliderPosition).toFixed(2)],
+        ['Leaderboard Rating', leaderboardRating !== undefined ? formatRating(leaderboardRating) : 'n/a'],
         ['Games', timeline.length],
         ['Record', `${wins}-${losses} (${formatPercent(winRate)})`],
         ['Rating Change', formatSignedNumber(ratingChange)],
@@ -759,6 +667,7 @@
         ['Raw Ordinal', formatRawOrdinal(latest.ratingAfter)],
         ['Mu Change', `${muChange >= 0 ? '+' : ''}${muChange.toFixed(2)}`],
         ['Sigma Change', `${sigmaChange >= 0 ? '+' : ''}${sigmaChange.toFixed(2)}`],
+        ['Carry Score', carryScoreLabel],
       ];
 
       items.forEach(([label, value]) => {
@@ -871,13 +780,42 @@
       });
     }
 
+    function getTeamRosterCell(row) {
+      const redColor = getDisplayColorForSide(row, 'red');
+      const blueColor = getDisplayColorForSide(row, 'blue');
+      const redLabel = getDisplayLabelForSide(row, 'red');
+      const blueLabel = row.isLeagueGame
+        ? (getLeagueContextName(row) || 'League Team')
+        : getDisplayLabelForSide(row, 'blue');
+
+      const redNames = Array.isArray(row.redTeam) && row.redTeam.length
+        ? row.redTeam.map(p => escapeHtml(p.name)).join(', ')
+        : '—';
+      const blueNames = row.isLeagueGame
+        ? (getLeagueContextName(row) || 'League Team')
+        : Array.isArray(row.blueTeam) && row.blueTeam.length
+          ? row.blueTeam.map(p => escapeHtml(p.name)).join(', ')
+          : '—';
+
+      return `
+        <div style="margin-bottom:5px">
+          <span class="team-pill ${escapeHtml(redColor)}">${escapeHtml(redLabel)}</span>
+          <span style="font-size:12px;color:var(--muted)">${redNames}</span>
+        </div>
+        <div>
+          <span class="team-pill ${escapeHtml(blueColor)}">${escapeHtml(blueLabel)}</span>
+          <span style="font-size:12px;color:var(--muted)">${blueNames}</span>
+        </div>
+      `;
+    }
+
     function renderTable(timeline, isLeagueContext) {
       timelineTableBodyEl.innerHTML = '';
 
       if (timeline.length === 0) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 10;
+        td.colSpan = 9;
         td.innerHTML = '<div class="empty-state">No included games for this rating.</div>';
         tr.appendChild(td);
         timelineTableBodyEl.appendChild(tr);
@@ -902,9 +840,8 @@
           <td>${escapeHtml(formatScore(row))}</td>
           <td>${formatRating(row.displayRatingBefore)} → ${formatRating(row.displayRatingAfter)}</td>
           <td>${formatMu(row.muBefore)} → ${formatMu(row.muAfter)}</td>
-          <td>${formatSigma(row.sigmaBefore)} → ${formatSigma(row.sigmaAfter)}</td>
           <td>${formatSignedNumber(ratingChange)}</td>
-          <td>${getModelCell(row)}</td>
+          <td>${getTeamRosterCell(row)}</td>
         `;
 
         timelineTableBodyEl.appendChild(tr);
@@ -924,11 +861,12 @@
       const seasonal = true;
       const volleyballAdjusted = loadVolleyballAdjustedEnabled();
       const includeLeagueGames = loadIncludeLeagueGamesEnabled();
+      const confidenceSliderPosition = 50; // kept for URL compat but no longer displayed
 
       if (!playerId || !entity) {
         pageTitleEl.textContent = 'Rating Not Found';
         statusMessageEl.textContent = 'Could not find that player or league context. Go back to Stats and choose a name from the standings.';
-        renderSummary([], null, confidenceSliderPosition);
+        renderSummary([], null);
         renderTable([], false);
         return;
       }
@@ -958,7 +896,7 @@
 
       if (timeline.length === 0) {
         statusMessageEl.textContent = `${entity.name} has no included games under the current model settings.`;
-        renderSummary(timeline, standingsEntry, confidenceSliderPosition);
+        renderSummary(timeline, standingsEntry);
         renderTable(timeline, isLeagueContext);
         return;
       }
@@ -968,26 +906,28 @@
       const wins = timeline.filter(row => row.won).length;
       const losses = timeline.length - wins;
       const ratingChange = latest.displayRatingAfter - first.displayRatingBefore;
-      const leaderboardRating = getExperimentalLeaderboardDisplayRating(standingsEntry, confidenceSliderPosition);
+      const leaderboardRating = standingsEntry?.leaderboardRating;
+      const carryScore = standingsEntry?.carryScore;
+      const carryConfidence = standingsEntry?.carryConfidence ?? 0;
+      const carryGames = standingsEntry?.carryGames ?? 0;
 
       statusMessageEl.textContent = [
         `${isLeagueContext ? 'League context' : 'Player'}: ${entity.name}`,
-        `Mode: ${getModeText({ volleyballAdjusted, includeLeagueGames, seasonLengthMonths, confidenceSliderPosition })}`,
+        `Mode: ${getModeText({ volleyballAdjusted, includeLeagueGames, seasonLengthMonths })}`,
         `Starting Rating: ${formatRating(first.displayRatingBefore)}`,
         `Current Rating: ${formatRating(latest.displayRatingAfter)}`,
-        `Leaderboard-adjusted Rating: ${leaderboardRating === null ? 'n/a' : formatRating(leaderboardRating)}`,
-        `Confidence slider: ${confidenceSliderPosition}/100`,
-        `Penalty strength: ${getUncertaintyPenaltyStrength(confidenceSliderPosition).toFixed(2)}`,
+        `Leaderboard Rating: ${leaderboardRating !== undefined ? formatRating(leaderboardRating) : 'n/a'}`,
         `Rating change: ${formatSignedNumber(ratingChange)}`,
         `Record: ${wins}-${losses} (${formatPercent(wins / timeline.length)})`,
         `Current mu: ${formatMu(latest.muAfter)}`,
         `Current sigma: ${formatSigma(latest.sigmaAfter)}`,
         `Raw ordinal: ${formatRawOrdinal(latest.ratingAfter)}`,
+        `Carry score: ${carryGames > 0 ? `${carryScore >= 0 ? '+' : ''}${carryScore.toFixed(3)} (${formatPercent(carryConfidence)} confidence, ${carryGames} games)` : 'n/a'}`,
         `Games included: ${timeline.length}`,
         `Latest included game: ${latest.date || 'Unknown'}`
       ].join('\n');
 
-      renderSummary(timeline, standingsEntry, confidenceSliderPosition);
+      renderSummary(timeline, standingsEntry);
       renderChart(timeline, entity.name);
       renderTable(timeline, isLeagueContext);
     }

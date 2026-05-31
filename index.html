@@ -1272,7 +1272,7 @@
     return 'Unable to balance teams. Consider increasing balance strength, reducing grouping, or allowing more flexible teams.';
   }
 
-  function buildCandidateTeams(presentPlayers, ratingMap) {
+  function buildCandidateTeams(presentPlayers, ratingMap, carryMap = {}) {
     const totalPlayers = presentPlayers.length;
     const targetRedSize = Math.ceil(totalPlayers / 2);
     const targetBlueSize = totalPlayers - targetRedSize;
@@ -1299,7 +1299,8 @@
     const score = scoreVolleyballCandidateSplit({
       redPlayers: redTeam,
       bluePlayers: blueTeam,
-      ratingMap
+      ratingMap,
+      carryScoreMap: carryMap
     });
 
     return {
@@ -1343,7 +1344,7 @@
     return diffs.reduce((sum, value) => sum + value, 0) / diffs.length;
   }
 
-  function getFourTeamPairwiseFairness(teamsByColor, ratingMap) {
+  function getFourTeamPairwiseFairness(teamsByColor, ratingMap, carryMap = {}) {
     let total = 0;
     let count = 0;
 
@@ -1354,7 +1355,8 @@
         const score = scoreVolleyballCandidateSplit({
           redPlayers: teamsByColor[colorA],
           bluePlayers: teamsByColor[colorB],
-          ratingMap
+          ratingMap,
+          carryScoreMap: carryMap
         });
         total += score.fairness;
         count += 1;
@@ -1364,7 +1366,7 @@
     return count ? total / count : 0;
   }
 
-  function buildFourTeamCandidate(presentPlayers, ratingMap) {
+  function buildFourTeamCandidate(presentPlayers, ratingMap, carryMap = {}) {
     const units = buildPlayerUnits(presentPlayers);
     const targetSizes = getFourTeamTargetSizes(presentPlayers.length);
     const teamsByColor = assignUnitsToTargetSizes(units, TEAM_COLORS, targetSizes);
@@ -1381,7 +1383,8 @@
     TEAM_COLORS.forEach(color => {
       const strength = getVolleyballTeamStrength({
         players: teamsByColor[color],
-        ratingMap
+        ratingMap,
+        carryScoreMap: carryMap
       });
 
       strengthsByColor[color] = strength.strength;
@@ -1393,7 +1396,7 @@
     const minStrength = Math.min(...strengths);
     const spread = maxStrength - minStrength;
     const averagePairwiseDifference = getAveragePairwiseDifference(strengths);
-    const averagePairwiseFairness = getFourTeamPairwiseFairness(teamsByColor, ratingMap);
+    const averagePairwiseFairness = getFourTeamPairwiseFairness(teamsByColor, ratingMap, carryMap);
 
     return {
       teamsByColor,
@@ -1430,7 +1433,7 @@
     while (validCandidatesFound < attempts && rawAttempts < maxRawAttempts) {
       rawAttempts += 1;
 
-      const candidate = buildFourTeamCandidate(presentPlayers, ratingData.ratingMap);
+      const candidate = buildFourTeamCandidate(presentPlayers, ratingData.ratingMap, ratingData.carryMap);
 
       if (candidate.invalid) {
         continue;
@@ -1502,7 +1505,7 @@
     while (validCandidatesFound < attempts && rawAttempts < maxRawAttempts) {
       rawAttempts += 1;
 
-      const candidate = buildCandidateTeams(presentPlayers, ratingData.ratingMap);
+      const candidate = buildCandidateTeams(presentPlayers, ratingData.ratingMap, ratingData.carryMap);
 
       if (candidate.invalid) {
         continue;
@@ -1671,7 +1674,7 @@
       const averagePairwiseDifference =
         candidate?.averagePairwiseDifference ?? getAveragePairwiseDifference(strengths);
       const averagePairwiseFairness =
-        candidate?.averagePairwiseFairness ?? getFourTeamPairwiseFairness(teamsByColor, ratingData.ratingMap);
+        candidate?.averagePairwiseFairness ?? getFourTeamPairwiseFairness(teamsByColor, ratingData.ratingMap, ratingData.carryMap);
 
       const lines = [
         'Balancing model: 4-team volleyball-adjusted',
@@ -1722,7 +1725,8 @@
     const score = candidate ?? scoreVolleyballCandidateSplit({
       redPlayers: redTeam,
       bluePlayers: blueTeam,
-      ratingMap: ratingData.ratingMap
+      ratingMap: ratingData.ratingMap,
+      carryScoreMap: ratingData.carryMap
     });
 
     const redAvg = getAverageRawOrdinal(redTeam, ratingData.ratingMap);

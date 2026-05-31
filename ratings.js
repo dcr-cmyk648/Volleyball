@@ -130,11 +130,17 @@ export const DEFAULT_RATING_OPTIONS = {
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
-  topPlayerWeight: 0.35,
+  // Top player carries 45% of team strength — reflects volleyball's star-player dominance (MAX algorithm)
+  topPlayerWeight: 0.45,
   secondPlayerWeight: 0.20,
-  averageWeight: 0.20,
-  depthWeight: 0.15,
-  worstPlayerWeight: 0.10,
+  averageWeight: 0.17,
+  depthWeight: 0.12,
+  // worstPlayerWeight is scaled by match closeness at runtime — full weight only in even matchups
+  worstPlayerWeight: 0.06,
+  // Carry score: bonus raw ordinal added to top player's effective rating
+  // when they have a history of winning above their team's modeled probability
+  carryScale: 8,
+  carryConfidenceGames: 15,
   sizeBonusPerExtraPlayer: 0.7,
   probabilityScale: 4.4,
   minWinProbability: 0.05,
@@ -538,9 +544,23 @@ function getTopValue(values, index, fallback) {
   return typeof sorted[index] === 'number' ? sorted[index] : fallback;
 }
 
+// Updates a running carry score for a player after a game.
+// carry score = mean(actual_outcome - pre_game_team_win_probability) across all games.
+// Positive = consistently wins more than the model expects; negative = underperforms expectations.
+function updateCarryScore(carryMap, id, isWinner, teamWinProb) {
+  const contribution = (isWinner ? 1 : 0) - teamWinProb;
+  if (!carryMap[id]) {
+    carryMap[id] = { totalContribution: 0, games: 0, score: 0 };
+  }
+  carryMap[id].totalContribution += contribution;
+  carryMap[id].games += 1;
+  carryMap[id].score = carryMap[id].totalContribution / carryMap[id].games;
+}
+
 export function getVolleyballTeamStrength({
   players = [],
   ratingMap = {},
+  carryScoreMap = {},
   ratingOptions = {},
   volleyballOptions = {},
 } = {}) {
@@ -588,11 +608,26 @@ export function getVolleyballTeamStrength({
   const secondBestRating = getTopValue(ratings, 1, averageRating);
   // 3rd best player — meaningful depth metric for volleyball rotations
   const depthRating = getTopValue(ratings, 2, averageRating);
-  // Worst player — captures the weak-link effect in volleyball rotations
+  // Worst player — weak-link effect; weight is further scaled by match closeness in scoreVolleyballCandidateSplit
   const worstRating = ratings.length ? Math.min(...ratings) : averageRating;
 
+  // Carry bonus: if the top player has a proven track record of winning above team expectations,
+  // boost their effective contribution. Confidence scales with game count to avoid noise on few games.
+  const topPlayer = ratedPlayers.reduce((best, p) =>
+    (p.rawOrdinal > (best?.rawOrdinal ?? -Infinity)) ? p : best, null
+  );
+  let adjustedBestRating = bestRating;
+  if (topPlayer && carryScoreMap[topPlayer.id]) {
+    const carryStats = carryScoreMap[topPlayer.id];
+    const confidenceGames = Math.max(1, Number(volleyballCfg.carryConfidenceGames) || 15);
+    const confidence = carryStats.games / (carryStats.games + confidenceGames);
+    // Only positive carry: boost proven stars, don't further penalise underperformers
+    const carryBonus = Math.max(0, carryStats.score) * (Number(volleyballCfg.carryScale) || 8) * confidence;
+    adjustedBestRating = bestRating + carryBonus;
+  }
+
   const baseStrength =
-    volleyballCfg.topPlayerWeight * bestRating +
+    volleyballCfg.topPlayerWeight * adjustedBestRating +
     volleyballCfg.secondPlayerWeight * secondBestRating +
     volleyballCfg.averageWeight * averageRating +
     volleyballCfg.depthWeight * depthRating +
@@ -606,6 +641,7 @@ export function getVolleyballTeamStrength({
     averageRating,
     medianRating,
     bestRating,
+    adjustedBestRating,
     secondBestRating,
     depthRating,
     worstRating,
@@ -618,6 +654,7 @@ export function scoreVolleyballCandidateSplit({
   redPlayers,
   bluePlayers,
   ratingMap,
+  carryScoreMap = {},
   options = {},
   volleyballOptions = {},
   ignoreSizeAdjustment = false,
@@ -631,6 +668,7 @@ export function scoreVolleyballCandidateSplit({
   const redStrengthBase = getVolleyballTeamStrength({
     players: redPlayers,
     ratingMap,
+    carryScoreMap,
     ratingOptions: ratingCfg,
     volleyballOptions: volleyballCfg,
   });
@@ -638,6 +676,7 @@ export function scoreVolleyballCandidateSplit({
   const blueStrengthBase = getVolleyballTeamStrength({
     players: bluePlayers,
     ratingMap,
+    carryScoreMap,
     ratingOptions: ratingCfg,
     volleyballOptions: volleyballCfg,
   });
@@ -649,8 +688,16 @@ export function scoreVolleyballCandidateSplit({
   const redSizeAdjustment = ignoreSizeAdjustment ? 0 : sizeDiff * volleyballCfg.sizeBonusPerExtraPlayer;
   const blueSizeAdjustment = ignoreSizeAdjustment ? 0 : -sizeDiff * volleyballCfg.sizeBonusPerExtraPlayer;
 
-  const redStrength = redStrengthBase.baseStrength + redSizeAdjustment;
-  const blueStrength = blueStrengthBase.baseStrength + blueSizeAdjustment;
+  // Conditional worst player weight: scale down when one team has a dominant star.
+  // In a close matchup (matchCloseness ≈ 1) the weak link matters; in a lopsided one it doesn't.
+  const redWorstContrib = volleyballCfg.worstPlayerWeight * redStrengthBase.worstRating;
+  const blueWorstContrib = volleyballCfg.worstPlayerWeight * blueStrengthBase.worstRating;
+  const redWithoutWorst = redStrengthBase.baseStrength - redWorstContrib + redSizeAdjustment;
+  const blueWithoutWorst = blueStrengthBase.baseStrength - blueWorstContrib + blueSizeAdjustment;
+  const matchCloseness = Math.max(0, 1 - Math.abs(redWithoutWorst - blueWithoutWorst) / (volleyballCfg.probabilityScale * 1.5));
+
+  const redStrength = redWithoutWorst + redWorstContrib * matchCloseness;
+  const blueStrength = blueWithoutWorst + blueWorstContrib * matchCloseness;
 
   const strengthDiff = redStrength - blueStrength;
 
@@ -983,6 +1030,7 @@ export function replayRatings({
   const ratingMap = {};
   const statsMap = {};
   const history = [];
+  const carryMap = {};
   const includedGames = getIncludedGames(games, includeLeagueGames);
   const seasonalTaperDays =
     typeof cfg.seasonalTaperDays === 'number'
@@ -1036,6 +1084,26 @@ export function replayRatings({
         if (game.winner === 'blue') statsMap[player.id].wins += 1;
       });
     }
+
+    // Update carry scores using the pre-game volleyball win probability from this game result.
+    // Fall back to OpenSkill probability if volleyball probability isn't available.
+    const winnerProb = historyEntry.volleyballWinnerProbability ??
+      historyEntry.openSkillWinnerProbability ??
+      0.5;
+    const winnerSide = game.winner === 'blue' ? 'blue' : 'red';
+
+    redTeam.forEach(player => {
+      const isWinner = winnerSide === 'red';
+      updateCarryScore(carryMap, String(player.id), isWinner, isWinner ? winnerProb : 1 - winnerProb);
+    });
+
+    // Skip league team members — they are synthetic entities, not real players
+    if (!game.isLeagueGame) {
+      blueTeam.forEach(player => {
+        const isWinner = winnerSide === 'blue';
+        updateCarryScore(carryMap, String(player.id), isWinner, isWinner ? winnerProb : 1 - winnerProb);
+      });
+    }
   });
 
   const standings = Object.values(statsMap)
@@ -1068,6 +1136,30 @@ export function replayRatings({
         wins: player.wins,
         games: player.games,
         winrate: player.games > 0 ? player.wins / player.games : 0.5,
+
+        // Carry score: how consistently this player wins above their team's modeled probability.
+        // effectiveCarryScore is confidence-weighted for display.
+        carryScore: (() => {
+          const cs = carryMap[String(player.id)];
+          return cs ? cs.score : 0;
+        })(),
+        carryGames: (() => {
+          const cs = carryMap[String(player.id)];
+          return cs ? cs.games : 0;
+        })(),
+        carryConfidence: (() => {
+          const cs = carryMap[String(player.id)];
+          if (!cs || cs.games === 0) return 0;
+          const cg = Number(DEFAULT_VOLLEYBALL_BALANCE_OPTIONS.carryConfidenceGames) || 15;
+          return cs.games / (cs.games + cg);
+        })(),
+        effectiveCarryScore: (() => {
+          const cs = carryMap[String(player.id)];
+          if (!cs || cs.games === 0) return 0;
+          const cg = Number(DEFAULT_VOLLEYBALL_BALANCE_OPTIONS.carryConfidenceGames) || 15;
+          const confidence = cs.games / (cs.games + cg);
+          return cs.score * confidence;
+        })(),
       };
     });
 
@@ -1100,6 +1192,7 @@ export function replayRatings({
     leagueTeams,
     volleyballAdjusted,
     includeLeagueGames,
+    carryMap,
   };
 }
 

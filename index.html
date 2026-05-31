@@ -491,9 +491,9 @@
 
       <div class="slider-row">
         <label for="balanceSlider">
-          Balance strength: <span id="balanceValue">10</span> candidate team splits
+          Balance thoroughness: <span id="balanceValue">50%</span>
         </label>
-        <input type="range" id="balanceSlider" min="1" max="100" value="10" />
+        <input type="range" id="balanceSlider" min="1" max="100" value="50" />
       </div>
 
       <div class="checkbox-row">
@@ -643,7 +643,7 @@
   const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
   const DEFAULT_DB_SOURCE_PATH = './default_database';
   const GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwI-bqWAzCHWMZ_InGZq6mtx45QFELrvzfXnim10pSaWmvFS9b524rx2EnosslBNu4V/exec';
-  const DEFAULT_BALANCE_ATTEMPTS = 10;
+  const DEFAULT_BALANCE_ATTEMPTS = 50;
 
   const DEFAULT_SEASON_LENGTH_MONTHS = 6;
   const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
@@ -1060,6 +1060,49 @@
     playerListEl.classList.toggle('no-scroll', !(hasPresent && hasAway));
   }
 
+  function computeBinomial(n, k) {
+    if (k > n || k < 0) return 0;
+    if (k === 0 || k === n) return 1;
+    const kMin = Math.min(k, n - k);
+    let result = 1;
+    for (let i = 0; i < kMin; i += 1) {
+      result = result * (n - i) / (i + 1);
+    }
+    return Math.round(result);
+  }
+
+  // Estimates the number of distinct team splits for a given player count and mode.
+  // Capped to avoid overflow — the practical search cap is what matters.
+  function estimateSearchSpace(playerCount, fourTeamMode) {
+    const n = Math.max(2, playerCount);
+    if (fourTeamMode) {
+      const q = Math.floor(n / 4);
+      const raw = computeBinomial(n, q) * computeBinomial(n - q, q) * computeBinomial(n - 2 * q, q) / 24;
+      return Math.min(100000, Math.max(1, Math.round(raw)));
+    }
+    const half = Math.floor(n / 2);
+    return Math.min(100000, Math.max(1, Math.round(computeBinomial(n, half) / 2)));
+  }
+
+  // Maps a thoroughness slider value (1-100) to an actual attempt count.
+  // Uses a quadratic curve so left=random, right=near-exhaustive, middle=default.
+  function computeAttempts(sliderValue, playerCount, fourTeamMode) {
+    const pct = sliderValue / 100;
+    const scaled = pct * pct; // quadratic: spreads out the low end
+    const searchSpace = estimateSearchSpace(playerCount, fourTeamMode);
+    // Overshoot by 2x at slider=100 to ensure near-full coverage via birthday paradox
+    const maxAttempts = Math.min(10000, Math.round(searchSpace * 2));
+    return Math.max(1, Math.round(scaled * maxAttempts));
+  }
+
+  function updateBalanceSliderLabel() {
+    const sliderValue = Number(balanceSliderEl.value);
+    const playerCount = getPresentPlayers().length;
+    const fourTeam = isFourTeamMode();
+    const attempts = computeAttempts(sliderValue, playerCount, fourTeam);
+    balanceValueEl.textContent = `${sliderValue}% (~${attempts.toLocaleString()} splits)`;
+  }
+
   function shuffleArray(input) {
     const arr = [...input];
     for (let i = arr.length - 1; i > 0; i -= 1) {
@@ -1377,12 +1420,12 @@
       return;
     }
 
-    const attempts = Number(balanceSliderEl.value);
+    const attempts = computeAttempts(Number(balanceSliderEl.value), presentPlayers.length, true);
     const ratingData = getRatingData();
     let bestCandidate = null;
     let validCandidatesFound = 0;
     let rawAttempts = 0;
-    const maxRawAttempts = Math.max(200, attempts * 150);
+    const maxRawAttempts = Math.min(500000, Math.max(500, attempts * 20));
 
     while (validCandidatesFound < attempts && rawAttempts < maxRawAttempts) {
       rawAttempts += 1;
@@ -1445,7 +1488,7 @@
       return;
     }
 
-    const attempts = Number(balanceSliderEl.value);
+    const attempts = computeAttempts(Number(balanceSliderEl.value), presentPlayers.length, false);
     const ratingData = getRatingData();
     const previousTeams = shouldForceTwoChanges()
       ? getPreviousTeamsForSimilarityConstraint()
@@ -1454,7 +1497,7 @@
     let bestCandidate = null;
     let validCandidatesFound = 0;
     let rawAttempts = 0;
-    const maxRawAttempts = Math.max(200, attempts * 150);
+    const maxRawAttempts = Math.min(500000, Math.max(500, attempts * 20));
 
     while (validCandidatesFound < attempts && rawAttempts < maxRawAttempts) {
       rawAttempts += 1;
@@ -1554,6 +1597,7 @@
   }
 
   function updateBalanceStatus(candidate = null, attempts = null, rawAttempts = null, usedConstraint = false) {
+    updateBalanceSliderLabel();
     const ratingData = getRatingData();
 
     if (isLeagueGameMode()) {
@@ -2645,7 +2689,7 @@
     savePageState();
     setPromptChoice('loaded');
 
-    balanceValueEl.textContent = balanceSliderEl.value;
+    updateBalanceSliderLabel();
 
     renderPlayers();
     updateBalanceStatus();
@@ -2656,7 +2700,7 @@
   }
 
   balanceSliderEl.addEventListener('input', () => {
-    balanceValueEl.textContent = balanceSliderEl.value;
+    updateBalanceSliderLabel();
     savePageState();
   });
 

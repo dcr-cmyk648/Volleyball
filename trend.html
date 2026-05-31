@@ -113,6 +113,16 @@
       background: var(--card-2);
     }
 
+    .summary-box.clickable {
+      cursor: pointer;
+      transition: background 0.12s ease, border-color 0.12s ease;
+    }
+
+    .summary-box.clickable:hover {
+      background: rgba(147, 197, 253, 0.08);
+      border-color: rgba(147, 197, 253, 0.35);
+    }
+
     .summary-label {
       font-size: 12px;
       color: var(--muted);
@@ -656,27 +666,35 @@
         ? `${carryScore >= 0 ? '+' : ''}${carryScore.toFixed(3)} (${formatPercent(carryConfidence)} conf.)`
         : 'n/a';
 
+      // [label, value, sortByKey] — sortByKey makes the box a link to the stats leaderboard sorted by that field
       const items = [
-        ['Current Rating', formatRating(latest.displayRatingAfter)],
-        ['Leaderboard Rating', leaderboardRating !== undefined ? formatRating(leaderboardRating) : 'n/a'],
-        ['Games', timeline.length],
-        ['Record', `${wins}-${losses} (${formatPercent(winRate)})`],
-        ['Rating Change', formatSignedNumber(ratingChange)],
-        ['Current Mu', formatMu(latest.muAfter)],
-        ['Current Sigma', formatSigma(latest.sigmaAfter)],
-        ['Raw Ordinal', formatRawOrdinal(latest.ratingAfter)],
-        ['Mu Change', `${muChange >= 0 ? '+' : ''}${muChange.toFixed(2)}`],
-        ['Sigma Change', `${sigmaChange >= 0 ? '+' : ''}${sigmaChange.toFixed(2)}`],
-        ['Carry Score', carryScoreLabel],
+        ['Current Rating',    formatRating(latest.displayRatingAfter),                                  'rating'],
+        ['Leaderboard Rating',leaderboardRating !== undefined ? formatRating(leaderboardRating) : 'n/a','rating'],
+        ['Games',             String(timeline.length),                                                   'games'],
+        ['Record',            `${wins}-${losses} (${formatPercent(winRate)})`,                           'winrate'],
+        ['Rating Change',     formatSignedNumber(ratingChange),                                          null],
+        ['Current Mu',        formatMu(latest.muAfter),                                                  'mu'],
+        ['Current Sigma',     formatSigma(latest.sigmaAfter),                                            'sigma'],
+        ['Raw Ordinal',       formatRawOrdinal(latest.ratingAfter),                                      'rawOrdinal'],
+        ['Mu Change',         `${muChange >= 0 ? '+' : ''}${muChange.toFixed(2)}`,                       null],
+        ['Sigma Change',      `${sigmaChange >= 0 ? '+' : ''}${sigmaChange.toFixed(2)}`,                 null],
+        ['Carry Score',       carryScoreLabel,                                                            'carryScore'],
       ];
 
-      items.forEach(([label, value]) => {
+      items.forEach(([label, value, sortKey]) => {
         const box = document.createElement('div');
-        box.className = 'summary-box';
+        box.className = 'summary-box' + (sortKey ? ' clickable' : '');
+
+        if (sortKey) {
+          box.title = `Click to rank all players by ${label}`;
+          box.addEventListener('click', () => {
+            window.location.href = `stats.html?sortBy=${sortKey}`;
+          });
+        }
 
         box.innerHTML = `
           <div class="summary-label">${escapeHtml(label)}</div>
-          <div class="summary-value">${escapeHtml(value)}</div>
+          <div class="summary-value">${escapeHtml(String(value))}</div>
         `;
 
         summaryGridEl.appendChild(box);

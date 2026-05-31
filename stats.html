@@ -770,13 +770,14 @@
 
         <div class="small hidden" id="modelHelpText"></div>
 
-        <div class="table-wrap standings-wrap" style="margin-top: 12px;">
+        <div id="sortIndicator" class="small hidden" style="margin-top: 12px;"></div>
+        <div class="table-wrap standings-wrap" style="margin-top: 8px;">
           <table>
             <thead>
               <tr>
                 <th>#</th>
                 <th>Player / League Team</th>
-                <th>Rating</th>
+                <th id="statsSortHeader">Rating</th>
                 <th>Games</th>
               </tr>
             </thead>
@@ -968,6 +969,18 @@
     let defaultDatabaseDialogRequestInFlight = false;
     let isLoadingDefaultDatabase = false;
     let activeStatsTab = 'seasonMovers';
+    let activeSortBy = null;
+
+    const SORT_CONFIGS = {
+      rating:     { field: 'experimentalLeaderboardRaw', dir: 'desc', header: 'Rating' },
+      games:      { field: 'games',                      dir: 'desc', header: 'Games' },
+      winrate:    { field: 'winrate',                    dir: 'desc', header: 'Win Rate' },
+      mu:         { field: 'mu',                         dir: 'desc', header: 'Mu' },
+      sigma:      { field: 'sigma',                      dir: 'asc',  header: 'Sigma ↑' },
+      rawOrdinal: { field: 'rawOrdinal',                 dir: 'desc', header: 'Raw Ordinal' },
+      carryScore: { field: 'effectiveCarryScore',        dir: 'desc', header: 'Carry Score' },
+      wins:       { field: 'wins',                       dir: 'desc', header: 'Wins' },
+    };
 
     function setDatabaseStatus(message, { visible = true } = {}) {
       if (!databaseStatus) return;
@@ -1195,6 +1208,7 @@
 
     function setStatsTab(tabName) {
       activeStatsTab = tabName === 'seasonMovers' ? 'seasonMovers' : 'overall';
+      sessionStorage.setItem('statsActiveTab', activeStatsTab);
 
       overallStandingsTabButtonEl.classList.toggle('active', activeStatsTab === 'overall');
       seasonMoversTabButtonEl.classList.toggle('active', activeStatsTab === 'seasonMovers');
@@ -1241,6 +1255,8 @@
     }
 
     function getSortedStandingsRows(result) {
+      const cfg = SORT_CONFIGS[activeSortBy] || null;
+
       return result.standings
         .filter(player => player.games >= OVERALL_STANDINGS_MIN_GAMES)
         .map(player => ({
@@ -1248,19 +1264,38 @@
           experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player)
         }))
         .sort((a, b) => {
-          if (b.experimentalLeaderboardRaw !== a.experimentalLeaderboardRaw) {
-            return b.experimentalLeaderboardRaw - a.experimentalLeaderboardRaw;
+          if (cfg) {
+            const aVal = Number(a[cfg.field]) || 0;
+            const bVal = Number(b[cfg.field]) || 0;
+            if (aVal !== bVal) return cfg.dir === 'asc' ? aVal - bVal : bVal - aVal;
+          } else {
+            if (b.experimentalLeaderboardRaw !== a.experimentalLeaderboardRaw) {
+              return b.experimentalLeaderboardRaw - a.experimentalLeaderboardRaw;
+            }
           }
 
           const rawA = typeof a.rawOrdinal === 'number' ? a.rawOrdinal : a.rating || 0;
           const rawB = typeof b.rawOrdinal === 'number' ? b.rawOrdinal : b.rating || 0;
-
           if (rawB !== rawA) return rawB - rawA;
           if (b.wins !== a.wins) return b.wins - a.wins;
           if (b.games !== a.games) return b.games - a.games;
-
           return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
         });
+    }
+
+    function getSortedFieldDisplay(player) {
+      const cfg = SORT_CONFIGS[activeSortBy];
+      if (!cfg) return formatDisplayedRating(player.experimentalLeaderboardRaw);
+      const val = player[cfg.field];
+      if (activeSortBy === 'winrate') return `${Math.round((Number(val) || 0) * 100)}%`;
+      if (activeSortBy === 'mu' || activeSortBy === 'sigma' || activeSortBy === 'rawOrdinal') {
+        return Number(val).toFixed(2);
+      }
+      if (activeSortBy === 'carryScore') {
+        const n = Number(val) || 0;
+        return `${n >= 0 ? '+' : ''}${n.toFixed(3)}`;
+      }
+      return String(val ?? '—');
     }
 
 
@@ -1891,6 +1926,20 @@
       const rows = getSortedStandingsRows(result);
       renderOverallPlayerLookup(result);
 
+      // Update column header and sort indicator
+      const sortHeader = document.getElementById('statsSortHeader');
+      const sortIndicator = document.getElementById('sortIndicator');
+      const cfg = SORT_CONFIGS[activeSortBy];
+      if (sortHeader) sortHeader.textContent = cfg ? cfg.header : 'Rating';
+      if (sortIndicator) {
+        if (cfg) {
+          sortIndicator.textContent = `Sorted by: ${cfg.header}${cfg.dir === 'asc' ? ' (lowest first)' : ''} — click any stat on a player's trend page to re-sort.`;
+          sortIndicator.classList.remove('hidden');
+        } else {
+          sortIndicator.classList.add('hidden');
+        }
+      }
+
       statsTableBody.innerHTML = '';
 
       if (rows.length === 0) {
@@ -1908,7 +1957,7 @@
         tr.innerHTML = `
           <td>${index + 1}</td>
           <td>${formatPlayerNameCell(player)}</td>
-          <td>${formatDisplayedRating(player.experimentalLeaderboardRaw)}</td>
+          <td>${getSortedFieldDisplay(player)}</td>
           <td>${player.games}</td>
         `;
         statsTableBody.appendChild(tr);
@@ -2634,7 +2683,16 @@
     updateSeasonStartDateStatus();
 
     updateConfidenceSliderUI();
-    setStatsTab('seasonMovers');
+
+    // Read URL params — sortBy forces the overall tab and sets the sort field
+    const _initParams = new URLSearchParams(window.location.search);
+    const _sortByParam = _initParams.get('sortBy');
+    if (_sortByParam && SORT_CONFIGS[_sortByParam]) {
+      activeSortBy = _sortByParam;
+    }
+    const _savedTab = sessionStorage.getItem('statsActiveTab') || 'seasonMovers';
+    setStatsTab(_sortByParam ? 'overall' : _savedTab);
+
     renderAll();
 
     prepareDefaultDatabaseMeta().catch(() => {

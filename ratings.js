@@ -130,10 +130,11 @@ export const DEFAULT_RATING_OPTIONS = {
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
-  topPlayerWeight: 0.40,
-  secondPlayerWeight: 0.25,
-  averageWeight: 0.25,
-  depthWeight: 0.10,
+  topPlayerWeight: 0.35,
+  secondPlayerWeight: 0.20,
+  averageWeight: 0.20,
+  depthWeight: 0.15,
+  worstPlayerWeight: 0.10,
   sizeBonusPerExtraPlayer: 0.7,
   probabilityScale: 4.4,
   minWinProbability: 0.05,
@@ -575,6 +576,7 @@ export function getVolleyballTeamStrength({
       bestRating: baselineRawOrdinal,
       secondBestRating: baselineRawOrdinal,
       depthRating: baselineRawOrdinal,
+      worstRating: baselineRawOrdinal,
       sizeAdjustment: 0,
       ratedPlayers,
     };
@@ -584,13 +586,17 @@ export function getVolleyballTeamStrength({
   const medianRating = getMedian(ratings);
   const bestRating = getTopValue(ratings, 0, averageRating);
   const secondBestRating = getTopValue(ratings, 1, averageRating);
-  const depthRating = (averageRating + medianRating) / 2;
+  // 3rd best player — meaningful depth metric for volleyball rotations
+  const depthRating = getTopValue(ratings, 2, averageRating);
+  // Worst player — captures the weak-link effect in volleyball rotations
+  const worstRating = ratings.length ? Math.min(...ratings) : averageRating;
 
   const baseStrength =
     volleyballCfg.topPlayerWeight * bestRating +
     volleyballCfg.secondPlayerWeight * secondBestRating +
     volleyballCfg.averageWeight * averageRating +
-    volleyballCfg.depthWeight * depthRating;
+    volleyballCfg.depthWeight * depthRating +
+    volleyballCfg.worstPlayerWeight * worstRating;
 
   return {
     teamSize: players.length,
@@ -602,6 +608,7 @@ export function getVolleyballTeamStrength({
     bestRating,
     secondBestRating,
     depthRating,
+    worstRating,
     sizeAdjustment: 0,
     ratedPlayers,
   };

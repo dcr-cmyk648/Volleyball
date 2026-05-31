@@ -1300,6 +1300,27 @@
     return diffs.reduce((sum, value) => sum + value, 0) / diffs.length;
   }
 
+  function getFourTeamPairwiseFairness(teamsByColor, ratingMap) {
+    let total = 0;
+    let count = 0;
+
+    for (let i = 0; i < TEAM_COLORS.length; i += 1) {
+      for (let j = i + 1; j < TEAM_COLORS.length; j += 1) {
+        const colorA = TEAM_COLORS[i];
+        const colorB = TEAM_COLORS[j];
+        const score = scoreVolleyballCandidateSplit({
+          redPlayers: teamsByColor[colorA],
+          bluePlayers: teamsByColor[colorB],
+          ratingMap
+        });
+        total += score.fairness;
+        count += 1;
+      }
+    }
+
+    return count ? total / count : 0;
+  }
+
   function buildFourTeamCandidate(presentPlayers, ratingMap) {
     const units = buildPlayerUnits(presentPlayers);
     const targetSizes = getFourTeamTargetSizes(presentPlayers.length);
@@ -1329,6 +1350,7 @@
     const minStrength = Math.min(...strengths);
     const spread = maxStrength - minStrength;
     const averagePairwiseDifference = getAveragePairwiseDifference(strengths);
+    const averagePairwiseFairness = getFourTeamPairwiseFairness(teamsByColor, ratingMap);
 
     return {
       teamsByColor,
@@ -1336,6 +1358,7 @@
       averageRatingsByColor,
       spread,
       averagePairwiseDifference,
+      averagePairwiseFairness,
       maxStrength,
       minStrength
     };
@@ -1343,10 +1366,7 @@
 
   function isBetterFourTeamCandidate(candidate, bestCandidate) {
     if (!bestCandidate) return true;
-    if (candidate.spread !== bestCandidate.spread) {
-      return candidate.spread < bestCandidate.spread;
-    }
-    return candidate.averagePairwiseDifference < bestCandidate.averagePairwiseDifference;
+    return candidate.averagePairwiseFairness > bestCandidate.averagePairwiseFairness;
   }
 
   function assignFourBalancedTeams() {
@@ -1606,6 +1626,8 @@
       const spread = candidate?.spread ?? (Math.max(...strengths) - Math.min(...strengths));
       const averagePairwiseDifference =
         candidate?.averagePairwiseDifference ?? getAveragePairwiseDifference(strengths);
+      const averagePairwiseFairness =
+        candidate?.averagePairwiseFairness ?? getFourTeamPairwiseFairness(teamsByColor, ratingData.ratingMap);
 
       const lines = [
         'Balancing model: 4-team volleyball-adjusted',
@@ -1613,8 +1635,8 @@
         `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
         `Season length: ${loadSeasonLengthMonths()} months`,
         `Volleyball-adjusted ratings: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
+        `Pairwise fairness: ${formatPercent(averagePairwiseFairness)}`,
         `Team raw-strength spread: ${formatRawStrength(spread)}`,
-        `Average pairwise raw-strength difference: ${formatRawStrength(averagePairwiseDifference)}`,
         `Red average Rating: ${formatDisplayedRating(averagesByColor.red)} | Raw strength: ${formatRawStrength(strengthsByColor.red)}`,
         `Blue average Rating: ${formatDisplayedRating(averagesByColor.blue)} | Raw strength: ${formatRawStrength(strengthsByColor.blue)}`,
         `Green average Rating: ${formatDisplayedRating(averagesByColor.green)} | Raw strength: ${formatRawStrength(strengthsByColor.green)}`,

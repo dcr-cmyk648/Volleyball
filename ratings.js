@@ -86,10 +86,16 @@ export const DEFAULT_RATING_OPTIONS = {
 
   useScoreMargin: true,
 
-  // Blowout bonus:
-  // Larger point margins still move ratings more.
-  maxMarginBonus: 0.25,
-  marginScale: 20,
+  // Blowout bonus — uses dominance ratio (winner's share of total points) rather than raw point diff.
+  // Formula: bonus = marginBonusScale × (dominanceMargin ^ marginBonusPower)
+  // where dominanceMargin = winnerScore / (winnerScore + loserScore) - 0.5
+  //
+  // Representative values (cap = maxMarginBonus = 0.40):
+  //   25-23 → 1.01x   25-21 → 1.04x   25-20 → 1.05x
+  //   25-15 → 1.18x   25-10 → 1.40x   25-5  → 1.40x (capped)
+  maxMarginBonus: 0.40,
+  marginBonusScale: 4.0,
+  marginBonusPower: 1.5,
 
   // Close overtime dampener:
   // A game that reaches 26-24, 27-25, etc. is evidence that the teams were well balanced,
@@ -415,7 +421,15 @@ export function getScoreMarginDetails(scoreRed, scoreBlue, options = {}) {
   const winnerScore = Math.max(red, blue);
   const loserScore = Math.min(red, blue);
 
-  const bonus = clamp(pointDiff / cfg.marginScale, 0, cfg.maxMarginBonus);
+  // Dominance ratio: winner's fraction of total points, shifted so 50/50 = 0.
+  // This naturally encodes loser score — 25-21 has lower dominance than 25-17 even though
+  // both might be considered a 4-point or 8-point margin.
+  const totalPoints = winnerScore + loserScore;
+  const dominanceMargin = totalPoints > 0 ? winnerScore / totalPoints - 0.5 : 0;
+  const scale = Number(cfg.marginBonusScale) || 4.0;
+  const power = Number(cfg.marginBonusPower) || 1.5;
+  const rawBonus = scale * Math.pow(Math.max(0, dominanceMargin), power);
+  const bonus = clamp(rawBonus, 0, cfg.maxMarginBonus);
   const blowoutBonusFactor = 1 + bonus;
 
   const isCloseOvertime =

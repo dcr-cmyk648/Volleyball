@@ -723,6 +723,7 @@
   let groupCount = MIN_GROUP_COUNT;
   let defaultDatabaseMeta = null;
   let pendingRecord = null;
+  let previousFourTeamAssignment = null; // tracks last 4-team color→playerIds for force-two-changes
 
   function loadPlayers() {
     const saved = localStorage.getItem(PLAYER_STORAGE_KEY);
@@ -1186,7 +1187,7 @@
   }
 
   function shouldForceTwoChanges() {
-    return forceTwoChangesCheckboxEl.checked && !isLeagueGameMode() && !isFourTeamMode();
+    return forceTwoChangesCheckboxEl.checked && !isLeagueGameMode();
   }
 
   function buildPlayerUnits(presentPlayers) {
@@ -1415,6 +1416,23 @@
     return candidate.averagePairwiseFairness > bestCandidate.averagePairwiseFairness;
   }
 
+  // For each new team, finds the previous team with the most player overlap,
+  // then checks that at least 2 players are different (new) vs that best match.
+  function fourTeamCandidateHasEnoughChanges(teamsByColor) {
+    if (!previousFourTeamAssignment) return true;
+
+    return TEAM_COLORS.every(newColor => {
+      const newIds = new Set(teamsByColor[newColor].map(p => String(p.id)));
+      let maxOverlap = 0;
+      TEAM_COLORS.forEach(prevColor => {
+        const prevIds = previousFourTeamAssignment[prevColor] || [];
+        const overlap = prevIds.filter(id => newIds.has(id)).length;
+        maxOverlap = Math.max(maxOverlap, overlap);
+      });
+      return (newIds.size - maxOverlap) >= 2;
+    });
+  }
+
   function assignFourBalancedTeams() {
     const presentPlayers = getPresentPlayers();
 
@@ -1439,6 +1457,10 @@
         continue;
       }
 
+      if (shouldForceTwoChanges() && !fourTeamCandidateHasEnoughChanges(candidate.teamsByColor)) {
+        continue;
+      }
+
       validCandidatesFound += 1;
 
       if (isBetterFourTeamCandidate(candidate, bestCandidate)) {
@@ -1458,10 +1480,23 @@
       }
     });
 
-    TEAM_COLORS.forEach(color => {
-      bestCandidate.teamsByColor[color].forEach(player => {
-        presenceState[player.id].team = color;
+    // Sort teams by descending strength: red=strongest, blue=2nd, green=3rd, yellow=weakest.
+    // This makes "red vs blue" and "green vs yellow" the natural same-strength matchups.
+    const colorsByStrength = TEAM_COLORS.slice().sort((a, b) =>
+      (bestCandidate.strengthsByColor[b] || 0) - (bestCandidate.strengthsByColor[a] || 0)
+    );
+
+    colorsByStrength.forEach((oldColor, rank) => {
+      const newColor = TEAM_COLORS[rank];
+      bestCandidate.teamsByColor[oldColor].forEach(player => {
+        presenceState[player.id].team = newColor;
       });
+    });
+
+    // Save for force-two-changes on next assignment
+    previousFourTeamAssignment = {};
+    TEAM_COLORS.forEach(color => {
+      previousFourTeamAssignment[color] = getTeamPlayers(color).map(p => String(p.id));
     });
 
     savePageState();
@@ -2162,7 +2197,7 @@
         ? 'Assign 4 Teams'
         : 'Assign Teams';
 
-    forceTwoChangesCheckboxEl.disabled = isLeagueGameMode() || isFourTeamMode();
+    forceTwoChangesCheckboxEl.disabled = isLeagueGameMode();
     fourTeamModeCheckboxEl.disabled = isLeagueGameMode();
     groupingCheckboxEl.disabled = isLeagueGameMode();
 

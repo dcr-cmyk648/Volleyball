@@ -105,6 +105,12 @@ export const DEFAULT_RATING_OPTIONS = {
 
   seasonalTaperDays: 180,
 
+  // Burn-in: first N games for a player count more, so they reach their true level faster.
+  // The update delta (both mu and sigma movement) is scaled up by burnInMultiplier for games
+  // where the player has fewer than burnInGames games of history.
+  burnInGames: 5,
+  burnInMultiplier: 1.5,
+
   // Leaderboard-only confidence adjustment.
   // This does NOT affect OpenSkill updates or team balancing.
   //
@@ -913,8 +919,16 @@ export function rateSingleGame(game, ratingMap, options = {}) {
         volleyballWinnerProbability: null,
       };
 
-  const finalUpdateMultiplier =
-    marginFactor * seasonalWeight * adjustment.multiplier;
+  const baseUpdateMultiplier = marginFactor * seasonalWeight * adjustment.multiplier;
+
+  // Per-team size damping: players on teams larger than 6 have less individual impact
+  // per game (more rotations, fewer touches). Damper = 6 / teamSize for teams > 6.
+  const redSizeDamper = LEAGUE_TEAM_SIZE / Math.max(LEAGUE_TEAM_SIZE, redIds.length);
+  const blueSizeDamper = LEAGUE_TEAM_SIZE / Math.max(LEAGUE_TEAM_SIZE, blueIds.length);
+  const redFinalMultiplier = baseUpdateMultiplier * redSizeDamper;
+  const blueFinalMultiplier = baseUpdateMultiplier * blueSizeDamper;
+  // Keep finalUpdateMultiplier as the base (pre-size-damping) for display purposes
+  const finalUpdateMultiplier = baseUpdateMultiplier;
 
   const outcomeScores = game?.winner === 'red'
     ? [1, 0]
@@ -932,7 +946,7 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     beforeEntries: redBefore,
     updatedTeam: updatedRedTeam,
     ratingMap,
-    multiplier: finalUpdateMultiplier,
+    multiplier: redFinalMultiplier,
     options: cfg,
   });
 
@@ -941,7 +955,7 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     beforeEntries: blueBefore,
     updatedTeam: updatedBlueTeam,
     ratingMap,
-    multiplier: finalUpdateMultiplier,
+    multiplier: blueFinalMultiplier,
     options: cfg,
   });
 
@@ -969,6 +983,10 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     loserScore: marginDetails.loserScore,
     isCloseOvertime: marginDetails.isCloseOvertime,
     seasonalWeight,
+    redSizeDamper,
+    blueSizeDamper,
+    redFinalMultiplier,
+    blueFinalMultiplier,
     volleyballAdjusted,
     volleyballUpdateMultiplier: adjustment.multiplier,
     finalUpdateMultiplier,
@@ -1077,6 +1095,34 @@ export function replayRatings({
     });
 
     history.push(historyEntry);
+
+    // Burn-in: players in their first N games get a scaled-up update so they
+    // reach their true rating faster. statsMap.games is the pre-game count here.
+    const burnInGames = Number(cfg.burnInGames) || 0;
+    const burnInMult = Number(cfg.burnInMultiplier) || 1;
+    if (burnInGames > 0 && burnInMult > 1) {
+      const applyBurnIn = (beforeEntries, afterEntries) => {
+        beforeEntries.forEach((before, i) => {
+          const gamesPlayed = statsMap[before.id]?.games ?? 0;
+          if (gamesPlayed < burnInGames) {
+            const after = afterEntries[i];
+            const newMu = before.mu + (after.mu - before.mu) * burnInMult;
+            const newSigma = clamp(
+              before.sigma + (after.sigma - before.sigma) * burnInMult,
+              1,
+              cfg.sigma
+            );
+            ratingMap[before.id] = rating({ mu: newMu, sigma: newSigma });
+            // Update historyEntry in-place so trend page reflects burn-in values
+            after.mu = newMu;
+            after.sigma = newSigma;
+            after.rating = getRawOrdinal(ratingMap[before.id], cfg);
+          }
+        });
+      };
+      applyBurnIn(historyEntry.before.red, historyEntry.after.red);
+      applyBurnIn(historyEntry.before.blue, historyEntry.after.blue);
+    }
 
     const redTeam = Array.isArray(game.redTeam) ? game.redTeam : [];
     const blueTeam = Array.isArray(game.blueTeam) ? game.blueTeam : [];

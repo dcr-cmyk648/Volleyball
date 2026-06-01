@@ -723,7 +723,6 @@
   let groupCount = MIN_GROUP_COUNT;
   let defaultDatabaseMeta = null;
   let pendingRecord = null;
-  let previousFourTeamAssignment = null; // tracks last 4-team color→playerIds for force-two-changes
 
   function loadPlayers() {
     const saved = localStorage.getItem(PLAYER_STORAGE_KEY);
@@ -1416,16 +1415,41 @@
     return candidate.averagePairwiseFairness > bestCandidate.averagePairwiseFairness;
   }
 
+  // Reconstructs the previous 4-team assignment from the last two 4-team game records.
+  // 4-team games are identified by having displayWinnerColor and displayLoserColor set.
+  // redTeam = winner (displayWinnerColor), blueTeam = loser (displayLoserColor).
+  function getPreviousFourTeamAssignmentFromHistory() {
+    const fourTeamGames = games
+      .filter(g => !g.isLeagueGame && g.displayWinnerColor && g.displayLoserColor)
+      .slice(0, 2);
+
+    if (fourTeamGames.length < 2) return null;
+
+    const teamMap = {};
+    fourTeamGames.forEach(game => {
+      const wc = game.displayWinnerColor;
+      const lc = game.displayLoserColor;
+      if (!teamMap[wc]) teamMap[wc] = [];
+      if (!teamMap[lc]) teamMap[lc] = [];
+      (game.redTeam || []).forEach(p => teamMap[wc].push(String(p.id)));
+      (game.blueTeam || []).forEach(p => teamMap[lc].push(String(p.id)));
+    });
+
+    // Need all 4 colors represented to have a complete previous round
+    return Object.keys(teamMap).length >= 4 ? teamMap : null;
+  }
+
   // For each new team, finds the previous team with the most player overlap,
   // then checks that at least 2 players are different (new) vs that best match.
   function fourTeamCandidateHasEnoughChanges(teamsByColor) {
-    if (!previousFourTeamAssignment) return true;
+    const prevAssignment = getPreviousFourTeamAssignmentFromHistory();
+    if (!prevAssignment) return true;
 
     return TEAM_COLORS.every(newColor => {
       const newIds = new Set(teamsByColor[newColor].map(p => String(p.id)));
       let maxOverlap = 0;
       TEAM_COLORS.forEach(prevColor => {
-        const prevIds = previousFourTeamAssignment[prevColor] || [];
+        const prevIds = prevAssignment[prevColor] || [];
         const overlap = prevIds.filter(id => newIds.has(id)).length;
         maxOverlap = Math.max(maxOverlap, overlap);
       });
@@ -1493,11 +1517,6 @@
       });
     });
 
-    // Save for force-two-changes on next assignment
-    previousFourTeamAssignment = {};
-    TEAM_COLORS.forEach(color => {
-      previousFourTeamAssignment[color] = getTeamPlayers(color).map(p => String(p.id));
-    });
 
     savePageState();
     renderPlayers();

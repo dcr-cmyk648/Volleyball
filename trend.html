@@ -622,7 +622,7 @@
       });
     }
 
-    function getStandingsEntry({
+    function getReplayData({
       players,
       games,
       playerId,
@@ -638,8 +638,10 @@
         includeLeagueGames
       });
 
-      // standings entries now include carryScore, carryConfidence, etc. from replayRatings
-      return replay.standings.find(row => String(row.id) === String(playerId)) || null;
+      return {
+        standingsEntry: replay.standings.find(row => String(row.id) === String(playerId)) || null,
+        calibratedStartMap: replay.calibratedStartMap || {},
+      };
     }
 
     function renderSummary(timeline, standingsEntry) {
@@ -889,6 +891,17 @@
 
       pageTitleEl.textContent = `${entity.name} Rating Trend`;
 
+      // Run the full replay first to get calibrated starting ratings, then use
+      // those starts for the timeline so both views are consistent.
+      const { standingsEntry, calibratedStartMap } = getReplayData({
+        players,
+        games,
+        playerId,
+        seasonLengthMonths,
+        volleyballAdjusted,
+        includeLeagueGames
+      });
+
       const timeline = getPlayerRatingTimeline({
         players,
         games,
@@ -896,18 +909,10 @@
         seasonal,
         volleyballAdjusted,
         includeLeagueGames,
+        _calibratedStarts: calibratedStartMap,
         options: {
           seasonalTaperDays: getSeasonalTaperDays()
         }
-      });
-
-      const standingsEntry = getStandingsEntry({
-        players,
-        games,
-        playerId,
-        seasonLengthMonths,
-        volleyballAdjusted,
-        includeLeagueGames
       });
 
       if (timeline.length === 0) {

@@ -111,6 +111,12 @@ export const DEFAULT_RATING_OPTIONS = {
   burnInGames: 5,
   burnInMultiplier: 1.5,
 
+  // Two-pass calibration: players with ≤ calibrationGames total games in the dataset
+  // get their pass-1 final rating used as the starting point for a second replay pass.
+  // This corrects for the inaccurate 1500 default start without a recursive loop.
+  // Set to 0 to disable.
+  calibrationGames: 10,
+
   // Leaderboard-only confidence adjustment.
   // This does NOT affect OpenSkill updates or team balancing.
   //
@@ -1057,6 +1063,7 @@ export function replayRatings({
   volleyballAdjusted = false,
   volleyballOptions = {},
   includeLeagueGames = true,
+  _calibratedStarts = null,
 } = {}) {
   const cfg = mergeRatingOptions(options);
   const ratingMap = {};
@@ -1070,7 +1077,10 @@ export function replayRatings({
       : SEASONAL_TAPER_DAYS;
 
   players.forEach(player => {
-    ratingMap[player.id] = makeInitialRating(cfg);
+    const calibrated = _calibratedStarts?.[player.id];
+    ratingMap[player.id] = calibrated
+      ? rating({ mu: Number(calibrated.mu), sigma: Number(calibrated.sigma) })
+      : makeInitialRating(cfg);
     statsMap[player.id] = {
       id: player.id,
       name: player.name,
@@ -1243,6 +1253,35 @@ export function replayRatings({
 
   const leagueTeam = leagueTeams.find(team => team.games > 0) || leagueTeams[0];
 
+  // Two-pass calibration: on the first pass (_calibratedStarts === null), collect the
+  // final ratings for players with few total games and re-run from those starting points.
+  // The second pass uses _calibratedStarts !== null, so it falls through to the return.
+  const calibrationGames = Number(cfg.calibrationGames) || 0;
+  if (calibrationGames > 0 && _calibratedStarts === null) {
+    const calibratedStarts = {};
+    Object.values(statsMap).forEach(stat => {
+      if (stat.games > 0 && stat.games <= calibrationGames) {
+        const skill = ratingMap[stat.id];
+        if (skill) {
+          calibratedStarts[stat.id] = { mu: Number(skill.mu), sigma: Number(skill.sigma) };
+        }
+      }
+    });
+
+    if (Object.keys(calibratedStarts).length > 0) {
+      return replayRatings({
+        players,
+        games,
+        options,
+        seasonal,
+        volleyballAdjusted,
+        volleyballOptions,
+        includeLeagueGames,
+        _calibratedStarts: calibratedStarts,
+      });
+    }
+  }
+
   return {
     ratingMap,
     statsMap,
@@ -1253,6 +1292,7 @@ export function replayRatings({
     volleyballAdjusted,
     includeLeagueGames,
     carryMap,
+    calibratedStartMap: _calibratedStarts || {},
   };
 }
 
@@ -1331,6 +1371,7 @@ export function getPlayerRatingTimeline({
   volleyballAdjusted = false,
   volleyballOptions = {},
   includeLeagueGames = true,
+  _calibratedStarts = null,
 } = {}) {
   const cfg = mergeRatingOptions(options);
   const ratingMap = {};
@@ -1344,7 +1385,10 @@ export function getPlayerRatingTimeline({
   const leagueContext = getLeagueContextById(playerId);
 
   players.forEach(player => {
-    ratingMap[player.id] = makeInitialRating(cfg);
+    const calibrated = _calibratedStarts?.[player.id];
+    ratingMap[player.id] = calibrated
+      ? rating({ mu: Number(calibrated.mu), sigma: Number(calibrated.sigma) })
+      : makeInitialRating(cfg);
   });
 
   const sortedGames = getGamesSortedOldestFirst(includedGames);

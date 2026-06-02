@@ -1110,7 +1110,7 @@ export function replayRatings({
     // reach their true rating faster. statsMap.games is the pre-game count here.
     const burnInGames = Number(cfg.burnInGames) || 0;
     const burnInMult = Number(cfg.burnInMultiplier) || 1;
-    if (burnInGames > 0 && burnInMult > 1) {
+    if (burnInGames > 0 && burnInMult > 1 && _calibratedStarts === null) {
       const applyBurnIn = (beforeEntries, afterEntries) => {
         beforeEntries.forEach((before, i) => {
           const gamesPlayed = statsMap[before.id]?.games ?? 0;

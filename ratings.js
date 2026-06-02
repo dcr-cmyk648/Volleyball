@@ -1134,6 +1134,23 @@ export function replayRatings({
       applyBurnIn(historyEntry.before.blue, historyEntry.after.blue);
     }
 
+    // Pass 2: freeze calibrated players within their calibration window.
+    // Their calibrated seed was used as input so opponents get correctly re-rated,
+    // but we restore it afterward so the calibrated player doesn't accumulate
+    // double credit from replaying early games on top of the corrected start.
+    // Pre-game statsMap.games < calibrationGames means this is one of their
+    // first calibrationGames games (the window where they were seeded incorrectly
+    // in pass 1 and are now being corrected for opponents' benefit only).
+    if (_calibratedStarts !== null) {
+      const calibrationGamesLimit = Number(cfg.calibrationGames) || 0;
+      [...getRedTeamIds(game), ...getBlueTeamIds(game)].forEach(id => {
+        const cal = _calibratedStarts[id];
+        if (cal && (statsMap[id]?.games ?? 0) < calibrationGamesLimit) {
+          ratingMap[id] = rating({ mu: Number(cal.mu), sigma: Number(cal.sigma) });
+        }
+      });
+    }
+
     const redTeam = Array.isArray(game.redTeam) ? game.redTeam : [];
     const blueTeam = Array.isArray(game.blueTeam) ? game.blueTeam : [];
 

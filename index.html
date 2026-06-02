@@ -2296,9 +2296,36 @@
 
     const courtText = `Court type: ${latest.courtType === 'sand' ? 'Sand' : 'Indoor'}`;
 
+    // Back-calculate team strength from the current ratings/model at display time.
+    // Nothing extra is stored in the database, so old games stay "fresh" as the algorithm changes.
+    let winnerStrengthLabel = '';
+    let loserStrengthLabel = '';
+
+    if (!isLeagueGame) {
+      try {
+        const ratingData = getRatingData();
+        const score = scoreVolleyballCandidateSplit({
+          redPlayers: Array.isArray(latest.redTeam) ? latest.redTeam : [],
+          bluePlayers: Array.isArray(latest.blueTeam) ? latest.blueTeam : [],
+          ratingMap: ratingData.ratingMap,
+          carryScoreMap: ratingData.carryMap
+        });
+
+        const redStrengthDisplay = formatDisplayedRating(score.redStrength);
+        const blueStrengthDisplay = formatDisplayedRating(score.blueStrength);
+
+        winnerStrengthLabel = ` (${winnerSide === 'red' ? redStrengthDisplay : blueStrengthDisplay})`;
+        loserStrengthLabel = ` (${winnerSide === 'red' ? blueStrengthDisplay : redStrengthDisplay})`;
+      } catch (error) {
+        // If ratings are unavailable for any reason, keep the history display working.
+        winnerStrengthLabel = '';
+        loserStrengthLabel = '';
+      }
+    }
+
     latestGameEl.textContent = [
       `Latest record: ${latest.date}`,
-      `Winner: ${winnerLabel}`,
+      `Winner: ${winnerLabel}${winnerStrengthLabel} def. ${loserLabel}${loserStrengthLabel}`,
       isLeagueGame ? 'Game type: League game' : 'Game type: Standard game',
       levelText,
       courtText,

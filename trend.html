@@ -292,6 +292,7 @@
       replayRatings,
       formatMu,
       formatSigma,
+      formatCarryScoreDisplay,
     } from './ratings.js';
 
     const DEFAULT_SEASON_LENGTH_MONTHS = 6;
@@ -657,16 +658,11 @@
       const losses = timeline.length - wins;
       const winRate = timeline.length > 0 ? wins / timeline.length : 0;
       const ratingChange = latest.displayRatingAfter - first.displayRatingBefore;
-      const muChange = latest.muAfter - first.muBefore;
-      const sigmaChange = latest.sigmaAfter - first.sigmaBefore;
       const leaderboardRating = standingsEntry?.leaderboardRating;
 
       const carryScore = standingsEntry?.carryScore;
-      const carryConfidence = standingsEntry?.carryConfidence;
       const carryGames = standingsEntry?.carryGames ?? 0;
-      const carryScoreLabel = carryScore !== undefined && carryGames > 0
-        ? `${carryScore >= 0 ? '+' : ''}${carryScore.toFixed(3)} (${formatPercent(carryConfidence)} conf.)`
-        : 'n/a';
+      const carryScoreLabel = formatCarryScoreDisplay(carryScore, carryGames);
 
       // [label, value, sortByKey] — sortByKey makes the box a link to the stats leaderboard sorted by that field
       const items = [
@@ -678,8 +674,6 @@
         ['Current Mu',        formatMu(latest.muAfter),                                                  'mu'],
         ['Current Sigma',     formatSigma(latest.sigmaAfter),                                            'sigma'],
         ['Raw Ordinal',       formatRawOrdinal(latest.ratingAfter),                                      'rawOrdinal'],
-        ['Mu Change',         `${muChange >= 0 ? '+' : ''}${muChange.toFixed(2)}`,                       null],
-        ['Sigma Change',      `${sigmaChange >= 0 ? '+' : ''}${sigmaChange.toFixed(2)}`,                 null],
         ['Carry Score',       carryScoreLabel,                                                            'carryScore'],
       ];
 
@@ -929,8 +923,8 @@
       const ratingChange = latest.displayRatingAfter - first.displayRatingBefore;
       const leaderboardRating = standingsEntry?.leaderboardRating;
       const carryScore = standingsEntry?.carryScore;
-      const carryConfidence = standingsEntry?.carryConfidence ?? 0;
       const carryGames = standingsEntry?.carryGames ?? 0;
+      const carryScoreLabel = formatCarryScoreDisplay(carryScore, carryGames);
 
       statusMessageEl.textContent = [
         `${isLeagueContext ? 'League context' : 'Player'}: ${entity.name}`,
@@ -943,7 +937,7 @@
         `Current mu: ${formatMu(latest.muAfter)}`,
         `Current sigma: ${formatSigma(latest.sigmaAfter)}`,
         `Raw ordinal: ${formatRawOrdinal(latest.ratingAfter)}`,
-        `Carry score: ${carryGames > 0 ? `${carryScore >= 0 ? '+' : ''}${carryScore.toFixed(3)} (${formatPercent(carryConfidence)} confidence, ${carryGames} games)` : 'n/a'}`,
+        `Carry score: ${carryScoreLabel}${carryGames > 0 ? ` (${carryGames} games)` : ''}`,
         `Games included: ${timeline.length}`,
         `Latest included game: ${latest.date || 'Unknown'}`
       ].join('\n');

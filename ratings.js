@@ -648,7 +648,7 @@ export function getVolleyballTeamStrength({
     const confidenceGames = Math.max(1, Number(volleyballCfg.carryConfidenceGames) || 15);
     const confidence = carryStats.games / (carryStats.games + confidenceGames);
     // Only positive carry: boost proven stars, don't further penalise underperformers
-    const carryBonus = Math.max(0, carryStats.score) * (Number(volleyballCfg.carryScale) || 8) * confidence;
+    const carryBonus = carryStats.score * (Number(volleyballCfg.carryScale) || 8) * confidence;
     adjustedBestRating = bestRating + carryBonus;
   }
 

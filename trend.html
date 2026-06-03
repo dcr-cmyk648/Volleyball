@@ -292,7 +292,6 @@
       replayRatings,
       formatMu,
       formatSigma,
-      formatCarryScoreDisplay,
     } from './ratings.js';
 
     const DEFAULT_SEASON_LENGTH_MONTHS = 6;
@@ -308,6 +307,16 @@
       green: 'Green',
       yellow: 'Yellow'
     };
+
+
+    function formatCarryScoreDisplay(score, games = 0) {
+      if (!games || typeof score !== 'number' || !Number.isFinite(score)) {
+        return 'n/a';
+      }
+      const percent = Math.round(score * 100);
+      if (percent > 0) return `+${percent}%`;
+      return `${percent}%`;
+    }
 
     const pageTitleEl = document.getElementById('pageTitle');
     const summaryGridEl = document.getElementById('summaryGrid');

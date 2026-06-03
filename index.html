@@ -2654,6 +2654,10 @@
   }
 
   async function fetchDefaultDatabase() {
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+      const local = await fetchBundledDefaultDatabase();
+      return normalizeServerDatabase(local, { sourceLabel: 'local default_database', usedFallback: false, serverConnectionError: '' });
+    }
     try {
       const parsed = await fetchGoogleDriveStats();
       return normalizeServerDatabase(parsed, {

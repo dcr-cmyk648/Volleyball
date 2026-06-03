@@ -2383,13 +2383,18 @@
       let sourceLabel = 'Google Drive';
       let sourceFileName = '';
 
-      try {
-        parsed = await fetchJsonFromGoogleStatsEndpoint();
-        sourceFileName = parsed.source?.fileName || '';
-      } catch (googleError) {
-        console.warn('Google Drive stats failed, falling back to bundled default_database:', googleError);
+      if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
         parsed = await fetchJsonFromBundledDefaultDatabase();
-        sourceLabel = 'bundled default_database';
+        sourceLabel = 'local default_database';
+      } else {
+        try {
+          parsed = await fetchJsonFromGoogleStatsEndpoint();
+          sourceFileName = parsed.source?.fileName || '';
+        } catch (googleError) {
+          console.warn('Google Drive stats failed, falling back to bundled default_database:', googleError);
+          parsed = await fetchJsonFromBundledDefaultDatabase();
+          sourceLabel = 'bundled default_database';
+        }
       }
 
       if (!parsed || typeof parsed !== 'object') {

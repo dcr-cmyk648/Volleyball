@@ -276,7 +276,7 @@
     <div class="card">
       <h2>Rating Over Time</h2>
       <div class="small">
-        This graph shows normal public Rating over time. The leaderboard-adjusted Rating is shown in the summary, but it is not used for backend updates or team balancing.
+        This graph shows the same confidence-adjusted Rating used by Overall Standings. It is display-only and is not used for backend updates or team balancing.
       </div>
       <div id="summaryGrid" class="summary-grid"></div>
       <div id="statusMessage" class="status">Loading trend...</div>
@@ -318,6 +318,7 @@
       GAME_STORAGE_KEY,
       getPlayerRatingTimeline,
       getLeagueContextById,
+      getLeaderboardRawOrdinal,
       replayRatings,
       formatMu,
       formatSigma,
@@ -326,8 +327,8 @@
     const DEFAULT_SEASON_LENGTH_MONTHS = 6;
 
     const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
-    const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
-    const INCLUDE_LEAGUE_GAMES_STORAGE_KEY = 'gameDayIncludeLeagueGamesEnabled';
+    const OVERALL_STANDINGS_CONFIDENCE_GAMES = 22;
+    const OVERALL_STANDINGS_CONFIDENCE_POWER = 1.35;
 
     const TEAM_COLORS = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'cyan', 'pink'];
     const TEAM_LABELS = {
@@ -395,11 +396,6 @@
       return new URLSearchParams(window.location.search);
     }
 
-    function getUrlFlag(name) {
-      const value = getUrlParams().get(name);
-      return value === '1' || value === 'true';
-    }
-
     function loadSeasonLengthMonths() {
       const params = getUrlParams();
       const fromUrl = Number(params.get('seasonMonths'));
@@ -421,26 +417,6 @@
 
     function getSeasonalTaperDays() {
       return Math.round(loadSeasonLengthMonths() * 30.4375);
-    }
-
-    function loadVolleyballAdjustedEnabled() {
-      if (getUrlParams().has('volleyballAdjusted')) {
-        return getUrlFlag('volleyballAdjusted');
-      }
-
-      const saved = localStorage.getItem(VOLLEYBALL_ADJUSTED_STORAGE_KEY);
-      if (saved === null) return true;
-      return saved === 'true';
-    }
-
-    function loadIncludeLeagueGamesEnabled() {
-      if (getUrlParams().has('includeLeagueGames')) {
-        return getUrlFlag('includeLeagueGames');
-      }
-
-      const saved = localStorage.getItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY);
-      if (saved === null) return true;
-      return saved === 'true';
     }
 
     function getPlayerIdFromUrl() {
@@ -490,6 +466,28 @@
 
     function toDisplayRating(rawOrdinal) {
       return 1500 + Number(rawOrdinal) * 50;
+    }
+
+    function getOverallLeaderboardRaw(rawOrdinal, games) {
+      return getLeaderboardRawOrdinal(rawOrdinal, games, {
+        leaderboardConfidenceGames: OVERALL_STANDINGS_CONFIDENCE_GAMES,
+        leaderboardConfidencePower: OVERALL_STANDINGS_CONFIDENCE_POWER
+      });
+    }
+
+    function getTimelineRatingBefore(row, timelineIndex) {
+      return toDisplayRating(getOverallLeaderboardRaw(row.ratingBefore, timelineIndex));
+    }
+
+    function getTimelineRatingAfter(row, timelineIndex) {
+      return toDisplayRating(getOverallLeaderboardRaw(row.ratingAfter, timelineIndex + 1));
+    }
+
+    function getCurrentStandingRating(standingsEntry, latest, timelineLength) {
+      if (standingsEntry && typeof standingsEntry.rawOrdinal === 'number') {
+        return toDisplayRating(getOverallLeaderboardRaw(standingsEntry.rawOrdinal, standingsEntry.games));
+      }
+      return getTimelineRatingAfter(latest, timelineLength - 1);
     }
 
     function getCourtTypeLabel(row) {
@@ -585,11 +583,11 @@
       return `${date} #${index + 1}`;
     }
 
-    function getModeText({ volleyballAdjusted, includeLeagueGames, seasonLengthMonths }) {
+    function getModeText({ seasonLengthMonths }) {
       return [
         `${seasonLengthMonths}-month seasonal ranking`,
-        volleyballAdjusted ? 'Volleyball-adjusted model' : 'Standard OpenSkill model',
-        includeLeagueGames ? 'League games included' : 'League games excluded',
+        'Plain replay model',
+        'League games included',
       ].join(' + ');
     }
 
@@ -699,8 +697,9 @@
       const wins = timeline.filter(row => row.won).length;
       const losses = timeline.length - wins;
       const winRate = timeline.length > 0 ? wins / timeline.length : 0;
-      const ratingChange = latest.displayRatingAfter - first.displayRatingBefore;
-      const leaderboardRating = standingsEntry?.leaderboardRating;
+      const startingRating = getTimelineRatingBefore(first, 0);
+      const currentRating = getCurrentStandingRating(standingsEntry, latest, timeline.length);
+      const ratingChange = currentRating - startingRating;
 
       const carryScore = standingsEntry?.carryScore;
       const carryGames = standingsEntry?.carryGames ?? 0;
@@ -708,8 +707,7 @@
 
       // [label, value, sortByKey] — sortByKey makes the box a link to the stats leaderboard sorted by that field
       const items = [
-        ['Current Rating',    formatRating(latest.displayRatingAfter),                                  'rating'],
-        ['Leaderboard Rating',leaderboardRating !== undefined ? formatRating(leaderboardRating) : 'n/a','rating'],
+        ['Rating',            formatRating(currentRating),                                               'rating'],
         ['Games',             String(timeline.length),                                                   'games'],
         ['Record',            `${wins}-${losses} (${formatPercent(winRate)})`,                           'winrate'],
         ['Rating Change',     formatSignedNumber(ratingChange),                                          null],
@@ -754,8 +752,8 @@
       ];
 
       const data = [
-        Math.round(timeline[0].displayRatingBefore),
-        ...timeline.map(row => Math.round(row.displayRatingAfter))
+        Math.round(getTimelineRatingBefore(timeline[0], 0)),
+        ...timeline.map((row, index) => Math.round(getTimelineRatingAfter(row, index)))
       ];
 
       chart = new Chart(chartCanvas, {
@@ -802,7 +800,7 @@
                     `Side: ${formatSide(row, Boolean(row.leagueContext && row.side === 'blue'))}`,
                     `Court: ${getCourtTypeLabel(row)}`,
                     `Score: ${score}`,
-                    `Rating: ${formatRating(row.displayRatingBefore)} → ${formatRating(row.displayRatingAfter)}`,
+                    `Rating: ${formatRating(getTimelineRatingBefore(row, context.dataIndex - 1))} → ${formatRating(getTimelineRatingAfter(row, context.dataIndex - 1))}`,
                     `Mu: ${formatMu(row.muBefore)} → ${formatMu(row.muAfter)}`,
                     `Sigma: ${formatSigma(row.sigmaBefore)} → ${formatSigma(row.sigmaAfter)}`,
                     `Raw ordinal: ${formatRawOrdinal(row.ratingBefore)} → ${formatRawOrdinal(row.ratingAfter)}`,
@@ -878,13 +876,17 @@
         return;
       }
 
-      const newestFirst = [...timeline].reverse();
+      const newestFirst = timeline
+        .map((row, timelineIndex) => ({ row, timelineIndex }))
+        .reverse();
 
-      newestFirst.forEach(row => {
+      newestFirst.forEach(({ row, timelineIndex }) => {
         const tr = document.createElement('tr');
         const resultClass = row.won ? 'result-win' : 'result-loss';
         const resultText = row.won ? 'Win' : 'Loss';
-        const ratingChange = row.displayRatingAfter - row.displayRatingBefore;
+        const ratingBefore = getTimelineRatingBefore(row, timelineIndex);
+        const ratingAfter = getTimelineRatingAfter(row, timelineIndex);
+        const ratingChange = ratingAfter - ratingBefore;
         const sideColor = getSideColor(row, isLeagueContext);
         const sideText = formatSide(row, isLeagueContext);
 
@@ -894,7 +896,7 @@
           <td><span class="team-pill ${escapeHtml(sideColor)}">${escapeHtml(sideText)}</span></td>
           <td>${getContextCell(row)}</td>
           <td>${escapeHtml(formatScore(row))}</td>
-          <td>${formatRating(row.displayRatingBefore)} → ${formatRating(row.displayRatingAfter)}</td>
+          <td>${formatRating(ratingBefore)} → ${formatRating(ratingAfter)}</td>
           <td>${formatMu(row.muBefore)} → ${formatMu(row.muAfter)}</td>
           <td>${formatSignedNumber(ratingChange)}</td>
           <td>${getTeamRosterCell(row)}</td>
@@ -914,8 +916,8 @@
       const isLeagueContext = Boolean(leagueContext);
       const seasonLengthMonths = loadSeasonLengthMonths();
       const seasonal = true;
-      const volleyballAdjusted = loadVolleyballAdjustedEnabled();
-      const includeLeagueGames = loadIncludeLeagueGamesEnabled();
+      const volleyballAdjusted = false;
+      const includeLeagueGames = true;
 
       if (!playerId || !entity) {
         pageTitleEl.textContent = 'Rating Not Found';
@@ -962,18 +964,18 @@
       const latest = timeline[timeline.length - 1];
       const wins = timeline.filter(row => row.won).length;
       const losses = timeline.length - wins;
-      const ratingChange = latest.displayRatingAfter - first.displayRatingBefore;
-      const leaderboardRating = standingsEntry?.leaderboardRating;
+      const startingRating = getTimelineRatingBefore(first, 0);
+      const currentRating = getCurrentStandingRating(standingsEntry, latest, timeline.length);
+      const ratingChange = currentRating - startingRating;
       const carryScore = standingsEntry?.carryScore;
       const carryGames = standingsEntry?.carryGames ?? 0;
       const carryScoreLabel = formatCarryScoreDisplay(carryScore, carryGames);
 
       statusMessageEl.textContent = [
         `${isLeagueContext ? 'League context' : 'Player'}: ${entity.name}`,
-        `Mode: ${getModeText({ volleyballAdjusted, includeLeagueGames, seasonLengthMonths })}`,
-        `Starting Rating: ${formatRating(first.displayRatingBefore)}`,
-        `Current Rating: ${formatRating(latest.displayRatingAfter)}`,
-        `Leaderboard Rating: ${leaderboardRating !== undefined ? formatRating(leaderboardRating) : 'n/a'}`,
+        `Mode: ${getModeText({ seasonLengthMonths })}`,
+        `Starting Rating: ${formatRating(startingRating)}`,
+        `Rating: ${formatRating(currentRating)}`,
         `Rating change: ${formatSignedNumber(ratingChange)}`,
         `Record: ${wins}-${losses} (${formatPercent(wins / timeline.length)})`,
         `Current mu: ${formatMu(latest.muAfter)}`,

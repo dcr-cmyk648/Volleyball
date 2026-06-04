@@ -318,6 +318,14 @@
       background: rgba(255,255,255,0.03);
     }
 
+    .team-power {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+      margin-left: 6px;
+      white-space: nowrap;
+    }
+
     .quality-summary {
       cursor: pointer;
       list-style: none;
@@ -790,22 +798,6 @@
       <section id="overallStandingsPanel" class="tab-panel hidden">
         <div class="small hidden" id="rankingModeDescription"></div>
 
-        <div class="advanced-settings-control">
-          <label for="showAdvancedSettingsToggle">
-            <input type="checkbox" id="showAdvancedSettingsToggle" />
-            Show advanced settings
-          </label>
-        </div>
-
-        <div id="advancedModelSettings" class="model-controls hidden">
-          <div class="toggle-row">
-            <label for="includeLeagueGamesToggle">
-              <input type="checkbox" id="includeLeagueGamesToggle" />
-              Include league games (beta)
-            </label>
-          </div>
-        </div>
-
         <div class="small hidden" id="modelHelpText"></div>
 
         <div id="sortIndicator" class="small hidden" style="margin-top: 12px;"></div>
@@ -926,6 +918,7 @@
       predictExpectedMargin,
       getGamesSortedOldestFirst,
       formatDisplayedRating,
+      toDisplayRating,
       LEAGUE_TEAM_ID,
       LEAGUE_TEAM_NAME,
     } from './ratings.js';
@@ -944,9 +937,7 @@
 
     const DEFAULT_SEASON_LENGTH_MONTHS = 6;
 
-    const INCLUDE_LEAGUE_GAMES_STORAGE_KEY = 'gameDayIncludeLeagueGamesEnabled';
     const SEASON_START_DATE_STORAGE_KEY = 'gameDaySeasonStartDate';
-    const SHOW_ADVANCED_SETTINGS_STORAGE_KEY = 'gameDayStatsShowAdvancedSettings';
     const SEASON_PLAYER_LOOKUP_STORAGE_KEY = 'gameDaySeasonPlayerLookup';
     const OVERALL_PLAYER_LOOKUP_STORAGE_KEY = 'gameDayOverallPlayerLookup';
 
@@ -958,6 +949,7 @@
     const OVERALL_STANDINGS_MIN_GAMES = 5;
     const OVERALL_STANDINGS_CONFIDENCE_GAMES = 22;
     const OVERALL_STANDINGS_CONFIDENCE_POWER = 1.35;
+    const VOLATILITY_RECENT_GAMES = 12;
 
     const TEAM_COLORS = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'cyan', 'pink'];
     const TEAM_LABELS = {
@@ -991,10 +983,6 @@
     const loadDefaultDatabaseButtonEl = document.getElementById('loadDefaultDatabaseButton');
     const serverStatsDateEl = document.getElementById('serverStatsDate');
 
-    const advancedModelSettingsEl = document.getElementById('advancedModelSettings');
-    const showAdvancedSettingsToggleEl = document.getElementById('showAdvancedSettingsToggle');
-
-    const includeLeagueGamesToggleEl = document.getElementById('includeLeagueGamesToggle');
     const rankingModeDescriptionEl = document.getElementById('rankingModeDescription');
     const historyModeDescriptionEl = document.getElementById('historyModeDescription');
 
@@ -1089,18 +1077,8 @@
       return Math.round(getSeasonLengthMonths() * 30.4375);
     }
 
-    function loadIncludeLeagueGamesEnabled() {
-      const saved = localStorage.getItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY);
-      if (saved === null) return true;
-      return saved === 'true';
-    }
-
-    function saveIncludeLeagueGamesEnabled(value) {
-      localStorage.setItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY, value ? 'true' : 'false');
-    }
-
     function isIncludeLeagueGamesMode() {
-      return includeLeagueGamesToggleEl.checked;
+      return true;
     }
 
     function getReplayResult() {
@@ -1359,18 +1337,37 @@
       return '—';
     }
 
-    // Volatility: how much the leaderboard position shifted during the latest session.
-    function computeVolatility(playerId, games, currentMap, priorMap) {
-      if (games < 10) return 'High'; // too few games to be considered stable
+    function getPlayerRecentRatingDeltas(playerId, history) {
       const key = String(playerId);
-      const curr = currentMap[key]?.rank;
-      const prior = priorMap[key]?.rank;
-      const volatilityMovement =
-        curr !== undefined && prior !== undefined ? Math.abs(curr - prior) : 8;
-      const gameUncertainty = 1 - games / (games + 10);
-      const volatilityScore = volatilityMovement + 5 * gameUncertainty;
-      if (volatilityScore >= 8) return 'High';
-      if (volatilityScore >= 3) return 'Medium';
+      const deltas = [];
+
+      history.forEach(entry => {
+        const beforeEntries = [...(entry.before.red || []), ...(entry.before.blue || [])];
+        const afterEntries = [...(entry.after.red || []), ...(entry.after.blue || [])];
+        const index = beforeEntries.findIndex(player => String(player.id) === key);
+        if (index < 0 || !afterEntries[index]) return;
+
+        const beforeRating = toDisplayRating(beforeEntries[index].rating);
+        const afterRating = toDisplayRating(afterEntries[index].rating);
+        deltas.push(afterRating - beforeRating);
+      });
+
+      return deltas.slice(-VOLATILITY_RECENT_GAMES);
+    }
+
+    // Volatility: recent rating-path choppiness. A steady rise/fall can have a large
+    // Trend without being volatile; alternating up/down movement is volatile.
+    function computeVolatility(playerId, games, history) {
+      const deltas = getPlayerRecentRatingDeltas(playerId, history);
+      if (deltas.length < 5) return 'High'; // too little evidence to call stable
+
+      const totalMovement = deltas.reduce((sum, delta) => sum + Math.abs(delta), 0);
+      const netMovement = Math.abs(deltas.reduce((sum, delta) => sum + delta, 0));
+      const choppiness = totalMovement - netMovement;
+      const averageChoppiness = choppiness / Math.max(1, deltas.length - 1);
+
+      if (averageChoppiness >= 50) return 'High';
+      if (averageChoppiness >= 30) return 'Medium';
       return 'Low';
     }
 
@@ -1792,20 +1789,11 @@
     }
 
 
-    function updateAdvancedSettingsUI() {
-      const showAdvanced = showAdvancedSettingsToggleEl.checked;
-      advancedModelSettingsEl.classList.toggle('hidden', !showAdvanced);
-    }
-
     function updateModeDescriptions() {
       const modes = [
-        `${getSeasonLengthMonths()}-month seasonal recency weighting`
+        `${getSeasonLengthMonths()}-month seasonal recency weighting`,
+        'league games included by context'
       ];
-
-      modes.push(isIncludeLeagueGamesMode()
-        ? 'league games included by context'
-        : 'league games excluded'
-      );
 
       if (rankingModeDescriptionEl) rankingModeDescriptionEl.textContent = '';
       if (historyModeDescriptionEl) historyModeDescriptionEl.textContent = '';
@@ -1904,6 +1892,131 @@
     function averageRawOrdinal(entries) {
       if (!entries.length) return 0;
       return entries.reduce((sum, p) => sum + Number(p.rating), 0) / entries.length;
+    }
+
+    function formatHistoryPlayerRating(rawOrdinal, games) {
+      return formatDisplayedRating(getExperimentalLeaderboardRaw({
+        rawOrdinal,
+        games
+      }));
+    }
+
+    function getHistoryGameCountMap(history) {
+      const counts = {};
+      const gameCountMap = new Map();
+
+      history.forEach(entry => {
+        const gameCounts = new Map();
+        const game = entry.game || {};
+
+        const registerPlayer = player => {
+          const id = String(player.id);
+          const before = counts[id] || 0;
+          gameCounts.set(id, { before, after: before + 1 });
+        };
+
+        (entry.before.red || []).forEach(registerPlayer);
+
+        if (!game.isLeagueGame) {
+          (entry.before.blue || []).forEach(registerPlayer);
+        }
+
+        gameCountMap.set(entry, gameCounts);
+
+        gameCounts.forEach((value, id) => {
+          counts[id] = value.after;
+        });
+      });
+
+      return gameCountMap;
+    }
+
+    function getHistoryPlayerCounts(gameCountMap, entry, playerId) {
+      return gameCountMap.get(entry)?.get(String(playerId)) || {
+        before: 0,
+        after: 0
+      };
+    }
+
+    function buildPreGameRatingMap(entry) {
+      const map = {};
+      [...(entry.before.red || []), ...(entry.before.blue || [])].forEach(player => {
+        map[player.id] = {
+          mu: Number(player.mu),
+          sigma: Number(player.sigma)
+        };
+      });
+      return map;
+    }
+
+    function getPreGameTeamPowers(entry, carryScoreMap = {}) {
+      const redPlayers = (entry.before.red || []).map(player => ({ id: player.id, name: player.id }));
+      const bluePlayers = (entry.before.blue || []).map(player => ({ id: player.id, name: player.id }));
+
+      if (!redPlayers.length || !bluePlayers.length) {
+        return { red: 0, blue: 0 };
+      }
+
+      const score = scoreVolleyballCandidateSplit({
+        redPlayers,
+        bluePlayers,
+        ratingMap: buildPreGameRatingMap(entry),
+        carryScoreMap
+      });
+
+      return {
+        red: score.redStrength,
+        blue: score.blueStrength
+      };
+    }
+
+    function updateHistoryCarryScore(carryMap, id, isWinner, teamWinProbability) {
+      const contribution = (isWinner ? 1 : 0) - teamWinProbability;
+      if (!carryMap[id]) {
+        carryMap[id] = { totalContribution: 0, games: 0, score: 0 };
+      }
+      carryMap[id].totalContribution += contribution;
+      carryMap[id].games += 1;
+      carryMap[id].score = carryMap[id].totalContribution / carryMap[id].games;
+    }
+
+    function getHistoryPowerMap(history) {
+      const carryMap = {};
+      const powerMap = new Map();
+
+      history.forEach(entry => {
+        powerMap.set(entry, getPreGameTeamPowers(entry, carryMap));
+
+        const game = entry.game || {};
+        const winnerSide = game.winner === 'blue' ? 'blue' : 'red';
+        const winnerProb = entry.volleyballWinnerProbability ??
+          entry.openSkillWinnerProbability ??
+          0.5;
+
+        (entry.before.red || []).forEach(player => {
+          const isWinner = winnerSide === 'red';
+          updateHistoryCarryScore(
+            carryMap,
+            String(player.id),
+            isWinner,
+            isWinner ? winnerProb : 1 - winnerProb
+          );
+        });
+
+        if (!game.isLeagueGame) {
+          (entry.before.blue || []).forEach(player => {
+            const isWinner = winnerSide === 'blue';
+            updateHistoryCarryScore(
+              carryMap,
+              String(player.id),
+              isWinner,
+              isWinner ? winnerProb : 1 - winnerProb
+            );
+          });
+        }
+      });
+
+      return powerMap;
     }
 
     function getOverallPlayerLookupQuery() {
@@ -2012,7 +2125,7 @@
 
       rows.forEach((player, index) => {
         const trend      = computeTrend(player.id, currentMap, priorSessionMap);
-        const volatility = computeVolatility(player.id, player.games, currentMap, priorSessionMap);
+        const volatility = computeVolatility(player.id, player.games, result.history);
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${index + 1}</td>
@@ -2029,6 +2142,8 @@
     function renderHistory() {
       const result = getReplayResult();
       const historyData = [...result.history].reverse();
+      const powerMap = getHistoryPowerMap(result.history);
+      const gameCountMap = getHistoryGameCountMap(result.history);
 
       historyList.innerHTML = '';
 
@@ -2052,12 +2167,16 @@
           : getDisplayLabelForSide(game, 'blue');
         const leagueContextName = getLeagueContextName(game, entry);
         const courtTypeText = `Court type: ${getCourtTypeLabel(game)}`;
+        const teamPowers = powerMap.get(entry) || getPreGameTeamPowers(entry);
+        const redPowerText = formatDisplayedRating(teamPowers.red);
+        const bluePowerText = formatDisplayedRating(teamPowers.blue);
 
         const redNames = entry.before.red.map((p, i) => {
           const after = entry.after.red[i];
           const name =
             (game.redTeam || []).find(player => String(player.id) === String(p.id))?.name || p.id;
-          return `${name} (${formatDisplayedRating(p.rating)} → ${formatDisplayedRating(after.rating)})`;
+          const counts = getHistoryPlayerCounts(gameCountMap, entry, p.id);
+          return `${name} (${formatHistoryPlayerRating(p.rating, counts.before)} → ${formatHistoryPlayerRating(after.rating, counts.after)})`;
         }).join(', ') || '(none)';
 
         const blueNames = game.isLeagueGame
@@ -2066,7 +2185,8 @@
               const after = entry.after.blue[i];
               const name =
                 (game.blueTeam || []).find(player => String(player.id) === String(p.id))?.name || p.id;
-              return `${name} (${formatDisplayedRating(p.rating)} → ${formatDisplayedRating(after.rating)})`;
+              const counts = getHistoryPlayerCounts(gameCountMap, entry, p.id);
+              return `${name} (${formatHistoryPlayerRating(p.rating, counts.before)} → ${formatHistoryPlayerRating(after.rating, counts.after)})`;
             }).join(', ') || '(none)';
 
         const modeBits = [courtTypeText];
@@ -2118,11 +2238,11 @@
           </div>
           <div class="teams-grid">
             <div class="team-box ${redDisplayColor}-team">
-              <strong>${escapeHtml(redDisplayLabel)}</strong>
+              <strong>${escapeHtml(redDisplayLabel)}<span class="team-power">Power: ${escapeHtml(redPowerText)}</span></strong>
               <div>${escapeHtml(redNames)}</div>
             </div>
             <div class="team-box ${blueDisplayColor}-team">
-              <strong>${escapeHtml(blueDisplayLabel)}</strong>
+              <strong>${escapeHtml(blueDisplayLabel)}<span class="team-power">Power: ${escapeHtml(bluePowerText)}</span></strong>
               <div>${escapeHtml(blueNames)}</div>
             </div>
           </div>
@@ -2329,7 +2449,6 @@
 
     function renderAll() {
       updateSeasonStartDateStatus();
-      updateAdvancedSettingsUI();
       updateModeDescriptions();
       renderStats();
       renderHistory();
@@ -2877,22 +2996,9 @@
       defaultDatabaseDialog.close();
     });
 
-    showAdvancedSettingsToggleEl.addEventListener('change', () => {
-      saveBooleanSetting(SHOW_ADVANCED_SETTINGS_STORAGE_KEY, showAdvancedSettingsToggleEl.checked);
-      updateAdvancedSettingsUI();
-      renderAll();
-    });
-
-    includeLeagueGamesToggleEl.addEventListener('change', () => {
-      saveIncludeLeagueGamesEnabled(includeLeagueGamesToggleEl.checked);
-      renderAll();
-    });
-
     algorithmQualityCardEl.addEventListener('toggle', () => {
       if (algorithmQualityCardEl.open) renderQuality();
     });
-
-    showAdvancedSettingsToggleEl.checked = loadBooleanSetting(SHOW_ADVANCED_SETTINGS_STORAGE_KEY, false);
 
     if (overallPlayerLookupInputEl) {
       overallPlayerLookupInputEl.value = localStorage.getItem(OVERALL_PLAYER_LOOKUP_STORAGE_KEY) || '';
@@ -2902,12 +3008,8 @@
       seasonPlayerLookupInputEl.value = localStorage.getItem(SEASON_PLAYER_LOOKUP_STORAGE_KEY) || '';
     }
 
-    includeLeagueGamesToggleEl.checked = loadIncludeLeagueGamesEnabled();
-
     seasonStartDateInputEl.value = loadSeasonStartDate();
     updateSeasonStartDateStatus();
-
-    updateAdvancedSettingsUI();
 
     // Read URL params — sortBy forces the overall tab and sets the sort field
     const _initParams = new URLSearchParams(window.location.search);

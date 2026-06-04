@@ -278,6 +278,33 @@
       max-height: 520px;
       overflow-y: auto;
     }
+    .badge-prov {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 4px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .trend-up    { color: #4ade80; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .trend-down  { color: #f87171; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .trend-stable { color: var(--muted); }
+    .trend-new   { font-size: 10px; font-weight: 700; color: #60a5fa; letter-spacing: 0.04em; }
+    .volatility-pill {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 6px;
+      padding: 2px 8px;
+      white-space: nowrap;
+    }
+    .vol-low    { background: rgba(74,222,128,0.12); color: #4ade80; }
+    .vol-medium { background: rgba(251,191,36,0.12); color: #fbbf24; }
+    .vol-high   { background: rgba(248,113,113,0.12); color: #f87171; }
 
     table { width: 100%; border-collapse: collapse; }
 
@@ -876,9 +903,11 @@
             <thead>
               <tr>
                 <th>#</th>
-                <th>Player / League Team</th>
+                <th>Player</th>
                 <th id="statsSortHeader">Rating</th>
                 <th>Games</th>
+                <th>Trend</th>
+                <th>Volatility</th>
               </tr>
             </thead>
             <tbody id="statsTableBody"></tbody>
@@ -1352,36 +1381,19 @@
 
 
     function getExperimentalLeaderboardRaw(player) {
-      const rawOrdinal =
+      // rawOrdinal is already conservative (mu − 3σ). Multiply by a game-count
+      // confidence factor that pulls low-game players toward the 0 baseline
+      // (displayed as 1500). Approximate confidence: 5 games ≈ 30%, 10 ≈ 47%,
+      // 20 ≈ 65%, 40 ≈ 78%. Leaderboard display only — no effect on ratings.
+      const conservativeRaw =
         typeof player.rawOrdinal === 'number'
           ? player.rawOrdinal
           : typeof player.rating === 'number'
             ? player.rating
             : 0;
-
-      const sigma = Number(player.sigma);
-      const games = Number(player.games) || 0;
-      const penaltyStrength = getUncertaintyPenaltyStrength();
-      const penaltyScale = getUncertaintyPenaltyScale();
-
-      const uncertainty = Number.isFinite(sigma)
-        ? clamp(
-            (sigma - LEADERBOARD_LOW_SIGMA) /
-              Math.max(0.01, LEADERBOARD_HIGH_SIGMA - LEADERBOARD_LOW_SIGMA),
-            0,
-            1
-          )
-        : 1;
-
-      const sigmaPenalty =
-        penaltyStrength * Math.pow(uncertainty, LEADERBOARD_SIGMA_POWER);
-
-      const missingGamePenalty =
-        Math.max(0, LEADERBOARD_MINIMUM_GAMES - games) *
-        LEADERBOARD_MISSING_GAME_PENALTY_AT_FULL_STRENGTH *
-        penaltyScale;
-
-      return rawOrdinal - sigmaPenalty - missingGamePenalty;
+      const games = Math.max(0, Number(player.games) || 0);
+      const gameConfidence = Math.pow(games / (games + 10), 1.1);
+      return gameConfidence * conservativeRaw;
     }
 
     function getSortedStandingsRows(result) {
@@ -1442,6 +1454,87 @@
           seasonalTaperDays: getSeasonalTaperDays()
         }
       });
+    }
+
+    // Returns a replay result excluding the last `n` scored non-league games.
+    function getLeaderboardSnapshot(n, allGames) {
+      const games = allGames ?? loadGames();
+      const scored = getGamesSortedOldestFirst(games).filter(g =>
+        g && !g.isLeagueGame &&
+        Array.isArray(g.redTeam) && g.redTeam.length > 0 &&
+        Array.isArray(g.blueTeam) && g.blueTeam.length > 0 &&
+        typeof g.scoreRed === 'number' && typeof g.scoreBlue === 'number' &&
+        (g.winner === 'red' || g.winner === 'blue')
+      );
+      const excludeIds = new Set(scored.slice(-n).map(g => g.id));
+      return getReplayResultForGames(games.filter(g => g && !excludeIds.has(g.id)));
+    }
+
+    // Ranks players by the leaderboard formula (always rating-based, ignores activeSortBy).
+    function getRatingBasedRankMap(result) {
+      const rows = result.standings
+        .filter(p => p.games >= OVERALL_STANDINGS_MIN_GAMES)
+        .map(p => ({ ...p, experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(p) }))
+        .sort((a, b) => {
+          if (b.experimentalLeaderboardRaw !== a.experimentalLeaderboardRaw)
+            return b.experimentalLeaderboardRaw - a.experimentalLeaderboardRaw;
+          const rawA = typeof a.rawOrdinal === 'number' ? a.rawOrdinal : a.rating || 0;
+          const rawB = typeof b.rawOrdinal === 'number' ? b.rawOrdinal : b.rating || 0;
+          if (rawB !== rawA) return rawB - rawA;
+          if (b.wins !== a.wins) return b.wins - a.wins;
+          if (b.games !== a.games) return b.games - a.games;
+          return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+        });
+      const map = {};
+      rows.forEach((p, i) => { map[String(p.id)] = { rank: i + 1, games: p.games }; });
+      return map;
+    }
+
+    // Trend: rank change between currentMap and priorMap (prior = snapshot excluding last 10).
+    function computeTrend(playerId, currentMap, priorMap) {
+      const key = String(playerId);
+      if (!currentMap[key]) return null;
+      if (!priorMap[key]) return 'NEW';
+      const delta = priorMap[key].rank - currentMap[key].rank; // positive = moved up
+      if (delta > 0) return `▲ +${delta}`;
+      if (delta < 0) return `▼ ${delta}`;
+      return '—';
+    }
+
+    // Volatility: how much the leaderboard position has shifted across recent checkpoints.
+    // rankMaps order: [current, minus5, minus10, minus20]
+    function computeVolatility(playerId, games, rankMaps) {
+      if (games < 10) return 'High'; // too few games to be considered stable
+      const key = String(playerId);
+      const [currMap, m5Map, m10Map, m20Map] = rankMaps;
+      const curr = currMap[key]?.rank;
+      const m5   = m5Map[key]?.rank;
+      const m10  = m10Map[key]?.rank;
+      const m20  = m20Map[key]?.rank;
+      const movements = [];
+      if (curr !== undefined && m5  !== undefined) movements.push(Math.abs(curr - m5));
+      if (m5  !== undefined && m10 !== undefined) movements.push(Math.abs(m5  - m10));
+      if (m10 !== undefined && m20 !== undefined) movements.push(Math.abs(m10 - m20));
+      const volatilityMovement = movements.length
+        ? movements.reduce((a, b) => a + b, 0) / movements.length : 0;
+      const gameUncertainty = 1 - games / (games + 10);
+      const volatilityScore = volatilityMovement + 5 * gameUncertainty;
+      if (volatilityScore >= 8) return 'High';
+      if (volatilityScore >= 3) return 'Medium';
+      return 'Low';
+    }
+
+    function renderTrendCell(trend) {
+      if (!trend) return `<span class="trend-stable">—</span>`;
+      if (trend === 'NEW') return `<span class="trend-new">NEW</span>`;
+      if (trend.startsWith('▲')) return `<span class="trend-up">${escapeHtml(trend)}</span>`;
+      if (trend.startsWith('▼')) return `<span class="trend-down">${escapeHtml(trend)}</span>`;
+      return `<span class="trend-stable">${escapeHtml(trend)}</span>`;
+    }
+
+    function renderVolatilityCell(label) {
+      const cls = label === 'Low' ? 'vol-low' : label === 'Medium' ? 'vol-medium' : 'vol-high';
+      return `<span class="volatility-pill ${cls}">${escapeHtml(label)}</span>`;
     }
 
     function getModelMuFromStanding(player, fallback = DEFAULT_MODEL_MU) {
@@ -2075,20 +2168,34 @@
       if (rows.length === 0) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 4;
+        td.colSpan = 6;
         td.innerHTML = '<div class="empty-state">No players have at least 5 games in the current model.</div>';
         tr.appendChild(td);
         statsTableBody.appendChild(tr);
         return;
       }
 
+      // Snapshot rank maps for Trend (last 10) and Volatility (5/10/20 checkpoints).
+      const allGames = loadGames();
+      const currentMap = getRatingBasedRankMap(result);
+      const map10 = getRatingBasedRankMap(getLeaderboardSnapshot(10, allGames));
+      const map5  = getRatingBasedRankMap(getLeaderboardSnapshot(5,  allGames));
+      const map20 = getRatingBasedRankMap(getLeaderboardSnapshot(20, allGames));
+      const rankMaps = [currentMap, map5, map10, map20];
+
       rows.forEach((player, index) => {
+        const trend      = computeTrend(player.id, currentMap, map10);
+        const volatility = computeVolatility(player.id, player.games, rankMaps);
+        const badge      = player.games < 10
+          ? ' <span class="badge-prov">PROV</span>' : '';
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${index + 1}</td>
-          <td>${formatPlayerNameCell(player)}</td>
+          <td>${formatPlayerNameCell(player)}${badge}</td>
           <td>${getSortedFieldDisplay(player)}</td>
           <td>${player.games}</td>
+          <td>${renderTrendCell(trend)}</td>
+          <td>${renderVolatilityCell(volatility)}</td>
         `;
         statsTableBody.appendChild(tr);
       });

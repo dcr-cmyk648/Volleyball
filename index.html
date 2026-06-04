@@ -473,6 +473,43 @@
       margin-top: 14px;
     }
 
+    .busy-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(15, 23, 42, 0.58);
+      backdrop-filter: blur(2px);
+    }
+
+    .busy-panel {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 18px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--card);
+      color: var(--text);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+      font-weight: 700;
+    }
+
+    .busy-spinner {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 3px solid rgba(148, 163, 184, 0.35);
+      border-top-color: #93c5fd;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
     @media (max-width: 700px) {
       .summary-grid,
       .summary-grid.four-team-summary,
@@ -637,6 +674,13 @@
     </div>
   </dialog>
 
+  <div id="busyOverlay" class="busy-overlay hidden" aria-live="polite" aria-busy="true">
+    <div class="busy-panel">
+      <span class="busy-spinner" aria-hidden="true"></span>
+      <span id="busyMessage">Working...</span>
+    </div>
+  </div>
+
 <script type="module">
   import {
     VERSION,
@@ -673,7 +717,6 @@
 
   const DEFAULT_SEASON_LENGTH_MONTHS = 6;
   const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
-  const INCLUDE_LEAGUE_GAMES_STORAGE_KEY = 'gameDayIncludeLeagueGamesEnabled';
 
   const TEAM_COLORS = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'cyan', 'pink'];
   const MIN_TEAM_COUNT = 2;
@@ -736,6 +779,8 @@
   const defaultDatabaseStatusEl = document.getElementById('defaultDatabaseStatus');
   const confirmLoadDefaultDatabaseButtonEl = document.getElementById('confirmLoadDefaultDatabaseButton');
   const declineLoadDefaultDatabaseButtonEl = document.getElementById('declineLoadDefaultDatabaseButton');
+  const busyOverlayEl = document.getElementById('busyOverlay');
+  const busyMessageEl = document.getElementById('busyMessage');
 
   let players = loadPlayers();
   let games = loadGames();
@@ -750,6 +795,30 @@
   let groupCount = MIN_GROUP_COUNT;
   let defaultDatabaseMeta = null;
   let pendingRecord = null;
+
+  function showBusy(message = 'Working...') {
+    busyMessageEl.textContent = message;
+    busyOverlayEl.classList.remove('hidden');
+  }
+
+  function hideBusy() {
+    busyOverlayEl.classList.add('hidden');
+  }
+
+  function nextFrame() {
+    return new Promise(resolve => requestAnimationFrame(() => resolve()));
+  }
+
+  async function runWithBusy(message, action) {
+    showBusy(message);
+    await nextFrame();
+
+    try {
+      return await action();
+    } finally {
+      hideBusy();
+    }
+  }
 
   function loadPlayers() {
     const saved = localStorage.getItem(PLAYER_STORAGE_KEY);
@@ -805,9 +874,7 @@
   }
 
   function loadIncludeLeagueGamesEnabled() {
-    const saved = localStorage.getItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY);
-    if (saved === null) return true;
-    return saved === 'true';
+    return true;
   }
 
   function getRatingData() {
@@ -1466,6 +1533,88 @@
       });
       return (newIds.size - maxOverlap) >= 2;
     });
+  }
+
+  function getTodayDateString() {
+    return new Date().toLocaleDateString('en-CA');
+  }
+
+  function hasAssignedMultiTeamColors(colors) {
+    return colors.some(color => getTeamPlayers(color).length > 0);
+  }
+
+  function getIncompleteMultiTeamRound(colors) {
+    if (isLeagueGameMode() || colors.length <= 2 || !hasAssignedMultiTeamColors(colors)) {
+      return null;
+    }
+
+    const activeColors = new Set(colors);
+    const playedColors = new Set();
+    const today = getTodayDateString();
+
+    for (const game of games) {
+      if (
+        !game ||
+        game.isLeagueGame ||
+        game.date !== today ||
+        !game.displayWinnerColor ||
+        !game.displayLoserColor
+      ) {
+        if (playedColors.size > 0) break;
+        continue;
+      }
+
+      if (
+        !activeColors.has(game.displayWinnerColor) ||
+        !activeColors.has(game.displayLoserColor)
+      ) {
+        if (playedColors.size > 0) break;
+        continue;
+      }
+
+      playedColors.add(game.displayWinnerColor);
+      playedColors.add(game.displayLoserColor);
+
+      if (playedColors.size >= colors.length) {
+        return null;
+      }
+    }
+
+    if (playedColors.size === 0 || playedColors.size >= colors.length) {
+      return null;
+    }
+
+    const missing = colors.filter(color => !playedColors.has(color));
+    return {
+      played: [...playedColors],
+      missing
+    };
+  }
+
+  function confirmReassignWithOutstandingScores() {
+    const colors = getActiveTeamColors();
+    const incomplete = getIncompleteMultiTeamRound(colors);
+    if (!incomplete) return true;
+
+    const missingText = incomplete.missing
+      .map(color => `${TEAM_LABELS[color]} Team`)
+      .join(', ');
+
+    return window.confirm(
+      `Some teams do not have scores entered for the current multi-team round yet.\n\n` +
+      `Still waiting on: ${missingText}\n\n` +
+      `Reassign teams anyway?`
+    );
+  }
+
+  async function handleAssignTeamsClick() {
+    clearError();
+
+    if (!confirmReassignWithOutstandingScores()) {
+      return;
+    }
+
+    await runWithBusy('Assigning teams...', () => assignBalancedTeams());
   }
 
   function assignBalancedTeams() {
@@ -2799,7 +2948,13 @@
     updateBalanceStatus();
   });
 
-  document.getElementById('assignTeamsButton').addEventListener('click', assignBalancedTeams);
+  document.getElementById('assignTeamsButton').addEventListener('click', () => {
+    handleAssignTeamsClick().catch(error => {
+      console.error(error);
+      setError('Team assignment failed.');
+      hideBusy();
+    });
+  });
   document.getElementById('clearTeamsButton').addEventListener('click', clearTeams);
   document.getElementById('selectAllButton').addEventListener('click', markAllPresent);
   document.getElementById('clearPresentButton').addEventListener('click', clearPresent);
@@ -2817,17 +2972,20 @@
 
   confirmLoadDefaultDatabaseButtonEl.addEventListener('click', async () => {
     try {
-      confirmLoadDefaultDatabaseButtonEl.disabled = true;
-      const meta = await prepareDefaultDatabaseMeta();
-      defaultDatabaseStatusEl.textContent = meta.usedFallback
-        ? 'Loading bundled fallback database...'
-        : 'Loading newest stats from Google Drive...';
-      await loadDefaultDatabaseIntoStorage();
+      await runWithBusy('Loading database...', async () => {
+        confirmLoadDefaultDatabaseButtonEl.disabled = true;
+        const meta = await prepareDefaultDatabaseMeta();
+        defaultDatabaseStatusEl.textContent = meta.usedFallback
+          ? 'Loading bundled fallback database...'
+          : 'Loading newest stats from Google Drive...';
+        await loadDefaultDatabaseIntoStorage();
+      });
       defaultDatabaseDialog.close();
-      alert(meta.usedFallback ? 'Bundled fallback database loaded. Server connection is still failing.' : 'Newest stats loaded from Google Drive.');
+      alert(defaultDatabaseMeta?.usedFallback ? 'Bundled fallback database loaded. Server connection is still failing.' : 'Newest stats loaded from Google Drive.');
     } catch {
       defaultDatabaseStatusEl.textContent = 'Failed to load database.';
       confirmLoadDefaultDatabaseButtonEl.disabled = false;
+      hideBusy();
     }
   });
 

@@ -2238,7 +2238,9 @@
     function renderQuality() {
       const replay = getReplayResult();
       const ratingMap = replay.ratingMap;
-      const carryMap = replay.carryMap || {};
+      const carryMap  = replay.carryMap  || {};
+      const statsMap  = replay.statsMap  || {};
+      const PROV_THRESHOLD = 5; // must match index.html PROV_THRESHOLD
       const analyzable = getAnalyzableGames();
 
       if (analyzable.length === 0) {
@@ -2256,7 +2258,7 @@
         carryScoreMap: carryMap,
       });
 
-      let correctCount = 0, brierSum = 0;
+      let correctCount = 0, brierSum = 0, provImbSum = 0;
       let nScored = 0, within5 = 0, blowouts8 = 0, blowouts10 = 0;
       let excessSum = 0, weightedExcessSum = 0, marginErrSum = 0;
       const diffs = [];
@@ -2274,6 +2276,10 @@
 
         const yRed = game.winner === 'red' ? 1 : 0;
         brierSum += Math.pow(score.redWinProbability - yRed, 2);
+
+        const provRed  = game.redTeam.filter( p => (statsMap[String(p.id)]?.games ?? 0) < PROV_THRESHOLD).length;
+        const provBlue = game.blueTeam.filter(p => (statsMap[String(p.id)]?.games ?? 0) < PROV_THRESHOLD).length;
+        provImbSum += Math.abs(provRed - provBlue);
 
         const hasScores =
           typeof game.scoreRed === 'number' && typeof game.scoreBlue === 'number';
@@ -2323,6 +2329,7 @@
         ['Games', nScored > 0 ? `${na} (${nScored} scored)` : String(na)],
         ['Prediction accuracy', `${Math.round(accuracy * 100)}%`],
         ['Win-prob Brier score', `${(brierSum / na).toFixed(3)}`],
+        ['Avg provisional imbalance', `${(provImbSum / na).toFixed(2)}`],
         ['% within 5 pts', within5Pct === null ? 'n/a' : `${Math.round(within5Pct * 100)}%`],
         ['Blowouts (>8 pts)', spct(blowouts8)],
         ['Severe blowouts (>10)', spct(blowouts10)],

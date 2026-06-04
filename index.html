@@ -705,7 +705,7 @@
 
   const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
   const DEFAULT_DB_SOURCE_PATH = './default_database';
-  const GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwI-bqWAzCHWMZ_InGZq6mtx45QFELrvzfXnim10pSaWmvFS9b524rx2EnosslBNu4V/exec';
+  const GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwahqGocPhBwCTaB2HjnM3WIjoTOoc-lk94i8JjkRaTfEXf-rT-OXe0pkpQkZk5u0Tm/exec';
   const DEFAULT_BALANCE_ATTEMPTS = 50;
 
   // Provisional-player balancing: players with fewer than this many career games
@@ -795,6 +795,8 @@
   let groupCount = MIN_GROUP_COUNT;
   let defaultDatabaseMeta = null;
   let pendingRecord = null;
+  let currentAssignmentId = '';
+  let currentAssignmentDate = '';
 
   function showBusy(message = 'Working...') {
     busyMessageEl.textContent = message;
@@ -817,6 +819,25 @@
       return await action();
     } finally {
       hideBusy();
+    }
+  }
+
+  function getLocalDateString() {
+    return new Date().toLocaleDateString('en-CA');
+  }
+
+  function createAssignmentId() {
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function startNewAssignment() {
+    currentAssignmentId = createAssignmentId();
+    currentAssignmentDate = getLocalDateString();
+  }
+
+  function ensureCurrentAssignment() {
+    if (!currentAssignmentId || currentAssignmentDate !== getLocalDateString()) {
+      startNewAssignment();
     }
   }
 
@@ -927,6 +948,8 @@
       groupingEnabled,
       groupCount,
       playerSearchQuery,
+      currentAssignmentId,
+      currentAssignmentDate,
       leagueLevel: getLeagueLevel(),
       courtType: getCourtType()
     };
@@ -956,7 +979,7 @@
     if (typeof saved.forceTwoChanges === 'boolean') {
       forceTwoChangesCheckboxEl.checked = saved.forceTwoChanges;
     } else {
-      forceTwoChangesCheckboxEl.checked = true;
+      forceTwoChangesCheckboxEl.checked = false;
     }
 
     groupingEnabled = Boolean(saved.groupingEnabled);
@@ -972,6 +995,16 @@
       : '';
 
     playerSearchInputEl.value = playerSearchQuery;
+    currentAssignmentId = typeof saved.currentAssignmentId === 'string'
+      ? saved.currentAssignmentId
+      : '';
+    currentAssignmentDate = typeof saved.currentAssignmentDate === 'string'
+      ? saved.currentAssignmentDate
+      : '';
+    if (currentAssignmentDate !== getLocalDateString()) {
+      currentAssignmentId = '';
+      currentAssignmentDate = '';
+    }
 
     if (saved.leagueLevel === 'rec' || saved.leagueLevel === 'intermediate') {
       leagueLevelSelectEl.value = saved.leagueLevel;
@@ -1245,6 +1278,31 @@
     return value.toFixed(2);
   }
 
+  function formatExpectedPoints(value) {
+    if (typeof value !== 'number' || Number.isNaN(value)) return 'n/a';
+    return value.toFixed(1);
+  }
+
+  function getBlowoutRiskThresholds(teamSize) {
+    if (teamSize <= 2) {
+      return { probability: 0.68, margin: 6 };
+    }
+
+    if (teamSize <= 4) {
+      return { probability: 0.72, margin: 8 };
+    }
+
+    return { probability: 0.76, margin: 10 };
+  }
+
+  function getBlowoutRiskLabel(risk) {
+    if (!risk) return '';
+
+    const highProbability = risk.winnerProbability >= risk.thresholds.probability + 0.08;
+    const highMargin = risk.expectedMargin >= risk.thresholds.margin + 3;
+    return highProbability || highMargin ? 'High' : 'Elevated';
+  }
+
   function getPlayerIdSet(teamPlayers) {
     return new Set(teamPlayers.map(player => String(player.id)));
   }
@@ -1265,28 +1323,17 @@
     return different;
   }
 
-  function getLatestGameForSimilarityConstraint() {
-    if (!games.length) return null;
+  function getCurrentTwoTeamAssignmentForSimilarityConstraint() {
+    if (!currentAssignmentId || currentAssignmentDate !== getLocalDateString()) return null;
 
-    const latest = games[0];
-    if (!latest || latest.isLeagueGame) return null;
-
-    return latest;
-  }
-
-  function getPreviousTeamsForSimilarityConstraint() {
-    const latest = getLatestGameForSimilarityConstraint();
-    if (!latest) return null;
-
-    const previousRed = Array.isArray(latest.redTeam) ? latest.redTeam : [];
-    const previousBlue = Array.isArray(latest.blueTeam) ? latest.blueTeam : [];
+    const previousRed = getTeamPlayers('red');
+    const previousBlue = getTeamPlayers('blue');
 
     if (previousRed.length === 0 || previousBlue.length === 0) return null;
 
     return {
       redTeam: previousRed,
-      blueTeam: previousBlue,
-      date: latest.date || ''
+      blueTeam: previousBlue
     };
   }
 
@@ -1434,6 +1481,101 @@
     return count ? total / count : 0;
   }
 
+  function getScheduledPairColors(colors) {
+    const pairs = [];
+
+    for (let i = 0; i < colors.length - 1; i += 2) {
+      pairs.push([colors[i], colors[i + 1]]);
+    }
+
+    return pairs;
+  }
+
+  function getColorsByStrength(colors, strengthsByColor) {
+    return colors.slice().sort((a, b) =>
+      (strengthsByColor[b] || 0) - (strengthsByColor[a] || 0)
+    );
+  }
+
+  function getScheduledMatchupFairness(teamsByColor, scheduledColors, ratingMap, carryMap = {}) {
+    const fairnessValues = [];
+    const strengthDiffs = [];
+
+    getScheduledPairColors(scheduledColors).forEach(([colorA, colorB]) => {
+      const teamA = teamsByColor[colorA] || [];
+      const teamB = teamsByColor[colorB] || [];
+      if (teamA.length === 0 || teamB.length === 0) return;
+
+      const score = scoreVolleyballCandidateSplit({
+        redPlayers: teamA,
+        bluePlayers: teamB,
+        ratingMap,
+        carryScoreMap: carryMap
+      });
+
+      fairnessValues.push(score.fairness);
+      strengthDiffs.push(Math.abs(score.strengthDiff));
+    });
+
+    if (!fairnessValues.length) {
+      return {
+        averageFairness: 0,
+        worstFairness: 0,
+        maxStrengthDiff: 0
+      };
+    }
+
+    return {
+      averageFairness: fairnessValues.reduce((sum, value) => sum + value, 0) / fairnessValues.length,
+      worstFairness: Math.min(...fairnessValues),
+      maxStrengthDiff: Math.max(...strengthDiffs)
+    };
+  }
+
+  function getWorstBlowoutRisk({ teamsByColor, scheduledColors, ratingMap, carryMap = {}, marginModel }) {
+    let worstRisk = null;
+
+    getScheduledPairColors(scheduledColors).forEach(([colorA, colorB]) => {
+      const teamA = teamsByColor[colorA] || [];
+      const teamB = teamsByColor[colorB] || [];
+
+      if (teamA.length === 0 || teamB.length === 0) return;
+
+      const score = scoreVolleyballCandidateSplit({
+        redPlayers: teamA,
+        bluePlayers: teamB,
+        ratingMap,
+        carryScoreMap: carryMap
+      });
+      const winnerIsA = score.redWinProbability >= score.blueWinProbability;
+      const winnerProbability = winnerIsA ? score.redWinProbability : score.blueWinProbability;
+      const expectedMargin = predictExpectedMargin(Math.abs(score.strengthDiff), marginModel);
+      const minTeamSize = Math.min(teamA.length, teamB.length);
+      const thresholds = getBlowoutRiskThresholds(minTeamSize);
+
+      if (winnerProbability < thresholds.probability && expectedMargin < thresholds.margin) {
+        return;
+      }
+
+      const excessProbability = Math.max(0, winnerProbability - thresholds.probability);
+      const excessMargin = Math.max(0, (expectedMargin - thresholds.margin) / 20);
+      const riskScore = Math.max(excessProbability, excessMargin);
+
+      if (!worstRisk || riskScore > worstRisk.riskScore) {
+        worstRisk = {
+          winnerColor: winnerIsA ? colorA : colorB,
+          loserColor: winnerIsA ? colorB : colorA,
+          winnerProbability,
+          expectedMargin,
+          thresholds,
+          riskScore
+        };
+      }
+    });
+
+    return worstRisk;
+  }
+
   function buildMultiTeamCandidate(presentPlayers, colors, ratingMap, carryMap = {}, statsMap = {}) {
     const units = buildPlayerUnits(presentPlayers);
     const targetSizes = getTeamTargetSizes(presentPlayers.length, colors);
@@ -1465,6 +1607,8 @@
     const spread = maxStrength - minStrength;
     const averagePairwiseDifference = getAveragePairwiseDifference(strengths);
     const averagePairwiseFairness = getPairwiseFairness(teamsByColor, colors, ratingMap, carryMap);
+    const colorsByStrength = getColorsByStrength(colors, strengthsByColor);
+    const scheduledMatchups = getScheduledMatchupFairness(teamsByColor, colorsByStrength, ratingMap, carryMap);
 
     const provCounts = colors.map(color =>
       teamsByColor[color].filter(p => (statsMap[String(p.id)]?.games ?? 0) < PROV_THRESHOLD).length
@@ -1479,6 +1623,9 @@
       spread,
       averagePairwiseDifference,
       averagePairwiseFairness,
+      scheduledAverageFairness: scheduledMatchups.averageFairness,
+      scheduledWorstFairness: scheduledMatchups.worstFairness,
+      scheduledMaxStrengthDiff: scheduledMatchups.maxStrengthDiff,
       provisionalImbalance,
       maxStrength,
       minStrength
@@ -1487,56 +1634,84 @@
 
   function isBetterMultiTeamCandidate(candidate, bestCandidate) {
     if (!bestCandidate) return true;
-    const score = c => c.averagePairwiseFairness - PROV_PENALTY * (c.provisionalImbalance ?? 0);
+    const score = c =>
+      (c.scheduledWorstFairness ?? 0) * 1000 +
+      (c.scheduledAverageFairness ?? 0) * 100 +
+      c.averagePairwiseFairness * 10 -
+      (c.scheduledMaxStrengthDiff ?? 0) -
+      PROV_PENALTY * (c.provisionalImbalance ?? 0);
     return score(candidate) > score(bestCandidate);
   }
 
-  // Reconstructs the previous 4-team assignment from the last two 4-team game records.
-  // 4-team games are identified by having displayWinnerColor and displayLoserColor set.
-  // redTeam = winner (displayWinnerColor), blueTeam = loser (displayLoserColor).
-  function getPreviousFourTeamAssignmentFromHistory() {
-    const fourTeamGames = games
-      .filter(g => !g.isLeagueGame && g.displayWinnerColor && g.displayLoserColor)
-      .slice(0, 2);
-
-    if (fourTeamGames.length < 2) return null;
+  function getCurrentMultiTeamAssignmentForSimilarityConstraint(colors) {
+    if (!currentAssignmentId || currentAssignmentDate !== getLocalDateString()) return null;
 
     const teamMap = {};
-    fourTeamGames.forEach(game => {
-      const wc = game.displayWinnerColor;
-      const lc = game.displayLoserColor;
-      if (!teamMap[wc]) teamMap[wc] = [];
-      if (!teamMap[lc]) teamMap[lc] = [];
-      (game.redTeam || []).forEach(p => teamMap[wc].push(String(p.id)));
-      (game.blueTeam || []).forEach(p => teamMap[lc].push(String(p.id)));
+    colors.forEach(color => {
+      const playersForColor = getTeamPlayers(color);
+      if (playersForColor.length === 0) return;
+      teamMap[color] = playersForColor.map(player => String(player.id));
     });
 
-    // Need all 4 colors represented to have a complete previous round
-    return Object.keys(teamMap).length >= 4 ? teamMap : null;
+    return Object.keys(teamMap).length === colors.length ? teamMap : null;
   }
 
   // For each new team, finds the previous team with the most player overlap,
-  // then checks that at least 2 players are different (new) vs that best match.
-  function multiTeamCandidateHasEnoughChanges(teamsByColor, colors) {
-    const prevAssignment = getPreviousFourTeamAssignmentFromHistory();
+  // then checks for 2 changed players, or 1 when a team only has 1 player.
+  function multiTeamCandidateHasEnoughChanges(teamsByColor, colors, prevAssignment) {
     if (!prevAssignment) return true;
 
     const prevColors = Object.keys(prevAssignment);
 
     return colors.every(newColor => {
-      const newIds = new Set(teamsByColor[newColor].map(p => String(p.id)));
+      const newTeam = teamsByColor[newColor];
+      const newIds = new Set(newTeam.map(p => String(p.id)));
+      let bestPreviousTeam = [];
       let maxOverlap = 0;
       prevColors.forEach(prevColor => {
         const prevIds = prevAssignment[prevColor] || [];
         const overlap = prevIds.filter(id => newIds.has(id)).length;
-        maxOverlap = Math.max(maxOverlap, overlap);
+        if (overlap > maxOverlap) {
+          maxOverlap = overlap;
+          bestPreviousTeam = prevIds.map(id => ({ id }));
+        }
       });
-      return (newIds.size - maxOverlap) >= 2;
+      return countDifferentPlayers(newTeam, bestPreviousTeam) >= Math.min(2, newIds.size);
     });
   }
 
-  function getTodayDateString() {
-    return new Date().toLocaleDateString('en-CA');
+  function getForceTwoChangesFailureMessage() {
+    return 'Unable to force two player changes with the current roster. Uncheck "Force at least two player changes" or change who is present.';
+  }
+
+  function preflightForceTwoChanges(presentPlayers, colors, twoTeamPrevious, multiTeamPrevious) {
+    if (!shouldForceTwoChanges() || (!twoTeamPrevious && !multiTeamPrevious)) {
+      return true;
+    }
+
+    const units = buildPlayerUnits(presentPlayers);
+    const targetSizes = getTeamTargetSizes(presentPlayers.length, colors);
+    const maxChecks = isGroupingActive() ? 8000 : 2500;
+
+    for (let i = 0; i < maxChecks; i += 1) {
+      const teamsByColor = assignUnitsToTargetSizes(units, colors, targetSizes);
+      if (!teamsByColor) continue;
+
+      if (colors.length === 2) {
+        const candidate = {
+          redTeam: teamsByColor[colors[0]],
+          blueTeam: teamsByColor[colors[1]]
+        };
+
+        if (candidateHasEnoughPlayerChanges(candidate, twoTeamPrevious)) {
+          return true;
+        }
+      } else if (multiTeamCandidateHasEnoughChanges(teamsByColor, colors, multiTeamPrevious)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   function hasAssignedMultiTeamColors(colors) {
@@ -1544,41 +1719,40 @@
   }
 
   function getIncompleteMultiTeamRound(colors) {
-    if (isLeagueGameMode() || colors.length <= 2 || !hasAssignedMultiTeamColors(colors)) {
+    if (
+      isLeagueGameMode() ||
+      colors.length <= 2 ||
+      !currentAssignmentId ||
+      currentAssignmentDate !== getLocalDateString() ||
+      !hasAssignedMultiTeamColors(colors)
+    ) {
       return null;
     }
 
     const activeColors = new Set(colors);
     const playedColors = new Set();
-    const today = getTodayDateString();
 
-    for (const game of games) {
+    games.forEach(game => {
       if (
         !game ||
+        game.assignmentId !== currentAssignmentId ||
         game.isLeagueGame ||
-        game.date !== today ||
         !game.displayWinnerColor ||
         !game.displayLoserColor
       ) {
-        if (playedColors.size > 0) break;
-        continue;
+        return;
       }
 
       if (
         !activeColors.has(game.displayWinnerColor) ||
         !activeColors.has(game.displayLoserColor)
       ) {
-        if (playedColors.size > 0) break;
-        continue;
+        return;
       }
 
       playedColors.add(game.displayWinnerColor);
       playedColors.add(game.displayLoserColor);
-
-      if (playedColors.size >= colors.length) {
-        return null;
-      }
-    }
+    });
 
     if (playedColors.size === 0 || playedColors.size >= colors.length) {
       return null;
@@ -1623,6 +1797,7 @@
     if (isLeagueGameMode()) {
       assignPresentPlayersToRedForLeagueGame();
       lastAssignment = { source: 'manual', version: VERSION, predictedMargin: null };
+      startNewAssignment();
       savePageState();
       renderPlayers();
       updateBalanceStatus();
@@ -1638,13 +1813,21 @@
       return;
     }
 
+    // Force-two-changes compares against the teams currently on screen, not older saved games.
+    const twoTeamPrevious = (shouldForceTwoChanges() && teamCount === 2)
+      ? getCurrentTwoTeamAssignmentForSimilarityConstraint()
+      : null;
+    const multiTeamPrevious = (shouldForceTwoChanges() && teamCount > 2)
+      ? getCurrentMultiTeamAssignmentForSimilarityConstraint(colors)
+      : null;
+
+    if (!preflightForceTwoChanges(presentPlayers, colors, twoTeamPrevious, multiTeamPrevious)) {
+      setError(getForceTwoChangesFailureMessage());
+      return;
+    }
+
     const attempts = computeAttempts(Number(balanceSliderEl.value), presentPlayers.length, teamCount);
     const ratingData = getRatingData();
-
-    // Force-two-changes uses different previous-round history for 2 vs >2 teams.
-    const twoTeamPrevious = (shouldForceTwoChanges() && teamCount === 2)
-      ? getPreviousTeamsForSimilarityConstraint()
-      : null;
 
     let bestCandidate = null;
     let validCandidatesFound = 0;
@@ -1669,7 +1852,7 @@
           if (twoTeamPrevious && !candidateHasEnoughPlayerChanges(shim, twoTeamPrevious)) {
             continue;
           }
-        } else if (!multiTeamCandidateHasEnoughChanges(candidate.teamsByColor, colors)) {
+        } else if (multiTeamPrevious && !multiTeamCandidateHasEnoughChanges(candidate.teamsByColor, colors, multiTeamPrevious)) {
           continue;
         }
       }
@@ -1696,9 +1879,7 @@
 
     // Sort teams by descending strength so the strongest teams get the earliest
     // colors. This makes adjacent colors the natural same-strength matchups.
-    const colorsByStrength = colors.slice().sort((a, b) =>
-      (bestCandidate.strengthsByColor[b] || 0) - (bestCandidate.strengthsByColor[a] || 0)
-    );
+    const colorsByStrength = getColorsByStrength(colors, bestCandidate.strengthsByColor);
 
     colorsByStrength.forEach((oldColor, rank) => {
       const newColor = colors[rank];
@@ -1717,10 +1898,11 @@
       version: VERSION,
       predictedMargin: predictExpectedMargin(bestCandidate.spread, marginModel),
     };
+    startNewAssignment();
 
     savePageState();
     renderPlayers();
-    updateBalanceStatus(bestCandidate, validCandidatesFound, rawAttempts, Boolean(twoTeamPrevious || isGroupingActive()));
+    updateBalanceStatus(null, validCandidatesFound, rawAttempts, Boolean(twoTeamPrevious || multiTeamPrevious || isGroupingActive()));
   }
 
   function getActiveGroupsSummary() {
@@ -1836,6 +2018,25 @@
     const spread = candidate?.spread ?? (Math.max(...strengths) - Math.min(...strengths));
     const averagePairwiseFairness =
       candidate?.averagePairwiseFairness ?? getPairwiseFairness(teamsByColor, colors, ratingData.ratingMap, ratingData.carryMap);
+    const scheduledMatchups = candidate
+      ? {
+          averageFairness: candidate.scheduledAverageFairness,
+          worstFairness: candidate.scheduledWorstFairness,
+          maxStrengthDiff: candidate.scheduledMaxStrengthDiff
+        }
+      : getScheduledMatchupFairness(teamsByColor, colors, ratingData.ratingMap, ratingData.carryMap);
+    const marginModel = calibrateMarginModel({
+      games,
+      ratingMap: ratingData.ratingMap,
+      carryScoreMap: ratingData.carryMap,
+    });
+    const blowoutRisk = getWorstBlowoutRisk({
+      teamsByColor,
+      scheduledColors: colors,
+      ratingMap: ratingData.ratingMap,
+      carryMap: ratingData.carryMap,
+      marginModel
+    });
 
     const lines = [
       `Balancing model: ${teamCount}-team volleyball strength`,
@@ -1843,9 +2044,21 @@
       `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
       `Season length: ${loadSeasonLengthMonths()} months`,
       `Similarity rule: ${forceTwoChangesCheckboxEl.checked ? 'on' : 'off'}`,
+      `Scheduled matchup fairness: ${formatPercent(scheduledMatchups.averageFairness)} avg | ${formatPercent(scheduledMatchups.worstFairness)} worst`,
       `Pairwise fairness: ${formatPercent(averagePairwiseFairness)}`,
       `Team raw-strength spread: ${formatRawStrength(spread)}`
     ];
+
+    if (blowoutRisk) {
+      const label = getBlowoutRiskLabel(blowoutRisk);
+      const restrictionNote = shouldForceTwoChanges() || isGroupingActive()
+        ? ' Restrictions may be limiting balance.'
+        : '';
+
+      lines.push(
+        `Blowout warning: ${label} risk - ${TEAM_LABELS[blowoutRisk.winnerColor]} over ${TEAM_LABELS[blowoutRisk.loserColor]} projects around ${formatExpectedPoints(blowoutRisk.expectedMargin)} points (${formatPercent(blowoutRisk.winnerProbability)} win probability).${restrictionNote}`
+      );
+    }
 
     colors.forEach(color => {
       lines.push(
@@ -1976,7 +2189,9 @@
   }
 
   function applyCurrentGameMetadata(record) {
+    ensureCurrentAssignment();
     record.createdAt = record.id;
+    record.assignmentId = currentAssignmentId;
     record.assignmentSource = lastAssignment?.source ?? 'manual';
     record.assignmentVersion = lastAssignment?.version ?? VERSION;
     record.predictedAtAssignment = lastAssignment?.predictedMargin ?? null;
@@ -2219,6 +2434,8 @@
   }
 
   function clearPresentSelections() {
+    currentAssignmentId = '';
+    currentAssignmentDate = '';
     players.forEach(player => {
       presenceState[player.id] = {
         present: false,
@@ -2234,6 +2451,8 @@
 
   function clearTeams() {
     clearError();
+    currentAssignmentId = '';
+    currentAssignmentDate = '';
     players.forEach(player => {
       const state = getPlayerState(player.id);
       if (state.present) {
@@ -2532,6 +2751,7 @@
             state.team = 'red';
           } else {
             state.team = nextTeam(state.team);
+            ensureCurrentAssignment();
             if (lastAssignment?.source === 'algorithm') {
               lastAssignment = { ...lastAssignment, source: 'modified' };
             } else if (!lastAssignment) {
@@ -2653,6 +2873,7 @@
         winner: game.winner === 'blue' ? 'blue' : 'red',
         isLeagueGame: Boolean(game.isLeagueGame),
         level: game.level === 'intermediate' ? 'intermediate' : undefined,
+        assignmentId: typeof game.assignmentId === 'string' ? game.assignmentId : undefined,
         courtType: normalizeImportedCourtType(game.courtType),
         displayWinnerColor: TEAM_COLORS.includes(game.displayWinnerColor) ? game.displayWinnerColor : undefined,
         displayLoserColor: TEAM_COLORS.includes(game.displayLoserColor) ? game.displayLoserColor : undefined,
@@ -2666,6 +2887,7 @@
       }))
       .map(game => {
         if (typeof game.level === 'undefined') delete game.level;
+        if (typeof game.assignmentId === 'undefined') delete game.assignmentId;
         if (typeof game.displayWinnerColor === 'undefined') delete game.displayWinnerColor;
         if (typeof game.displayLoserColor === 'undefined') delete game.displayLoserColor;
         return game;
@@ -2861,13 +3083,15 @@
     playerSearchInputEl.value = '';
     groupingEnabled = false;
     groupCount = MIN_GROUP_COUNT;
+    currentAssignmentId = '';
+    currentAssignmentDate = '';
     groupingCheckboxEl.checked = false;
 
     redScoreEl.value = '';
     blueScoreEl.value = '';
     balanceSliderEl.value = String(DEFAULT_BALANCE_ATTEMPTS);
     teamCountSliderEl.value = String(MIN_TEAM_COUNT);
-    forceTwoChangesCheckboxEl.checked = true;
+    forceTwoChangesCheckboxEl.checked = false;
     leagueLevelSelectEl.value = '';
     courtTypeSelectEl.value = 'indoor';
 
@@ -2995,7 +3219,7 @@
   });
 
   teamCountSliderEl.value = String(MIN_TEAM_COUNT);
-  forceTwoChangesCheckboxEl.checked = true;
+  forceTwoChangesCheckboxEl.checked = false;
   groupingCheckboxEl.checked = false;
 
   restorePageState();

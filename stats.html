@@ -379,6 +379,30 @@
       height: 260px;
       position: relative;
     }
+    .quality-score-banner {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin-top: 14px;
+      padding: 16px 20px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.03);
+    }
+    .quality-score-grade {
+      font-size: 3.5rem;
+      font-weight: 800;
+      line-height: 1;
+      min-width: 3rem;
+    }
+    .quality-score-grade.grade-a { color: #4ade80; }
+    .quality-score-grade.grade-b { color: #60a5fa; }
+    .quality-score-grade.grade-c { color: #facc15; }
+    .quality-score-grade.grade-d { color: #fb923c; }
+    .quality-score-grade.grade-f { color: #f87171; }
+    .quality-score-detail { display: flex; flex-direction: column; gap: 2px; }
+    .quality-score-number { font-size: 1.1rem; font-weight: 600; color: var(--text); }
+    .quality-score-label { font-size: 12px; color: var(--muted); }
 
     .team-box.red-team { border-left: 5px solid var(--red); }
     .team-box.blue-team { border-left: 5px solid var(--blue); }
@@ -900,12 +924,13 @@
     </div>
 
     <details class="card" id="algorithmQualityCard">
-      <summary class="quality-summary"><h2>Algorithm Quality</h2></summary>
+      <summary class="quality-summary"><h2>Quality Overview</h2></summary>
       <div class="small">
-        How well the current ratings and balancing model explain past games.
-        League games are excluded. Uses current ratings retroactively, not
-        ratings as they were at game time.
+        Model accuracy and balance outcomes for non-league games. A regression detector —
+        these numbers shift only when actual game balance or prediction quality changes.
+        Uses current ratings retroactively, not ratings at game time.
       </div>
+      <div id="qualityScore" class="quality-score-banner hidden"></div>
       <div id="qualityMetrics" class="quality-grid"></div>
       <div class="quality-chart-wrap">
         <canvas id="qualityChart" height="220"></canvas>
@@ -1019,6 +1044,7 @@
     const overallPlayerLookupResultEl = document.getElementById('overallPlayerLookupResult');
     const historyList = document.getElementById('historyList');
     const algorithmQualityCardEl = document.getElementById('algorithmQualityCard');
+    const qualityScoreEl = document.getElementById('qualityScore');
     const qualityMetricsEl = document.getElementById('qualityMetrics');
     const qualityEmptyEl = document.getElementById('qualityEmpty');
     const qualityChartEl = document.getElementById('qualityChart');
@@ -2190,13 +2216,33 @@
       );
     }
 
-    function renderAlgorithmQuality() {
+    function computeQualityScore(accuracy, within5Pct, blowoutRate) {
+      // Normalize each component against practical volleyball bounds, then weight.
+      // Accuracy: floor = 50% (random), ceiling = 90%.
+      // Within-5: floor = 0%, ceiling = 70% (physical limit given volleyball variance).
+      // Blowout rate: 0% = best, 40%+ = floor.
+      const accNorm  = Math.min(1, Math.max(0, (accuracy    - 0.50) / 0.40));
+      const w5Norm   = Math.min(1, Math.max(0,  within5Pct          / 0.70));
+      const blowNorm = Math.min(1, Math.max(0,  1 - blowoutRate     / 0.40));
+      return Math.round(35 * accNorm + 40 * w5Norm + 25 * blowNorm);
+    }
+
+    function qualityGrade(score) {
+      if (score >= 85) return 'A';
+      if (score >= 70) return 'B';
+      if (score >= 55) return 'C';
+      if (score >= 40) return 'D';
+      return 'F';
+    }
+
+    function renderQuality() {
       const replay = getReplayResult();
       const ratingMap = replay.ratingMap;
       const carryMap = replay.carryMap || {};
       const analyzable = getAnalyzableGames();
 
       if (analyzable.length === 0) {
+        qualityScoreEl.classList.add('hidden');
         qualityMetricsEl.innerHTML = '';
         qualityEmptyEl.classList.remove('hidden');
         if (qualityChart) { qualityChart.destroy(); qualityChart = null; }
@@ -2210,12 +2256,9 @@
         carryScoreMap: carryMap,
       });
 
-      let correctCount = 0;
-      let scoredGames = 0;
-      let within5 = 0;
-      let blowouts = 0;
-      let diffSum = 0;
-      let marginErrSum = 0;
+      let correctCount = 0, brierSum = 0;
+      let nScored = 0, within5 = 0, blowouts8 = 0, blowouts10 = 0;
+      let excessSum = 0, weightedExcessSum = 0, marginErrSum = 0;
       const diffs = [];
 
       analyzable.forEach(game => {
@@ -2229,34 +2272,62 @@
         const predictedWinner = score.redWinProbability >= 0.5 ? 'red' : 'blue';
         if (predictedWinner === game.winner) correctCount += 1;
 
+        const yRed = game.winner === 'red' ? 1 : 0;
+        brierSum += Math.pow(score.redWinProbability - yRed, 2);
+
         const hasScores =
           typeof game.scoreRed === 'number' && typeof game.scoreBlue === 'number';
         if (hasScores) {
-          const absDiff = Math.abs(game.scoreRed - game.scoreBlue);
-          diffSum += absDiff;
-          if (absDiff <= 5) within5 += 1;
-          if (absDiff > 8) blowouts += 1;
-          scoredGames += 1;
-          diffs.push(absDiff);
+          const gap = Math.abs(game.scoreRed - game.scoreBlue);
+          if (gap <= 5)  within5   += 1;
+          if (gap > 8)   blowouts8 += 1;
+          if (gap > 10)  blowouts10 += 1;
 
-          // Margin model predicts the expected GAP (magnitude); compare to actual gap.
+          const excess = Math.max(0, gap - 5);
+          excessSum         += excess;
+          weightedExcessSum += Math.pow(excess / 5, 1.5);
+          diffs.push(gap);
+
           const predictedGap = predictExpectedMargin(score.strengthDiff, marginModel);
-          marginErrSum += Math.abs(predictedGap - absDiff);
+          marginErrSum += Math.abs(predictedGap - gap);
+          nScored += 1;
         }
       });
 
-      const accuracy = correctCount / analyzable.length;
-      const avgDiff = scoredGames > 0 ? diffSum / scoredGames : null;
-      const within5Pct = scoredGames > 0 ? within5 / scoredGames : null;
-      const blowoutPct = scoredGames > 0 ? blowouts / scoredGames : null;
-      const marginMAE = scoredGames > 0 ? marginErrSum / scoredGames : null;
+      const na       = analyzable.length;
+      const accuracy = correctCount / na;
+      const within5Pct   = nScored > 0 ? within5   / nScored : null;
+      const blowoutRate  = nScored > 0 ? blowouts8 / nScored : null;
+      const marginMAE    = nScored > 0 ? marginErrSum / nScored : null;
+
+      // Composite score + grade banner.
+      if (within5Pct !== null && blowoutRate !== null) {
+        const score = computeQualityScore(accuracy, within5Pct, blowoutRate);
+        const grade = qualityGrade(score);
+        qualityScoreEl.classList.remove('hidden');
+        qualityScoreEl.innerHTML = `
+          <div class="quality-score-grade grade-${grade.toLowerCase()}">${escapeHtml(grade)}</div>
+          <div class="quality-score-detail">
+            <div class="quality-score-number">${score}/100</div>
+            <div class="quality-score-label">Overall quality score</div>
+            <div class="quality-score-label">Win prediction ${Math.round(accuracy * 100)}% &middot; ${Math.round(within5Pct * 100)}% within 5 pts &middot; ${Math.round(blowoutRate * 100)}% blowouts</div>
+          </div>
+        `;
+      } else {
+        qualityScoreEl.classList.add('hidden');
+      }
+
+      const spct = v => nScored > 0 ? `${v} (${Math.round(v / nScored * 100)}%)` : 'n/a';
 
       const metrics = [
-        ['Games analyzed', String(analyzable.length)],
+        ['Games', nScored > 0 ? `${na} (${nScored} scored)` : String(na)],
         ['Prediction accuracy', `${Math.round(accuracy * 100)}%`],
-        ['Avg point differential', avgDiff === null ? 'n/a' : avgDiff.toFixed(1)],
-        ['% within 5 points', within5Pct === null ? 'n/a' : `${Math.round(within5Pct * 100)}%`],
-        ['Blowouts (>8 pts)', blowoutPct === null ? 'n/a' : `${blowouts} (${Math.round(blowoutPct * 100)}%)`],
+        ['Win-prob Brier score', `${(brierSum / na).toFixed(3)}`],
+        ['% within 5 pts', within5Pct === null ? 'n/a' : `${Math.round(within5Pct * 100)}%`],
+        ['Blowouts (>8 pts)', spct(blowouts8)],
+        ['Severe blowouts (>10)', spct(blowouts10)],
+        ['Avg excess over 5 pts', nScored > 0 ? `${(excessSum / nScored).toFixed(1)} pts` : 'n/a'],
+        ['Weighted excess cost', nScored > 0 ? `${(weightedExcessSum / nScored).toFixed(2)}` : 'n/a'],
         ['Mean margin error', marginMAE === null ? 'n/a' : `${marginMAE.toFixed(1)} pts`],
         ['Baseline gap', marginModel.sampleSize > 0 ? `${marginModel.baseMargin.toFixed(1)} pts` : 'n/a'],
         ['Pts per strength unit', marginModel.sampleSize > 0 ? marginModel.slope.toFixed(2) : 'n/a'],
@@ -2269,62 +2340,52 @@
         </div>
       `).join('');
 
-      renderQualityChart(diffs);
-    }
-
-    // Rolling N-game average point differential, oldest -> newest.
-    function renderQualityChart(diffs) {
+      // Rolling 5-game avg point differential chart.
       if (qualityChart) { qualityChart.destroy(); qualityChart = null; }
-      if (!diffs.length) return;
-
-      const windowSize = 5;
-      const labels = diffs.map((_, i) => String(i + 1));
-      const rolling = diffs.map((_, i) => {
-        const windowVals = diffs.slice(Math.max(0, i - windowSize + 1), i + 1);
-        const mean = windowVals.reduce((sum, v) => sum + v, 0) / windowVals.length;
-        return Math.round(mean * 10) / 10;
-      });
-
-      qualityChart = new Chart(qualityChartEl, {
-        type: 'line',
-        data: {
-          labels,
-          datasets: [{
-            label: `Rolling ${windowSize}-game avg point differential`,
-            data: rolling,
-            borderColor: '#60a5fa',
-            backgroundColor: 'rgba(96, 165, 250, 0.15)',
-            tension: 0.25,
-            pointRadius: 2,
-            fill: true,
-          }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: {
-              min: 0,
-              suggestedMax: 10,
-              title: { display: true, text: 'Point differential', color: '#94a3b8' },
-              ticks: { color: '#94a3b8' },
-              grid: { color: 'rgba(255,255,255,0.06)' },
-            },
-            x: {
-              ticks: { color: '#94a3b8', maxTicksLimit: 12 },
-              grid: { display: false },
-            },
+      if (diffs.length) {
+        const windowSize = 5;
+        const labels  = diffs.map((_, i) => String(i + 1));
+        const rolling = diffs.map((_, i) => {
+          const w = diffs.slice(Math.max(0, i - windowSize + 1), i + 1);
+          return Math.round(w.reduce((s, v) => s + v, 0) / w.length * 10) / 10;
+        });
+        qualityChart = new Chart(qualityChartEl, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [{
+              label: `Rolling ${windowSize}-game avg point differential`,
+              data: rolling,
+              borderColor: '#60a5fa',
+              backgroundColor: 'rgba(96, 165, 250, 0.15)',
+              tension: 0.25,
+              pointRadius: 2,
+              fill: true,
+            }],
           },
-          plugins: {
-            legend: { labels: { color: '#f3f4f6' } },
-            tooltip: {
-              callbacks: {
-                title: (items) => `Game ${items[0].label}`,
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              y: {
+                min: 0,
+                suggestedMax: 10,
+                title: { display: true, text: 'Point differential', color: '#94a3b8' },
+                ticks: { color: '#94a3b8' },
+                grid:  { color: 'rgba(255,255,255,0.06)' },
+              },
+              x: {
+                ticks: { color: '#94a3b8', maxTicksLimit: 12 },
+                grid:  { display: false },
               },
             },
+            plugins: {
+              legend: { labels: { color: '#f3f4f6' } },
+              tooltip: { callbacks: { title: (items) => `Game ${items[0].label}` } },
+            },
           },
-        },
-      });
+        });
+      }
     }
 
     function renderAll() {
@@ -2335,7 +2396,7 @@
       renderHistory();
       // Only compute the (relatively expensive) quality analysis when the
       // collapsible card is open.
-      if (algorithmQualityCardEl.open) renderAlgorithmQuality();
+      if (algorithmQualityCardEl.open) renderQuality();
       updateServerSyncButton();
       if (activeStatsTab === 'seasonMovers') {
         renderSeasonMovers();
@@ -2919,7 +2980,7 @@
     });
 
     algorithmQualityCardEl.addEventListener('toggle', () => {
-      if (algorithmQualityCardEl.open) renderAlgorithmQuality();
+      if (algorithmQualityCardEl.open) renderQuality();
     });
 
     seasonLengthSliderEl.value = String(loadSeasonLengthMonths());

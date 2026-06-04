@@ -97,18 +97,18 @@ export const DEFAULT_RATING_OPTIONS = {
   marginBonusScale: 4.0,
   marginBonusPower: 1.5,
 
-  // Close overtime dampener:
-  // A game that reaches 26-24, 27-25, etc. is evidence that the teams were well balanced,
-  // so rating movement is reduced. The dampener bottoms out at 0.75x.
-  closeOvertimeDampenerMin: 0.75,
-  closeOvertimeDampenerStep: 0.05,
+  // Close two-point dampener:
+  // A game that finishes 25-23, 26-24, 27-25, etc. is evidence that the teams
+  // were well balanced, so rating movement is reduced. The dampener bottoms out at 0.65x.
+  closeOvertimeDampenerMin: 0.65,
+  closeOvertimeDampenerStep: 0.08,
 
   seasonalTaperDays: 180,
 
   // Burn-in: first N games for a player count more, so they reach their true level faster.
   // The update delta (both mu and sigma movement) is scaled up by burnInMultiplier for games
   // where the player has fewer than burnInGames games of history.
-  burnInGames: 5,
+  burnInGames: 3,
   burnInMultiplier: 1.5,
 
   // Two-pass calibration: players with ≤ calibrationGames total games in the dataset
@@ -147,7 +147,7 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260603-19';
+export const VERSION = 'beta-20260603-24';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Depth-emphasis weights: reduced single-star dominance so two weak players on a
@@ -460,7 +460,7 @@ export function getScoreMarginDetails(scoreRed, scoreBlue, options = {}) {
   const blowoutBonusFactor = 1 + bonus;
 
   const isCloseOvertime =
-    winnerScore > 25 &&
+    winnerScore >= 25 &&
     pointDiff === 2;
 
   let closeOvertimeDampener = 1;
@@ -1008,11 +1008,20 @@ export function rateSingleGame(game, ratingMap, options = {}) {
 
   const vbCfg = mergeVolleyballBalanceOptions(volleyballOptions);
   // Cap the volatility core (margin x surprise) before applying seasonal weight,
-  // so seasonal taper of old games is preserved.
+  // so seasonal taper of old games is preserved. Normal volleyball margins are
+  // noisy, so keep ordinary single-game results from receiving blowout-level movement.
+  const marginSensitiveMax = Number.isFinite(marginDetails.pointDiff)
+    ? marginDetails.pointDiff <= 1 ? 1.00 :
+      marginDetails.pointDiff === 2 ? 1.05 :
+      marginDetails.pointDiff <= 3 ? 1.10 :
+      marginDetails.pointDiff <= 5 ? 1.20 :
+      marginDetails.pointDiff <= 8 ? 1.40 :
+      vbCfg.finalUpdateMultiplierMax
+    : vbCfg.finalUpdateMultiplierMax;
   const cappedVolatility = clamp(
     marginFactor * adjustment.multiplier,
     vbCfg.finalUpdateMultiplierMin,
-    vbCfg.finalUpdateMultiplierMax
+    Math.min(vbCfg.finalUpdateMultiplierMax, marginSensitiveMax)
   );
   const baseUpdateMultiplier = cappedVolatility * seasonalWeight;
 

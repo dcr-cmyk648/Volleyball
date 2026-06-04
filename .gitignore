@@ -1,0 +1,13 @@
+# Local secrets
+github_token.txt
+
+# Local database snapshots
+vballstats_*.json
+default_database
+default_database.js
+
+# Broken patch artifacts
+broken-*.patch
+
+# Eval harness dependencies
+eval/node_modules/

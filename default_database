@@ -1,7 +1,7 @@
 {
-  "seasonStartDate": "2026-05-26",
+  "seasonStartDate": "2026-05-30",
   "metadata": {
-    "seasonStartDate": "2026-05-26"
+    "seasonStartDate": "2026-05-30"
   },
   "players": [
     {
@@ -163,9 +163,1435 @@
     {
       "id": 1779923854769,
       "name": "MikeB"
+    },
+    {
+      "id": 1780267192572,
+      "name": "JohnD"
+    },
+    {
+      "id": 1780267199450,
+      "name": "LukeS"
+    },
+    {
+      "id": 1780267206926,
+      "name": "SteveH"
+    },
+    {
+      "id": 1780526123362,
+      "name": "JakeA"
+    },
+    {
+      "id": 1780528762664,
+      "name": "TylerK"
+    },
+    {
+      "id": 1780528903744,
+      "name": "DreJ"
     }
   ],
   "games": [
+    {
+      "id": 1780535534153,
+      "date": "2026-06-04",
+      "redTeam": [
+        {
+          "id": 1776129491729,
+          "name": "AlexS"
+        },
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1780267199450,
+          "name": "LukeS"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        },
+        {
+          "id": 1780267206926,
+          "name": "SteveH"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 21,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "red",
+      "displayLoserColor": "blue",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780535520166,
+      "date": "2026-06-04",
+      "redTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1779374330346,
+          "name": "BenT"
+        },
+        {
+          "id": 1780526123362,
+          "name": "JakeA"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1780528903744,
+          "name": "DreJ"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 22,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "yellow",
+      "displayLoserColor": "green",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780534209623,
+      "date": "2026-06-04",
+      "redTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1779374330346,
+          "name": "BenT"
+        },
+        {
+          "id": 1780267199450,
+          "name": "LukeS"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776129491729,
+          "name": "AlexS"
+        },
+        {
+          "id": 1780528903744,
+          "name": "DreJ"
+        },
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 13,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "yellow",
+      "displayLoserColor": "green",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780534072506,
+      "date": "2026-06-04",
+      "redTeam": [
+        {
+          "id": 1780526123362,
+          "name": "JakeA"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        },
+        {
+          "id": 1780267206926,
+          "name": "SteveH"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1779922095444,
+          "name": "JayNida"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 20,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "red",
+      "displayLoserColor": "blue",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780532901301,
+      "date": "2026-06-04",
+      "redTeam": [
+        {
+          "id": 1776129491729,
+          "name": "AlexS"
+        },
+        {
+          "id": 1779374330346,
+          "name": "BenT"
+        },
+        {
+          "id": 1779374341064,
+          "name": "GraceE"
+        },
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1780526123362,
+          "name": "JakeA"
+        },
+        {
+          "id": 1779922095444,
+          "name": "JayNida"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1779374349425,
+          "name": "JillE"
+        },
+        {
+          "id": 1780267199450,
+          "name": "LukeS"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 22,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "green",
+      "displayLoserColor": "yellow",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780532887712,
+      "date": "2026-06-04",
+      "redTeam": [
+        {
+          "id": 1779374360511,
+          "name": "HollyC"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        },
+        {
+          "id": 1779374404323,
+          "name": "RyanF"
+        },
+        {
+          "id": 1779374369042,
+          "name": "TheoT"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1780528903744,
+          "name": "DreJ"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1780267206926,
+          "name": "SteveH"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 20,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "blue",
+      "displayLoserColor": "red",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780531599025,
+      "date": "2026-06-04",
+      "redTeam": [
+        {
+          "id": 1779374330346,
+          "name": "BenT"
+        },
+        {
+          "id": 1780526123362,
+          "name": "JakeA"
+        },
+        {
+          "id": 1779922095444,
+          "name": "JayNida"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        },
+        {
+          "id": 1779374369042,
+          "name": "TheoT"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1776129491729,
+          "name": "AlexS"
+        },
+        {
+          "id": 1780528903744,
+          "name": "DreJ"
+        },
+        {
+          "id": 1779374360511,
+          "name": "HollyC"
+        },
+        {
+          "id": 1779374404323,
+          "name": "RyanF"
+        },
+        {
+          "id": 1780267206926,
+          "name": "SteveH"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 19,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "green",
+      "displayLoserColor": "yellow",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780531327054,
+      "date": "2026-06-04",
+      "redTeam": [
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374341064,
+          "name": "GraceE"
+        },
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1779374349425,
+          "name": "JillE"
+        },
+        {
+          "id": 1780267199450,
+          "name": "LukeS"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 17,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "red",
+      "displayLoserColor": "blue",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780530332964,
+      "date": "2026-06-03",
+      "redTeam": [
+        {
+          "id": 1776129491729,
+          "name": "AlexS"
+        },
+        {
+          "id": 1779374330346,
+          "name": "BenT"
+        },
+        {
+          "id": 1779922095444,
+          "name": "JayNida"
+        },
+        {
+          "id": 1780267206926,
+          "name": "SteveH"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374341064,
+          "name": "GraceE"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        },
+        {
+          "id": 1776129662289,
+          "name": "ShivP"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 20,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "red",
+      "displayLoserColor": "blue",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780530041284,
+      "date": "2026-06-03",
+      "redTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1779374330346,
+          "name": "BenT"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374360511,
+          "name": "HollyC"
+        },
+        {
+          "id": 1780526123362,
+          "name": "JakeA"
+        },
+        {
+          "id": 1779374349425,
+          "name": "JillE"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 2,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "yellow",
+      "displayLoserColor": "green",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780528867101,
+      "date": "2026-06-03",
+      "redTeam": [
+        {
+          "id": 1779374330346,
+          "name": "BenT"
+        },
+        {
+          "id": 1779374360511,
+          "name": "HollyC"
+        },
+        {
+          "id": 1780526123362,
+          "name": "JakeA"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1779922095444,
+          "name": "JayNida"
+        },
+        {
+          "id": 1779374349425,
+          "name": "JillE"
+        },
+        {
+          "id": 1780267199450,
+          "name": "LukeS"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 22,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "green",
+      "displayLoserColor": "yellow",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780530131548,
+      "date": "2026-06-03",
+      "redTeam": [
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1779374404323,
+          "name": "RyanF"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1780528903744,
+          "name": "DreJ"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1780267199450,
+          "name": "LukeS"
+        },
+        {
+          "id": 1779374369042,
+          "name": "TheoT"
+        }
+      ],
+      "scoreRed": 15,
+      "scoreBlue": 25,
+      "winner": "blue",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "courtType": "sand"
+    },
+    {
+      "id": 1780528730244,
+      "date": "2026-06-03",
+      "redTeam": [
+        {
+          "id": 1779374341064,
+          "name": "GraceE"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1779374404323,
+          "name": "RyanF"
+        },
+        {
+          "id": 1776129662289,
+          "name": "ShivP"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1776129491729,
+          "name": "AlexS"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1780267206926,
+          "name": "SteveH"
+        },
+        {
+          "id": 1779374369042,
+          "name": "TheoT"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 23,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "red",
+      "displayLoserColor": "blue",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780527405894,
+      "date": "2026-06-03",
+      "redTeam": [
+        {
+          "id": 1779374341064,
+          "name": "GraceE"
+        },
+        {
+          "id": 1780526123362,
+          "name": "JakeA"
+        },
+        {
+          "id": 1779374349425,
+          "name": "JillE"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776129491729,
+          "name": "AlexS"
+        },
+        {
+          "id": 1779374404323,
+          "name": "RyanF"
+        },
+        {
+          "id": 1780267206926,
+          "name": "SteveH"
+        },
+        {
+          "id": 1779374369042,
+          "name": "TheoT"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 19,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "blue",
+      "displayLoserColor": "red",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780527393465,
+      "date": "2026-06-03",
+      "redTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1779374330346,
+          "name": "BenT"
+        },
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1780267199450,
+          "name": "LukeS"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 19,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "green",
+      "displayLoserColor": "yellow",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780276683431,
+      "date": "2026-06-01",
+      "redTeam": [
+        {
+          "id": 1776129491729,
+          "name": "AlexS"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1776129685139,
+          "name": "JoshR"
+        },
+        {
+          "id": 1780267199450,
+          "name": "LukeS"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 20,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "courtType": "sand"
+    },
+    {
+      "id": 1780275203831,
+      "date": "2026-06-01",
+      "redTeam": [
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1780267192572,
+          "name": "JohnD"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 21,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "green",
+      "displayLoserColor": "yellow",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780275190305,
+      "date": "2026-06-01",
+      "redTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1780267199450,
+          "name": "LukeS"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776129491729,
+          "name": "AlexS"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1776129685139,
+          "name": "JoshR"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 22,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "red",
+      "displayLoserColor": "blue",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780273809394,
+      "date": "2026-06-01",
+      "redTeam": [
+        {
+          "id": 1776129491729,
+          "name": "AlexS"
+        },
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1776129685139,
+          "name": "JoshR"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1780267199450,
+          "name": "LukeS"
+        },
+        {
+          "id": 1780267206926,
+          "name": "SteveH"
+        }
+      ],
+      "scoreRed": 28,
+      "scoreBlue": 26,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "red",
+      "displayLoserColor": "blue",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780273546935,
+      "date": "2026-06-01",
+      "redTeam": [
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1780267192572,
+          "name": "JohnD"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 22,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "yellow",
+      "displayLoserColor": "green",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780272258568,
+      "date": "2026-06-01",
+      "redTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1776129491729,
+          "name": "AlexS"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776129685139,
+          "name": "JoshR"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        },
+        {
+          "id": 1780267206926,
+          "name": "SteveH"
+        }
+      ],
+      "scoreRed": 28,
+      "scoreBlue": 26,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "blue",
+      "displayLoserColor": "red",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780272124121,
+      "date": "2026-06-01",
+      "redTeam": [
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1780267192572,
+          "name": "JohnD"
+        },
+        {
+          "id": 1780267199450,
+          "name": "LukeS"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 20,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "green",
+      "displayLoserColor": "yellow",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780270776175,
+      "date": "2026-05-31",
+      "redTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1780267192572,
+          "name": "JohnD"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 22,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "yellow",
+      "displayLoserColor": "green",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780270704052,
+      "date": "2026-05-31",
+      "redTeam": [
+        {
+          "id": 1776129491729,
+          "name": "AlexS"
+        },
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1780267199450,
+          "name": "LukeS"
+        },
+        {
+          "id": 1780267206926,
+          "name": "SteveH"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1776129685139,
+          "name": "JoshR"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 18,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "red",
+      "displayLoserColor": "blue",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780269553686,
+      "date": "2026-05-31",
+      "redTeam": [
+        {
+          "id": 1780267192572,
+          "name": "JohnD"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776129491729,
+          "name": "AlexS"
+        },
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        },
+        {
+          "id": 1780267206926,
+          "name": "SteveH"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 18,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "red",
+      "displayLoserColor": "blue",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780269426747,
+      "date": "2026-05-31",
+      "redTeam": [
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1780267199450,
+          "name": "LukeS"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1776129685139,
+          "name": "JoshR"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 15,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "green",
+      "displayLoserColor": "yellow",
+      "courtType": "sand"
+    },
+    {
+      "id": 1780268277878,
+      "date": "2026-05-31",
+      "redTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1780267192572,
+          "name": "JohnD"
+        },
+        {
+          "id": 1780267199450,
+          "name": "LukeS"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1780267206926,
+          "name": "SteveH"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776129491729,
+          "name": "AlexS"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1776129685139,
+          "name": "JoshR"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        },
+        {
+          "id": 1779374440749,
+          "name": "NinaF"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 15,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "courtType": "sand"
+    },
     {
       "id": 1779930283121,
       "date": "2026-05-28",

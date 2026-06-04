@@ -147,14 +147,17 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
+export const VERSION = 'beta-20260603-19';
+
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
-  // Top player carries 45% of team strength — reflects volleyball's star-player dominance (MAX algorithm)
-  topPlayerWeight: 0.45,
-  secondPlayerWeight: 0.20,
-  averageWeight: 0.17,
-  depthWeight: 0.12,
+  // Depth-emphasis weights: reduced single-star dominance so two weak players on a
+  // small team drag the team down more (better reflects close-game reality).
+  topPlayerWeight: 0.30,
+  secondPlayerWeight: 0.24,
+  averageWeight: 0.28,
+  depthWeight: 0.10,
   // worstPlayerWeight is scaled by match closeness at runtime — full weight only in even matchups
-  worstPlayerWeight: 0.06,
+  worstPlayerWeight: 0.08,
   // Carry score: bonus raw ordinal added to top player's effective rating
   // when they have a history of winning above their team's modeled probability
   carryScale: 8,
@@ -165,6 +168,11 @@ export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   maxWinProbability: 0.95,
   minUpdateMultiplier: 0.35,
   maxUpdateMultiplier: 2.0,
+  // Hard cap on the per-game volatility core (marginFactor * surpriseMultiplier),
+  // applied before seasonal weighting and size damping. Keeps one surprising blowout
+  // from whipsawing the leaderboard, without overriding seasonal taper of old games.
+  finalUpdateMultiplierMin: 0.5,
+  finalUpdateMultiplierMax: 1.75,
 };
 
 function clamp(value, min, max) {
@@ -403,6 +411,13 @@ export function getGamesSortedOldestFirst(gamesList) {
 
       if (dateA !== dateB) {
         return dateA.localeCompare(dateB);
+      }
+
+      // When both games carry a createdAt timestamp, use it for a precise same-day ordering.
+      const tsA = a.game?.createdAt ?? null;
+      const tsB = b.game?.createdAt ?? null;
+      if (tsA !== null && tsB !== null) {
+        return tsA - tsB;
       }
 
       return b.originalIndex - a.originalIndex;
@@ -776,6 +791,72 @@ export function scoreVolleyballCandidateSplit({
   };
 }
 
+// Calibrates the expected point GAP (absolute margin) from team strength
+// difference, fit over historical scored non-league games using current ratings:
+//   expectedGap = baseMargin + slope * |strengthDiff|
+// Fit by ordinary least squares on |actualMargin| vs |strengthDiff|. Using
+// magnitudes is sign-agnostic, so it is unaffected by the winner=red convention
+// in 4+-team games. The baseMargin intercept captures the inherent gap of a
+// race to 21/25 even when teams are perfectly balanced (~5 points in practice).
+export function calibrateMarginModel({
+  games = [],
+  ratingMap = {},
+  carryScoreMap = {},
+  options = {},
+  volleyballOptions = {},
+} = {}) {
+  const xs = [];
+  const ys = [];
+
+  getIncludedGames(games, false).forEach(game => {
+    const redPlayers = Array.isArray(game.redTeam) ? game.redTeam : [];
+    const bluePlayers = Array.isArray(game.blueTeam) ? game.blueTeam : [];
+
+    if (!redPlayers.length || !bluePlayers.length) return;
+    if (typeof game.scoreRed !== 'number' || typeof game.scoreBlue !== 'number') return;
+
+    const score = scoreVolleyballCandidateSplit({
+      redPlayers,
+      bluePlayers,
+      ratingMap,
+      carryScoreMap,
+      options,
+      volleyballOptions,
+    });
+
+    xs.push(Math.abs(score.strengthDiff));
+    ys.push(Math.abs(game.scoreRed - game.scoreBlue));
+  });
+
+  const sampleSize = xs.length;
+  if (sampleSize === 0) {
+    return { baseMargin: 0, slope: 0, sampleSize: 0 };
+  }
+
+  const meanX = xs.reduce((a, b) => a + b, 0) / sampleSize;
+  const meanY = ys.reduce((a, b) => a + b, 0) / sampleSize;
+
+  let sxy = 0;
+  let sxx = 0;
+  for (let i = 0; i < sampleSize; i += 1) {
+    sxy += (xs[i] - meanX) * (ys[i] - meanY);
+    sxx += (xs[i] - meanX) * (xs[i] - meanX);
+  }
+
+  const slope = sxx > 0 ? sxy / sxx : 0;
+  const baseMargin = meanY - slope * meanX;
+
+  return { baseMargin, slope, sampleSize };
+}
+
+// Expected point gap (always >= 0) for a given strength difference.
+export function predictExpectedMargin(strengthDiff, marginModel) {
+  if (!marginModel) return 0;
+  const base = Number.isFinite(marginModel.baseMargin) ? marginModel.baseMargin : 0;
+  const slope = Number.isFinite(marginModel.slope) ? marginModel.slope : 0;
+  return Math.max(0, base + slope * Math.abs(strengthDiff));
+}
+
 function getOpenSkillWinnerProbability(redTeam, blueTeam, winner) {
   const predicted = predictWin([redTeam, blueTeam]);
   const redProbability = predicted?.[0] ?? 0.5;
@@ -925,7 +1006,15 @@ export function rateSingleGame(game, ratingMap, options = {}) {
         volleyballWinnerProbability: null,
       };
 
-  const baseUpdateMultiplier = marginFactor * seasonalWeight * adjustment.multiplier;
+  const vbCfg = mergeVolleyballBalanceOptions(volleyballOptions);
+  // Cap the volatility core (margin x surprise) before applying seasonal weight,
+  // so seasonal taper of old games is preserved.
+  const cappedVolatility = clamp(
+    marginFactor * adjustment.multiplier,
+    vbCfg.finalUpdateMultiplierMin,
+    vbCfg.finalUpdateMultiplierMax
+  );
+  const baseUpdateMultiplier = cappedVolatility * seasonalWeight;
 
   // Per-team size damping: players on teams larger than 6 have less individual impact
   // per game (more rotations, fewer touches). Damper = 6 / teamSize for teams > 6.
@@ -1392,6 +1481,7 @@ export function getPlayerRatingTimeline({
 } = {}) {
   const cfg = mergeRatingOptions(options);
   const ratingMap = {};
+  const statsMap = {};
   const timeline = [];
   const includedGames = getIncludedGames(games, includeLeagueGames);
   const seasonalTaperDays =
@@ -1406,6 +1496,7 @@ export function getPlayerRatingTimeline({
     ratingMap[player.id] = calibrated
       ? rating({ mu: Number(calibrated.mu), sigma: Number(calibrated.sigma) })
       : makeInitialRating(cfg);
+    statsMap[player.id] = { id: player.id, name: player.name, games: 0 };
   });
 
   const sortedGames = getGamesSortedOldestFirst(includedGames);
@@ -1422,6 +1513,57 @@ export function getPlayerRatingTimeline({
       volleyballAdjusted,
       volleyballOptions,
     });
+
+    // Burn-in: match replayRatings — amplify updates for players in their first N games.
+    const burnInGames = Number(cfg.burnInGames) || 0;
+    const burnInMult = Number(cfg.burnInMultiplier) || 1;
+    if (burnInGames > 0 && burnInMult > 1 && _calibratedStarts === null) {
+      const applyBurnIn = (beforeEntries, afterEntries) => {
+        beforeEntries.forEach((before, i) => {
+          const gamesPlayed = statsMap[before.id]?.games ?? 0;
+          if (gamesPlayed < burnInGames) {
+            const after = afterEntries[i];
+            const newMu = before.mu + (after.mu - before.mu) * burnInMult;
+            const newSigma = clamp(
+              before.sigma + (after.sigma - before.sigma) * burnInMult,
+              1,
+              cfg.sigma
+            );
+            ratingMap[before.id] = rating({ mu: newMu, sigma: newSigma });
+            after.mu = newMu;
+            after.sigma = newSigma;
+            after.rating = getRawOrdinal(ratingMap[before.id], cfg);
+          }
+        });
+      };
+      applyBurnIn(result.before.red, result.after.red);
+      applyBurnIn(result.before.blue, result.after.blue);
+    }
+
+    // Calibration freeze: match replayRatings — restore seeded rating within calibration window.
+    if (_calibratedStarts !== null) {
+      const calibrationGamesLimit = Number(cfg.calibrationGames) || 0;
+      [...getRedTeamIds(game), ...getBlueTeamIds(game)].forEach(id => {
+        const cal = _calibratedStarts[id];
+        if (cal && (statsMap[id]?.games ?? 0) < calibrationGamesLimit) {
+          ratingMap[id] = rating({ mu: Number(cal.mu), sigma: Number(cal.sigma) });
+        }
+      });
+    }
+
+    // Update statsMap game counts (must happen after burn-in/freeze reads pre-game count).
+    const redTeam = Array.isArray(game.redTeam) ? game.redTeam : [];
+    const blueTeam = Array.isArray(game.blueTeam) ? game.blueTeam : [];
+    redTeam.forEach(player => {
+      if (!statsMap[player.id]) statsMap[player.id] = { id: player.id, name: player.name, games: 0 };
+      statsMap[player.id].games += 1;
+    });
+    if (!game.isLeagueGame) {
+      blueTeam.forEach(player => {
+        if (!statsMap[player.id]) statsMap[player.id] = { id: player.id, name: player.name, games: 0 };
+        statsMap[player.id].games += 1;
+      });
+    }
 
     const isRequestedLeagueContext =
       leagueContext &&

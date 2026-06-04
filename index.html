@@ -648,6 +648,8 @@
     formatMu,
     formatSigma,
     getScoreMarginFactor,
+    calibrateMarginModel,
+    predictExpectedMargin,
     LEAGUE_TEAM_ID,
     LEAGUE_TEAM_NAME,
     LEAGUE_TEAM_SIZE,
@@ -732,6 +734,10 @@
   let players = loadPlayers();
   let games = loadGames();
   let presenceState = buildPresenceState(players);
+  // Tracks the most recent team-assignment action for game record instrumentation.
+  // source: 'algorithm' = balancer ran unmodified; 'modified' = balancer ran then player moved;
+  //         'manual' = teams set by hand with no algorithm run.
+  let lastAssignment = null;
   let hideUnselectedPlayers = false;
   let playerSearchQuery = '';
   let groupingEnabled = false;
@@ -1460,6 +1466,7 @@
 
     if (isLeagueGameMode()) {
       assignPresentPlayersToRedForLeagueGame();
+      lastAssignment = { source: 'manual', version: VERSION, predictedMargin: null };
       savePageState();
       renderPlayers();
       updateBalanceStatus();
@@ -1543,6 +1550,17 @@
         presenceState[player.id].team = newColor;
       });
     });
+
+    const marginModel = calibrateMarginModel({
+      games,
+      ratingMap: ratingData.ratingMap,
+      carryScoreMap: ratingData.carryMap,
+    });
+    lastAssignment = {
+      source: 'algorithm',
+      version: VERSION,
+      predictedMargin: predictExpectedMargin(bestCandidate.spread, marginModel),
+    };
 
     savePageState();
     renderPlayers();
@@ -1805,6 +1823,10 @@
   }
 
   function applyCurrentGameMetadata(record) {
+    record.createdAt = record.id;
+    record.assignmentSource = lastAssignment?.source ?? 'manual';
+    record.assignmentVersion = lastAssignment?.version ?? VERSION;
+    record.predictedAtAssignment = lastAssignment?.predictedMargin ?? null;
     record.courtType = getCourtType();
 
     if (record.isLeagueGame && getLeagueLevel() === 'intermediate') {
@@ -1828,7 +1850,7 @@
 
       const record = {
         id: Date.now(),
-        date: new Date().toISOString().slice(0, 10),
+        date: new Date().toLocaleDateString('en-CA'),
         redTeam: getPlainTeamPlayers(winnerColor),
         blueTeam: getPlainTeamPlayers(loserColor),
         scoreRed: scoreA,
@@ -1854,7 +1876,7 @@
 
     const record = {
       id: Date.now(),
-      date: new Date().toISOString().slice(0, 10),
+      date: new Date().toLocaleDateString('en-CA'),
       redTeam: getPlainTeamPlayers('red'),
       blueTeam: isLeagueGame ? [] : getPlainTeamPlayers('blue'),
       scoreRed: scoreA,
@@ -2357,6 +2379,11 @@
             state.team = 'red';
           } else {
             state.team = nextTeam(state.team);
+            if (lastAssignment?.source === 'algorithm') {
+              lastAssignment = { ...lastAssignment, source: 'modified' };
+            } else if (!lastAssignment) {
+              lastAssignment = { source: 'manual', version: VERSION, predictedMargin: null };
+            }
           }
 
           savePageState();

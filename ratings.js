@@ -147,7 +147,7 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260603-13';
+export const VERSION = 'beta-20260603-15';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Depth-emphasis weights: reduced single-star dominance so two weak players on a
@@ -411,6 +411,13 @@ export function getGamesSortedOldestFirst(gamesList) {
 
       if (dateA !== dateB) {
         return dateA.localeCompare(dateB);
+      }
+
+      // When both games carry a createdAt timestamp, use it for a precise same-day ordering.
+      const tsA = a.game?.createdAt ?? null;
+      const tsB = b.game?.createdAt ?? null;
+      if (tsA !== null && tsB !== null) {
+        return tsA - tsB;
       }
 
       return b.originalIndex - a.originalIndex;

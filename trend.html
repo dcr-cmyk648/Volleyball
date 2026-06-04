@@ -20,6 +20,10 @@
       --blue: #60a5fa;
       --green: #4ade80;
       --yellow: #facc15;
+      --orange: #fb923c;
+      --purple: #c084fc;
+      --cyan: #22d3ee;
+      --pink: #f472b6;
     }
 
     * { box-sizing: border-box; }
@@ -216,6 +220,30 @@
       background: rgba(250, 204, 21, 0.12);
     }
 
+    .team-pill.orange {
+      color: #fed7aa;
+      border-color: rgba(251, 146, 60, 0.35);
+      background: rgba(251, 146, 60, 0.12);
+    }
+
+    .team-pill.purple {
+      color: #e9d5ff;
+      border-color: rgba(192, 132, 252, 0.35);
+      background: rgba(192, 132, 252, 0.12);
+    }
+
+    .team-pill.cyan {
+      color: #a5f3fc;
+      border-color: rgba(34, 211, 238, 0.35);
+      background: rgba(34, 211, 238, 0.12);
+    }
+
+    .team-pill.pink {
+      color: #fbcfe8;
+      border-color: rgba(244, 114, 182, 0.35);
+      background: rgba(244, 114, 182, 0.12);
+    }
+
     .empty-state {
       color: var(--muted);
       border: 1px dashed var(--border);
@@ -285,6 +313,7 @@
 
   <script type="module">
     import {
+      VERSION,
       PLAYER_STORAGE_KEY,
       GAME_STORAGE_KEY,
       getPlayerRatingTimeline,
@@ -300,12 +329,16 @@
     const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
     const INCLUDE_LEAGUE_GAMES_STORAGE_KEY = 'gameDayIncludeLeagueGamesEnabled';
 
-    const TEAM_COLORS = ['red', 'blue', 'green', 'yellow'];
+    const TEAM_COLORS = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'cyan', 'pink'];
     const TEAM_LABELS = {
       red: 'Red',
       blue: 'Blue',
       green: 'Green',
-      yellow: 'Yellow'
+      yellow: 'Yellow',
+      orange: 'Orange',
+      purple: 'Purple',
+      cyan: 'Cyan',
+      pink: 'Pink'
     };
 
 
@@ -957,6 +990,7 @@
     }
 
     renderPage();
+    console.log('[vball] trend.html version:', VERSION);
   </script>
 </body>
 </html>

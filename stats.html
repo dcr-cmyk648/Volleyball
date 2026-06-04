@@ -17,6 +17,10 @@
       --blue: #60a5fa;
       --green: #4ade80;
       --yellow: #facc15;
+      --orange: #fb923c;
+      --purple: #c084fc;
+      --cyan: #22d3ee;
+      --pink: #f472b6;
       --button: #334155;
       --button-text: #f3f4f6;
       --secondary: #475569;
@@ -337,6 +341,10 @@
     .team-box.blue-team { border-left: 5px solid var(--blue); }
     .team-box.green-team { border-left: 5px solid var(--green); }
     .team-box.yellow-team { border-left: 5px solid var(--yellow); }
+    .team-box.orange-team { border-left: 5px solid var(--orange); }
+    .team-box.purple-team { border-left: 5px solid var(--purple); }
+    .team-box.cyan-team { border-left: 5px solid var(--cyan); }
+    .team-box.pink-team { border-left: 5px solid var(--pink); }
 
     .winner-badge {
       display: inline-block;
@@ -370,6 +378,30 @@
       color: #fef08a;
       border-color: rgba(250, 204, 21, 0.35);
       background: rgba(250, 204, 21, 0.12);
+    }
+
+    .winner-badge.orange {
+      color: #fed7aa;
+      border-color: rgba(251, 146, 60, 0.35);
+      background: rgba(251, 146, 60, 0.12);
+    }
+
+    .winner-badge.purple {
+      color: #e9d5ff;
+      border-color: rgba(192, 132, 252, 0.35);
+      background: rgba(192, 132, 252, 0.12);
+    }
+
+    .winner-badge.cyan {
+      color: #a5f3fc;
+      border-color: rgba(34, 211, 238, 0.35);
+      background: rgba(34, 211, 238, 0.12);
+    }
+
+    .winner-badge.pink {
+      color: #fbcfe8;
+      border-color: rgba(244, 114, 182, 0.35);
+      background: rgba(244, 114, 182, 0.12);
     }
 
     .meta-pill {
@@ -864,6 +896,7 @@
 
   <script type="module">
     import {
+      VERSION,
       replayRatings,
       formatDisplayedRating,
       LEAGUE_TEAM_ID,
@@ -906,12 +939,16 @@
     const SEASON_MOVER_POST_BASELINE_CONFIDENCE_GAMES = 8;
     const OVERALL_STANDINGS_MIN_GAMES = 5;
 
-    const TEAM_COLORS = ['red', 'blue', 'green', 'yellow'];
+    const TEAM_COLORS = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'cyan', 'pink'];
     const TEAM_LABELS = {
       red: 'Red',
       blue: 'Blue',
       green: 'Green',
-      yellow: 'Yellow'
+      yellow: 'Yellow',
+      orange: 'Orange',
+      purple: 'Purple',
+      cyan: 'Cyan',
+      pink: 'Pink'
     };
 
     const statsTableBody = document.getElementById('statsTableBody');
@@ -2706,6 +2743,7 @@
     });
 
     maybeOfferDefaultDatabase();
+    console.log('[vball] stats.html version:', VERSION);
   </script>
 </body>
 </html>

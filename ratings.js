@@ -147,6 +147,8 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
+export const VERSION = 'beta-20260603-5';
+
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Top player carries 45% of team strength — reflects volleyball's star-player dominance (MAX algorithm)
   topPlayerWeight: 0.45,
@@ -1392,6 +1394,7 @@ export function getPlayerRatingTimeline({
 } = {}) {
   const cfg = mergeRatingOptions(options);
   const ratingMap = {};
+  const statsMap = {};
   const timeline = [];
   const includedGames = getIncludedGames(games, includeLeagueGames);
   const seasonalTaperDays =
@@ -1406,6 +1409,7 @@ export function getPlayerRatingTimeline({
     ratingMap[player.id] = calibrated
       ? rating({ mu: Number(calibrated.mu), sigma: Number(calibrated.sigma) })
       : makeInitialRating(cfg);
+    statsMap[player.id] = { id: player.id, name: player.name, games: 0 };
   });
 
   const sortedGames = getGamesSortedOldestFirst(includedGames);
@@ -1422,6 +1426,57 @@ export function getPlayerRatingTimeline({
       volleyballAdjusted,
       volleyballOptions,
     });
+
+    // Burn-in: match replayRatings — amplify updates for players in their first N games.
+    const burnInGames = Number(cfg.burnInGames) || 0;
+    const burnInMult = Number(cfg.burnInMultiplier) || 1;
+    if (burnInGames > 0 && burnInMult > 1 && _calibratedStarts === null) {
+      const applyBurnIn = (beforeEntries, afterEntries) => {
+        beforeEntries.forEach((before, i) => {
+          const gamesPlayed = statsMap[before.id]?.games ?? 0;
+          if (gamesPlayed < burnInGames) {
+            const after = afterEntries[i];
+            const newMu = before.mu + (after.mu - before.mu) * burnInMult;
+            const newSigma = clamp(
+              before.sigma + (after.sigma - before.sigma) * burnInMult,
+              1,
+              cfg.sigma
+            );
+            ratingMap[before.id] = rating({ mu: newMu, sigma: newSigma });
+            after.mu = newMu;
+            after.sigma = newSigma;
+            after.rating = getRawOrdinal(ratingMap[before.id], cfg);
+          }
+        });
+      };
+      applyBurnIn(result.before.red, result.after.red);
+      applyBurnIn(result.before.blue, result.after.blue);
+    }
+
+    // Calibration freeze: match replayRatings — restore seeded rating within calibration window.
+    if (_calibratedStarts !== null) {
+      const calibrationGamesLimit = Number(cfg.calibrationGames) || 0;
+      [...getRedTeamIds(game), ...getBlueTeamIds(game)].forEach(id => {
+        const cal = _calibratedStarts[id];
+        if (cal && (statsMap[id]?.games ?? 0) < calibrationGamesLimit) {
+          ratingMap[id] = rating({ mu: Number(cal.mu), sigma: Number(cal.sigma) });
+        }
+      });
+    }
+
+    // Update statsMap game counts (must happen after burn-in/freeze reads pre-game count).
+    const redTeam = Array.isArray(game.redTeam) ? game.redTeam : [];
+    const blueTeam = Array.isArray(game.blueTeam) ? game.blueTeam : [];
+    redTeam.forEach(player => {
+      if (!statsMap[player.id]) statsMap[player.id] = { id: player.id, name: player.name, games: 0 };
+      statsMap[player.id].games += 1;
+    });
+    if (!game.isLeagueGame) {
+      blueTeam.forEach(player => {
+        if (!statsMap[player.id]) statsMap[player.id] = { id: player.id, name: player.name, games: 0 };
+        statsMap[player.id].games += 1;
+      });
+    }
 
     const isRequestedLeagueContext =
       leagueContext &&

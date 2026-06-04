@@ -17,6 +17,10 @@
       --blue: #60a5fa;
       --green: #4ade80;
       --yellow: #facc15;
+      --orange: #fb923c;
+      --purple: #c084fc;
+      --cyan: #22d3ee;
+      --pink: #f472b6;
       --button: #334155;
       --button-text: #f3f4f6;
       --secondary: #475569;
@@ -119,6 +123,30 @@
       background: rgba(250, 204, 21, 0.16);
       color: #fef08a;
       border-color: rgba(250, 204, 21, 0.35);
+    }
+
+    button.orange-button {
+      background: rgba(251, 146, 60, 0.16);
+      color: #fed7aa;
+      border-color: rgba(251, 146, 60, 0.35);
+    }
+
+    button.purple-button {
+      background: rgba(192, 132, 252, 0.16);
+      color: #e9d5ff;
+      border-color: rgba(192, 132, 252, 0.35);
+    }
+
+    button.cyan-button {
+      background: rgba(34, 211, 238, 0.16);
+      color: #a5f3fc;
+      border-color: rgba(34, 211, 238, 0.35);
+    }
+
+    button.pink-button {
+      background: rgba(244, 114, 182, 0.16);
+      color: #fbcfe8;
+      border-color: rgba(244, 114, 182, 0.35);
     }
 
     button.success {
@@ -320,6 +348,10 @@
     .player-name.blue { color: var(--blue); }
     .player-name.green { color: var(--green); }
     .player-name.yellow { color: var(--yellow); }
+    .player-name.orange { color: var(--orange); }
+    .player-name.purple { color: var(--purple); }
+    .player-name.cyan { color: var(--cyan); }
+    .player-name.pink { color: var(--pink); }
 
     .tag {
       font-size: 12px;
@@ -360,6 +392,10 @@
     .summary-box.blue-box { border-left: 5px solid var(--blue); }
     .summary-box.green-box { border-left: 5px solid var(--green); }
     .summary-box.yellow-box { border-left: 5px solid var(--yellow); }
+    .summary-box.orange-box { border-left: 5px solid var(--orange); }
+    .summary-box.purple-box { border-left: 5px solid var(--purple); }
+    .summary-box.cyan-box { border-left: 5px solid var(--cyan); }
+    .summary-box.pink-box { border-left: 5px solid var(--pink); }
 
     .score-grid {
       display: grid;
@@ -490,6 +526,13 @@
       </div>
 
       <div class="slider-row">
+        <label for="teamCountSlider">
+          Number of teams: <span id="teamCountValue">2</span>
+        </label>
+        <input type="range" id="teamCountSlider" min="2" max="8" step="1" value="2" />
+      </div>
+
+      <div class="slider-row">
         <label for="balanceSlider">
           Balance thoroughness: <span id="balanceValue">50%</span>
         </label>
@@ -497,11 +540,6 @@
       </div>
 
       <div class="checkbox-row">
-        <label for="fourTeamModeCheckbox">
-          <input type="checkbox" id="fourTeamModeCheckbox" />
-          Assign 4 teams instead of 2
-        </label>
-
         <label for="forceTwoChangesCheckbox">
           <input type="checkbox" id="forceTwoChangesCheckbox" />
           Force at least two player changes
@@ -532,24 +570,7 @@
 
       <div id="playerList" class="player-list" style="margin-top: 14px;"></div>
 
-      <div id="summaryGrid" class="summary-grid">
-        <div class="summary-box red-box">
-          <strong>Red Team</strong>
-          <div id="redSummary">0 players</div>
-        </div>
-        <div class="summary-box blue-box">
-          <strong>Blue Team</strong>
-          <div id="blueSummary">0 players</div>
-        </div>
-        <div id="greenSummaryBox" class="summary-box green-box hidden">
-          <strong>Green Team</strong>
-          <div id="greenSummary">0 players</div>
-        </div>
-        <div id="yellowSummaryBox" class="summary-box yellow-box hidden">
-          <strong>Yellow Team</strong>
-          <div id="yellowSummary">0 players</div>
-        </div>
-      </div>
+      <div id="summaryGrid" class="summary-grid"></div>
 
       <div class="small">
         Check the players who are present. Tap a present player's name to cycle team colors manually. If grouping is enabled, use the group button to keep players together during balancing.
@@ -570,12 +591,7 @@
         </div>
       </div>
 
-      <div id="recordButtons" class="controls">
-        <button id="recordRedWinButton" class="red-button">Red Team Win</button>
-        <button id="recordBlueWinButton" class="blue-button">Blue Team Win</button>
-        <button id="recordGreenWinButton" class="green-button hidden">Green Team Win</button>
-        <button id="recordYellowWinButton" class="yellow-button hidden">Yellow Team Win</button>
-      </div>
+      <div id="recordButtons" class="controls"></div>
 
       <div class="small">
         Scores are optional. Every game opens a confirmation popup before being saved.
@@ -623,6 +639,7 @@
 
 <script type="module">
   import {
+    VERSION,
     replayRatings,
     scoreVolleyballCandidateSplit,
     getVolleyballTeamStrength,
@@ -650,13 +667,18 @@
   const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
   const INCLUDE_LEAGUE_GAMES_STORAGE_KEY = 'gameDayIncludeLeagueGamesEnabled';
 
-  const TEAM_COLORS = ['red', 'blue', 'green', 'yellow'];
-  const STANDARD_TEAM_COLORS = ['red', 'blue'];
+  const TEAM_COLORS = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'cyan', 'pink'];
+  const MIN_TEAM_COUNT = 2;
+  const MAX_TEAM_COUNT = 8;
   const TEAM_LABELS = {
     red: 'Red',
     blue: 'Blue',
     green: 'Green',
-    yellow: 'Yellow'
+    yellow: 'Yellow',
+    orange: 'Orange',
+    purple: 'Purple',
+    cyan: 'Cyan',
+    pink: 'Pink'
   };
 
   const MIN_GROUP_COUNT = 1;
@@ -664,19 +686,17 @@
 
   const playerListEl = document.getElementById('playerList');
   const summaryGridEl = document.getElementById('summaryGrid');
-  const redSummaryEl = document.getElementById('redSummary');
-  const blueSummaryEl = document.getElementById('blueSummary');
-  const greenSummaryEl = document.getElementById('greenSummary');
-  const yellowSummaryEl = document.getElementById('yellowSummary');
-  const greenSummaryBoxEl = document.getElementById('greenSummaryBox');
-  const yellowSummaryBoxEl = document.getElementById('yellowSummaryBox');
+  // Dynamically-built summary content elements, keyed by team color.
+  const summaryContentEls = {};
   const balanceStatusEl = document.getElementById('balanceStatus');
   const selectedCountEl = document.getElementById('selectedCount');
   const latestGameEl = document.getElementById('latestGame');
   const errorMessageEl = document.getElementById('errorMessage');
   const balanceSliderEl = document.getElementById('balanceSlider');
   const balanceValueEl = document.getElementById('balanceValue');
-  const fourTeamModeCheckboxEl = document.getElementById('fourTeamModeCheckbox');
+  const teamCountSliderEl = document.getElementById('teamCountSlider');
+  const teamCountValueEl = document.getElementById('teamCountValue');
+  const recordButtonsEl = document.getElementById('recordButtons');
   const forceTwoChangesCheckboxEl = document.getElementById('forceTwoChangesCheckbox');
   const groupingCheckboxEl = document.getElementById('groupingCheckbox');
   const groupControlsEl = document.getElementById('groupControls');
@@ -692,11 +712,6 @@
   const courtTypeSelectEl = document.getElementById('courtTypeSelect');
   const toggleUnselectedButtonEl = document.getElementById('toggleUnselectedButton');
   const assignTeamsButtonEl = document.getElementById('assignTeamsButton');
-
-  const recordRedWinButtonEl = document.getElementById('recordRedWinButton');
-  const recordBlueWinButtonEl = document.getElementById('recordBlueWinButton');
-  const recordGreenWinButtonEl = document.getElementById('recordGreenWinButton');
-  const recordYellowWinButtonEl = document.getElementById('recordYellowWinButton');
 
   const loserTeamDialog = document.getElementById('loserTeamDialog');
   const loserTeamTextEl = document.getElementById('loserTeamText');
@@ -834,7 +849,7 @@
       blueScore: blueScoreEl.value,
       hideUnselectedPlayers,
       balanceAttempts: Number(balanceSliderEl.value),
-      fourTeamMode: fourTeamModeCheckboxEl.checked,
+      teamCount: getTeamCount(),
       forceTwoChanges: forceTwoChangesCheckboxEl.checked,
       groupingEnabled,
       groupCount,
@@ -857,7 +872,13 @@
     redScoreEl.value = typeof saved.redScore === 'string' ? saved.redScore : '';
     blueScoreEl.value = typeof saved.blueScore === 'string' ? saved.blueScore : '';
     hideUnselectedPlayers = Boolean(saved.hideUnselectedPlayers);
-    fourTeamModeCheckboxEl.checked = Boolean(saved.fourTeamMode);
+
+    const savedTeamCount = Number(saved.teamCount);
+    if (Number.isFinite(savedTeamCount)) {
+      teamCountSliderEl.value = String(
+        Math.min(MAX_TEAM_COUNT, Math.max(MIN_TEAM_COUNT, Math.round(savedTeamCount)))
+      );
+    }
 
     if (typeof saved.forceTwoChanges === 'boolean') {
       forceTwoChangesCheckboxEl.checked = saved.forceTwoChanges;
@@ -956,8 +977,16 @@
     return getLeagueLevel() !== '';
   }
 
-  function isFourTeamMode() {
-    return fourTeamModeCheckboxEl.checked && !isLeagueGameMode();
+  function getTeamCount() {
+    const raw = Number(teamCountSliderEl.value);
+    if (!Number.isFinite(raw)) return MIN_TEAM_COUNT;
+    return Math.min(MAX_TEAM_COUNT, Math.max(MIN_TEAM_COUNT, Math.round(raw)));
+  }
+
+  // True when the assignment produces more than two teams, which switches the
+  // recording flow to the winner/loser dialog. Always false in league mode.
+  function isMultiTeamMode() {
+    return !isLeagueGameMode() && getTeamCount() > 2;
   }
 
   function isGroupingActive() {
@@ -976,8 +1005,7 @@
 
   function getActiveTeamColors() {
     if (isLeagueGameMode()) return ['red'];
-    if (isFourTeamMode()) return TEAM_COLORS;
-    return STANDARD_TEAM_COLORS;
+    return TEAM_COLORS.slice(0, getTeamCount());
   }
 
   function assignPresentPlayersToRedForLeagueGame() {
@@ -1071,25 +1099,40 @@
     return Math.round(result);
   }
 
-  // Estimates the number of distinct team splits for a given player count and mode.
-  // Capped to avoid overflow — the practical search cap is what matters.
-  function estimateSearchSpace(playerCount, fourTeamMode) {
+  function factorial(n) {
+    let result = 1;
+    for (let i = 2; i <= n; i += 1) result *= i;
+    return result;
+  }
+
+  // Estimates the number of distinct team splits for a given player count and
+  // team count. The multinomial product divided by the factorial of the team
+  // count (symmetry) reproduces the original 2-team (C(n,n/2)/2) and 4-team
+  // (product/24) formulas exactly. Capped to avoid overflow.
+  function estimateSearchSpace(playerCount, teamCount) {
     const n = Math.max(2, playerCount);
-    if (fourTeamMode) {
-      const q = Math.floor(n / 4);
-      const raw = computeBinomial(n, q) * computeBinomial(n - q, q) * computeBinomial(n - 2 * q, q) / 24;
-      return Math.min(100000, Math.max(1, Math.round(raw)));
+    const teams = Math.max(2, teamCount);
+    const base = Math.floor(n / teams);
+    const remainder = n % teams;
+
+    let remaining = n;
+    let raw = 1;
+    for (let i = 0; i < teams; i += 1) {
+      const size = base + (i < remainder ? 1 : 0);
+      raw *= computeBinomial(remaining, size);
+      remaining -= size;
     }
-    const half = Math.floor(n / 2);
-    return Math.min(100000, Math.max(1, Math.round(computeBinomial(n, half) / 2)));
+    raw /= factorial(teams);
+
+    return Math.min(100000, Math.max(1, Math.round(raw)));
   }
 
   // Maps a thoroughness slider value (1-100) to an actual attempt count.
   // Uses a quadratic curve so left=random, right=near-exhaustive, middle=default.
-  function computeAttempts(sliderValue, playerCount, fourTeamMode) {
+  function computeAttempts(sliderValue, playerCount, teamCount) {
     const pct = sliderValue / 100;
     const scaled = pct * pct; // quadratic: spreads out the low end
-    const searchSpace = estimateSearchSpace(playerCount, fourTeamMode);
+    const searchSpace = estimateSearchSpace(playerCount, teamCount);
     // Overshoot by 2x at slider=100 to ensure near-full coverage via birthday paradox
     const maxAttempts = Math.min(10000, Math.round(searchSpace * 2));
     return Math.max(1, Math.round(scaled * maxAttempts));
@@ -1098,8 +1141,8 @@
   function updateBalanceSliderLabel() {
     const sliderValue = Number(balanceSliderEl.value);
     const playerCount = getPresentPlayers().length;
-    const fourTeam = isFourTeamMode();
-    const attempts = computeAttempts(sliderValue, playerCount, fourTeam);
+    const teamCount = getActiveTeamColors().length;
+    const attempts = computeAttempts(sliderValue, playerCount, teamCount);
     balanceValueEl.textContent = `${sliderValue}% (~${attempts.toLocaleString()} splits)`;
   }
 
@@ -1272,60 +1315,12 @@
     return 'Unable to balance teams. Consider increasing balance strength, reducing grouping, or allowing more flexible teams.';
   }
 
-  function buildCandidateTeams(presentPlayers, ratingMap, carryMap = {}) {
-    const totalPlayers = presentPlayers.length;
-    const targetRedSize = Math.ceil(totalPlayers / 2);
-    const targetBlueSize = totalPlayers - targetRedSize;
+  function getTeamTargetSizes(totalPlayers, colors) {
+    const teamCount = colors.length;
+    const baseSize = Math.floor(totalPlayers / teamCount);
+    const remainder = totalPlayers % teamCount;
 
-    const units = buildPlayerUnits(presentPlayers);
-    const teamsByColor = assignUnitsToTargetSizes(
-      units,
-      STANDARD_TEAM_COLORS,
-      {
-        red: targetRedSize,
-        blue: targetBlueSize
-      }
-    );
-
-    if (!teamsByColor) {
-      return {
-        invalid: true
-      };
-    }
-
-    const redTeam = teamsByColor.red;
-    const blueTeam = teamsByColor.blue;
-
-    const score = scoreVolleyballCandidateSplit({
-      redPlayers: redTeam,
-      bluePlayers: blueTeam,
-      ratingMap,
-      carryScoreMap: carryMap
-    });
-
-    return {
-      redTeam,
-      blueTeam,
-      fairness: score.fairness,
-      drawProxy: score.drawProxy,
-      redWinProbability: score.redWinProbability,
-      blueWinProbability: score.blueWinProbability,
-      redStrength: score.redStrength,
-      blueStrength: score.blueStrength,
-      strengthDiff: score.strengthDiff,
-      redSizeAdjustment: score.redSizeAdjustment,
-      blueSizeAdjustment: score.blueSizeAdjustment,
-      redBreakdown: score.redBreakdown,
-      blueBreakdown: score.blueBreakdown,
-      model: score.model
-    };
-  }
-
-  function getFourTeamTargetSizes(totalPlayers) {
-    const baseSize = Math.floor(totalPlayers / 4);
-    const remainder = totalPlayers % 4;
-
-    return TEAM_COLORS.reduce((acc, color, index) => {
+    return colors.reduce((acc, color, index) => {
       acc[color] = baseSize + (index < remainder ? 1 : 0);
       return acc;
     }, {});
@@ -1344,14 +1339,14 @@
     return diffs.reduce((sum, value) => sum + value, 0) / diffs.length;
   }
 
-  function getFourTeamPairwiseFairness(teamsByColor, ratingMap, carryMap = {}) {
+  function getPairwiseFairness(teamsByColor, colors, ratingMap, carryMap = {}) {
     let total = 0;
     let count = 0;
 
-    for (let i = 0; i < TEAM_COLORS.length; i += 1) {
-      for (let j = i + 1; j < TEAM_COLORS.length; j += 1) {
-        const colorA = TEAM_COLORS[i];
-        const colorB = TEAM_COLORS[j];
+    for (let i = 0; i < colors.length; i += 1) {
+      for (let j = i + 1; j < colors.length; j += 1) {
+        const colorA = colors[i];
+        const colorB = colors[j];
         const score = scoreVolleyballCandidateSplit({
           redPlayers: teamsByColor[colorA],
           bluePlayers: teamsByColor[colorB],
@@ -1366,10 +1361,10 @@
     return count ? total / count : 0;
   }
 
-  function buildFourTeamCandidate(presentPlayers, ratingMap, carryMap = {}) {
+  function buildMultiTeamCandidate(presentPlayers, colors, ratingMap, carryMap = {}) {
     const units = buildPlayerUnits(presentPlayers);
-    const targetSizes = getFourTeamTargetSizes(presentPlayers.length);
-    const teamsByColor = assignUnitsToTargetSizes(units, TEAM_COLORS, targetSizes);
+    const targetSizes = getTeamTargetSizes(presentPlayers.length, colors);
+    const teamsByColor = assignUnitsToTargetSizes(units, colors, targetSizes);
 
     if (!teamsByColor) {
       return {
@@ -1380,7 +1375,7 @@
     const strengthsByColor = {};
     const averageRatingsByColor = {};
 
-    TEAM_COLORS.forEach(color => {
+    colors.forEach(color => {
       const strength = getVolleyballTeamStrength({
         players: teamsByColor[color],
         ratingMap,
@@ -1391,15 +1386,16 @@
       averageRatingsByColor[color] = getAverageRawOrdinal(teamsByColor[color], ratingMap);
     });
 
-    const strengths = TEAM_COLORS.map(color => strengthsByColor[color]);
+    const strengths = colors.map(color => strengthsByColor[color]);
     const maxStrength = Math.max(...strengths);
     const minStrength = Math.min(...strengths);
     const spread = maxStrength - minStrength;
     const averagePairwiseDifference = getAveragePairwiseDifference(strengths);
-    const averagePairwiseFairness = getFourTeamPairwiseFairness(teamsByColor, ratingMap, carryMap);
+    const averagePairwiseFairness = getPairwiseFairness(teamsByColor, colors, ratingMap, carryMap);
 
     return {
       teamsByColor,
+      colors,
       strengthsByColor,
       averageRatingsByColor,
       spread,
@@ -1410,7 +1406,7 @@
     };
   }
 
-  function isBetterFourTeamCandidate(candidate, bestCandidate) {
+  function isBetterMultiTeamCandidate(candidate, bestCandidate) {
     if (!bestCandidate) return true;
     return candidate.averagePairwiseFairness > bestCandidate.averagePairwiseFairness;
   }
@@ -1441,86 +1437,22 @@
 
   // For each new team, finds the previous team with the most player overlap,
   // then checks that at least 2 players are different (new) vs that best match.
-  function fourTeamCandidateHasEnoughChanges(teamsByColor) {
+  function multiTeamCandidateHasEnoughChanges(teamsByColor, colors) {
     const prevAssignment = getPreviousFourTeamAssignmentFromHistory();
     if (!prevAssignment) return true;
 
-    return TEAM_COLORS.every(newColor => {
+    const prevColors = Object.keys(prevAssignment);
+
+    return colors.every(newColor => {
       const newIds = new Set(teamsByColor[newColor].map(p => String(p.id)));
       let maxOverlap = 0;
-      TEAM_COLORS.forEach(prevColor => {
+      prevColors.forEach(prevColor => {
         const prevIds = prevAssignment[prevColor] || [];
         const overlap = prevIds.filter(id => newIds.has(id)).length;
         maxOverlap = Math.max(maxOverlap, overlap);
       });
       return (newIds.size - maxOverlap) >= 2;
     });
-  }
-
-  function assignFourBalancedTeams() {
-    const presentPlayers = getPresentPlayers();
-
-    if (presentPlayers.length < 8) {
-      setError('At least 8 players must be marked present for 4-team mode.');
-      return;
-    }
-
-    const attempts = computeAttempts(Number(balanceSliderEl.value), presentPlayers.length, true);
-    const ratingData = getRatingData();
-    let bestCandidate = null;
-    let validCandidatesFound = 0;
-    let rawAttempts = 0;
-    const maxRawAttempts = Math.min(500000, Math.max(500, attempts * 20));
-
-    while (validCandidatesFound < attempts && rawAttempts < maxRawAttempts) {
-      rawAttempts += 1;
-
-      const candidate = buildFourTeamCandidate(presentPlayers, ratingData.ratingMap, ratingData.carryMap);
-
-      if (candidate.invalid) {
-        continue;
-      }
-
-      if (shouldForceTwoChanges() && !fourTeamCandidateHasEnoughChanges(candidate.teamsByColor)) {
-        continue;
-      }
-
-      validCandidatesFound += 1;
-
-      if (isBetterFourTeamCandidate(candidate, bestCandidate)) {
-        bestCandidate = candidate;
-      }
-    }
-
-    if (!bestCandidate || validCandidatesFound < attempts) {
-      setError(getGroupedAssignmentFailureMessage());
-      return;
-    }
-
-    players.forEach(player => {
-      const state = getPlayerState(player.id);
-      if (state.present) {
-        state.team = '';
-      }
-    });
-
-    // Sort teams by descending strength: red=strongest, blue=2nd, green=3rd, yellow=weakest.
-    // This makes "red vs blue" and "green vs yellow" the natural same-strength matchups.
-    const colorsByStrength = TEAM_COLORS.slice().sort((a, b) =>
-      (bestCandidate.strengthsByColor[b] || 0) - (bestCandidate.strengthsByColor[a] || 0)
-    );
-
-    colorsByStrength.forEach((oldColor, rank) => {
-      const newColor = TEAM_COLORS[rank];
-      bestCandidate.teamsByColor[oldColor].forEach(player => {
-        presenceState[player.id].team = newColor;
-      });
-    });
-
-
-    savePageState();
-    renderPlayers();
-    updateBalanceStatus(bestCandidate, validCandidatesFound, rawAttempts, isGroupingActive());
   }
 
   function assignBalancedTeams() {
@@ -1534,20 +1466,20 @@
       return;
     }
 
-    if (isFourTeamMode()) {
-      assignFourBalancedTeams();
-      return;
-    }
-
     const presentPlayers = getPresentPlayers();
-    if (presentPlayers.length < 2) {
-      setError('At least 2 players must be marked present.');
+    const colors = getActiveTeamColors();
+    const teamCount = colors.length;
+
+    if (presentPlayers.length < teamCount) {
+      setError(`At least ${teamCount} players must be marked present for ${teamCount} teams.`);
       return;
     }
 
-    const attempts = computeAttempts(Number(balanceSliderEl.value), presentPlayers.length, false);
+    const attempts = computeAttempts(Number(balanceSliderEl.value), presentPlayers.length, teamCount);
     const ratingData = getRatingData();
-    const previousTeams = shouldForceTwoChanges()
+
+    // Force-two-changes uses different previous-round history for 2 vs >2 teams.
+    const twoTeamPrevious = (shouldForceTwoChanges() && teamCount === 2)
       ? getPreviousTeamsForSimilarityConstraint()
       : null;
 
@@ -1559,19 +1491,29 @@
     while (validCandidatesFound < attempts && rawAttempts < maxRawAttempts) {
       rawAttempts += 1;
 
-      const candidate = buildCandidateTeams(presentPlayers, ratingData.ratingMap, ratingData.carryMap);
+      const candidate = buildMultiTeamCandidate(presentPlayers, colors, ratingData.ratingMap, ratingData.carryMap);
 
       if (candidate.invalid) {
         continue;
       }
 
-      if (previousTeams && !candidateHasEnoughPlayerChanges(candidate, previousTeams)) {
-        continue;
+      if (shouldForceTwoChanges()) {
+        if (teamCount === 2) {
+          const shim = {
+            redTeam: candidate.teamsByColor[colors[0]],
+            blueTeam: candidate.teamsByColor[colors[1]]
+          };
+          if (twoTeamPrevious && !candidateHasEnoughPlayerChanges(shim, twoTeamPrevious)) {
+            continue;
+          }
+        } else if (!multiTeamCandidateHasEnoughChanges(candidate.teamsByColor, colors)) {
+          continue;
+        }
       }
 
       validCandidatesFound += 1;
 
-      if (!bestCandidate || candidate.fairness > bestCandidate.fairness) {
+      if (isBetterMultiTeamCandidate(candidate, bestCandidate)) {
         bestCandidate = candidate;
       }
     }
@@ -1589,17 +1531,22 @@
       if (state.present) state.team = '';
     });
 
-    bestCandidate.redTeam.forEach(player => {
-      presenceState[player.id].team = 'red';
-    });
+    // Sort teams by descending strength so the strongest teams get the earliest
+    // colors. This makes adjacent colors the natural same-strength matchups.
+    const colorsByStrength = colors.slice().sort((a, b) =>
+      (bestCandidate.strengthsByColor[b] || 0) - (bestCandidate.strengthsByColor[a] || 0)
+    );
 
-    bestCandidate.blueTeam.forEach(player => {
-      presenceState[player.id].team = 'blue';
+    colorsByStrength.forEach((oldColor, rank) => {
+      const newColor = colors[rank];
+      bestCandidate.teamsByColor[oldColor].forEach(player => {
+        presenceState[player.id].team = newColor;
+      });
     });
 
     savePageState();
     renderPlayers();
-    updateBalanceStatus(bestCandidate, validCandidatesFound, rawAttempts, Boolean(previousTeams || isGroupingActive()));
+    updateBalanceStatus(bestCandidate, validCandidatesFound, rawAttempts, Boolean(twoTeamPrevious || isGroupingActive()));
   }
 
   function getActiveGroupsSummary() {
@@ -1626,29 +1573,17 @@
 
   function updateSelectedCount() {
     const selected = getPresentPlayers();
-    const redTeam = getTeamPlayers('red');
-    const blueTeam = getTeamPlayers('blue');
-    const greenTeam = getTeamPlayers('green');
-    const yellowTeam = getTeamPlayers('yellow');
 
     if (isLeagueGameMode()) {
+      const redTeam = getTeamPlayers('red');
       selectedCountEl.textContent =
         `Selected players: ${selected.length}\nRed: ${redTeam.length} | League Team`;
       return;
     }
 
-    const lines = [];
-
-    if (isFourTeamMode()) {
-      lines.push(`Selected players: ${selected.length}`);
-      lines.push(`Red: ${redTeam.length} | Blue: ${blueTeam.length} | Green: ${greenTeam.length} | Yellow: ${yellowTeam.length}`);
-      maybePushGroupSummary(lines);
-      selectedCountEl.textContent = lines.join('\n');
-      return;
-    }
-
-    lines.push(`Selected players: ${selected.length}`);
-    lines.push(`Red: ${redTeam.length} | Blue: ${blueTeam.length}`);
+    const lines = [`Selected players: ${selected.length}`];
+    const colors = getActiveTeamColors();
+    lines.push(colors.map(color => `${TEAM_LABELS[color]}: ${getTeamPlayers(color).length}`).join(' | '));
     maybePushGroupSummary(lines);
     selectedCountEl.textContent = lines.join('\n');
   }
@@ -1688,82 +1623,31 @@
       return;
     }
 
-    if (isFourTeamMode()) {
-      const teamsByColor = {};
-      const strengthsByColor = {};
-      const averagesByColor = {};
+    const colors = getActiveTeamColors();
+    const teamCount = colors.length;
+    const teamsByColor = {};
+    const strengthsByColor = {};
+    const averagesByColor = {};
 
-      TEAM_COLORS.forEach(color => {
-        const teamPlayers = candidate?.teamsByColor?.[color] || getTeamPlayers(color);
-        teamsByColor[color] = teamPlayers;
+    colors.forEach(color => {
+      const teamPlayers = candidate?.teamsByColor?.[color] || getTeamPlayers(color);
+      teamsByColor[color] = teamPlayers;
 
-        const strength = getVolleyballTeamStrength({
-          players: teamPlayers,
-          ratingMap: ratingData.ratingMap
-        });
-
-        strengthsByColor[color] = strength.strength;
-        averagesByColor[color] = getAverageRawOrdinal(teamPlayers, ratingData.ratingMap);
+      const strength = getVolleyballTeamStrength({
+        players: teamPlayers,
+        ratingMap: ratingData.ratingMap
       });
 
-      const allEmpty = TEAM_COLORS.every(color => teamsByColor[color].length === 0);
+      strengthsByColor[color] = strength.strength;
+      averagesByColor[color] = getAverageRawOrdinal(teamPlayers, ratingData.ratingMap);
+    });
 
-      if (allEmpty) {
-        const lines = [
-          'No team assignment yet.',
-          '4-team mode is on.',
-          `Court type: ${getCourtTypeLabel()}`,
-          `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
-          `Season length: ${loadSeasonLengthMonths()} months`,
-          `Volleyball-adjusted model: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`
-        ];
+    const allEmpty = colors.every(color => teamsByColor[color].length === 0);
 
-        maybePushGroupSummary(lines);
-        balanceStatusEl.textContent = lines.join('\n');
-        return;
-      }
-
-      const strengths = TEAM_COLORS.map(color => strengthsByColor[color]);
-      const spread = candidate?.spread ?? (Math.max(...strengths) - Math.min(...strengths));
-      const averagePairwiseDifference =
-        candidate?.averagePairwiseDifference ?? getAveragePairwiseDifference(strengths);
-      const averagePairwiseFairness =
-        candidate?.averagePairwiseFairness ?? getFourTeamPairwiseFairness(teamsByColor, ratingData.ratingMap, ratingData.carryMap);
-
-      const lines = [
-        'Balancing model: 4-team volleyball-adjusted',
-        `Court type: ${getCourtTypeLabel()}`,
-        `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
-        `Season length: ${loadSeasonLengthMonths()} months`,
-        `Volleyball-adjusted ratings: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
-        `Pairwise fairness: ${formatPercent(averagePairwiseFairness)}`,
-        `Team raw-strength spread: ${formatRawStrength(spread)}`,
-        `Red average Rating: ${formatDisplayedRating(averagesByColor.red)} | Raw strength: ${formatRawStrength(strengthsByColor.red)}`,
-        `Blue average Rating: ${formatDisplayedRating(averagesByColor.blue)} | Raw strength: ${formatRawStrength(strengthsByColor.blue)}`,
-        `Green average Rating: ${formatDisplayedRating(averagesByColor.green)} | Raw strength: ${formatRawStrength(strengthsByColor.green)}`,
-        `Yellow average Rating: ${formatDisplayedRating(averagesByColor.yellow)} | Raw strength: ${formatRawStrength(strengthsByColor.yellow)}`
-      ];
-
-      maybePushGroupSummary(lines);
-
-      if (attempts !== null) {
-        if (usedConstraint && rawAttempts !== null) {
-          lines.unshift(`Selected best 4-team split from ${attempts} valid assignments after ${rawAttempts} total attempts.`);
-        } else {
-          lines.unshift(`Selected best 4-team split from ${attempts} candidate assignments.`);
-        }
-      }
-
-      balanceStatusEl.textContent = lines.join('\n');
-      return;
-    }
-
-    const redTeam = candidate ? candidate.redTeam : getTeamPlayers('red');
-    const blueTeam = candidate ? candidate.blueTeam : getTeamPlayers('blue');
-
-    if (redTeam.length === 0 && blueTeam.length === 0) {
+    if (allEmpty) {
       const lines = [
         'No team assignment yet.',
+        `Teams: ${teamCount}`,
         `Court type: ${getCourtTypeLabel()}`,
         `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
         `Season length: ${loadSeasonLengthMonths()} months`,
@@ -1776,45 +1660,47 @@
       return;
     }
 
-    const score = candidate ?? scoreVolleyballCandidateSplit({
-      redPlayers: redTeam,
-      bluePlayers: blueTeam,
-      ratingMap: ratingData.ratingMap,
-      carryScoreMap: ratingData.carryMap
-    });
-
-    const redAvg = getAverageRawOrdinal(redTeam, ratingData.ratingMap);
-    const blueAvg = getAverageRawOrdinal(blueTeam, ratingData.ratingMap);
+    const strengths = colors.map(color => strengthsByColor[color]);
+    const spread = candidate?.spread ?? (Math.max(...strengths) - Math.min(...strengths));
+    const averagePairwiseFairness =
+      candidate?.averagePairwiseFairness ?? getPairwiseFairness(teamsByColor, colors, ratingData.ratingMap, ratingData.carryMap);
 
     const lines = [
-      `Balancing model: volleyball-adjusted`,
+      `Balancing model: ${teamCount}-team volleyball-adjusted`,
       `Court type: ${getCourtTypeLabel()}`,
       `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
       `Season length: ${loadSeasonLengthMonths()} months`,
       `Volleyball-adjusted ratings: ${loadVolleyballAdjustedEnabled() ? 'on' : 'off'}`,
       `Similarity rule: ${forceTwoChangesCheckboxEl.checked ? 'on' : 'off'}`,
-      `Red average Rating: ${formatDisplayedRating(redAvg)}`,
-      `Blue average Rating: ${formatDisplayedRating(blueAvg)}`,
-      `Red raw strength: ${formatRawStrength(score.redStrength)}`,
-      `Blue raw strength: ${formatRawStrength(score.blueStrength)}`,
-      `Red win probability: ${formatPercent(score.redWinProbability)}`,
-      `Blue win probability: ${formatPercent(score.blueWinProbability)}`,
-      `Fairness: ${formatPercent(score.fairness)}`
+      `Pairwise fairness: ${formatPercent(averagePairwiseFairness)}`,
+      `Team raw-strength spread: ${formatRawStrength(spread)}`
     ];
+
+    colors.forEach(color => {
+      lines.push(
+        `${TEAM_LABELS[color]} average Rating: ${formatDisplayedRating(averagesByColor[color])} | Raw strength: ${formatRawStrength(strengthsByColor[color])}`
+      );
+    });
+
+    // For a straight 2-team split, also show head-to-head win probabilities.
+    if (teamCount === 2) {
+      const score = scoreVolleyballCandidateSplit({
+        redPlayers: teamsByColor[colors[0]],
+        bluePlayers: teamsByColor[colors[1]],
+        ratingMap: ratingData.ratingMap,
+        carryScoreMap: ratingData.carryMap
+      });
+      lines.push(`${TEAM_LABELS[colors[0]]} win probability: ${formatPercent(score.redWinProbability)}`);
+      lines.push(`${TEAM_LABELS[colors[1]]} win probability: ${formatPercent(score.blueWinProbability)}`);
+    }
 
     maybePushGroupSummary(lines);
 
-    if (score.redTeamSize !== score.blueTeamSize || score.redSizeAdjustment !== 0 || score.blueSizeAdjustment !== 0) {
-      lines.push(
-        `Size adjustment: Red ${score.redSizeAdjustment >= 0 ? '+' : ''}${formatRawStrength(score.redSizeAdjustment)}, Blue ${score.blueSizeAdjustment >= 0 ? '+' : ''}${formatRawStrength(score.blueSizeAdjustment)}`
-      );
-    }
-
     if (attempts !== null) {
       if (usedConstraint && rawAttempts !== null) {
-        lines.unshift(`Selected best split from ${attempts} valid candidate assignments after ${rawAttempts} total attempts.`);
+        lines.unshift(`Selected best ${teamCount}-team split from ${attempts} valid assignments after ${rawAttempts} total attempts.`);
       } else {
-        lines.unshift(`Selected best split from ${attempts} candidate team assignments.`);
+        lines.unshift(`Selected best ${teamCount}-team split from ${attempts} candidate assignments.`);
       }
     }
 
@@ -1932,7 +1818,8 @@
     const scoreA = parseOptionalScore(redScoreEl.value);
     const scoreB = parseOptionalScore(blueScoreEl.value);
 
-    if (isFourTeamMode()) {
+    // A non-null loserColor means the winner/loser flow was used (3+ teams).
+    if (loserColor) {
       const teamError = validateFourTeamMatchSetup(winnerColor, loserColor);
       if (teamError) return { error: teamError };
 
@@ -2112,7 +1999,8 @@
   function handleWinButton(winnerColor) {
     clearError();
 
-    if (isFourTeamMode()) {
+    // With 3+ teams we need to ask which team lost; 2 teams is unambiguous.
+    if (isMultiTeamMode()) {
       openLoserTeamDialog(winnerColor);
       return;
     }
@@ -2130,7 +2018,7 @@
     loserTeamOptionsEl.innerHTML = '';
     loserTeamTextEl.textContent = `${TEAM_LABELS[winnerColor]} Team won. Which team lost?`;
 
-    TEAM_COLORS
+    getActiveTeamColors()
       .filter(color => color !== winnerColor)
       .forEach(color => {
         const button = document.createElement('button');
@@ -2209,16 +2097,76 @@
       : 'Hide Unselected Players';
   }
 
+  // Colors shown in the summary boxes and win buttons. League mode always shows
+  // the player team (red) and the synthetic opponent (blue).
+  function getDisplayColors() {
+    return isLeagueGameMode() ? ['red', 'blue'] : getActiveTeamColors();
+  }
+
+  // Rebuilds the summary boxes and win buttons to match the active team colors.
+  function renderTeamControls() {
+    const colors = getDisplayColors();
+
+    summaryGridEl.innerHTML = '';
+    Object.keys(summaryContentEls).forEach(key => delete summaryContentEls[key]);
+
+    colors.forEach(color => {
+      const box = document.createElement('div');
+      box.className = `summary-box ${color}-box`;
+
+      const title = document.createElement('strong');
+      title.textContent = `${TEAM_LABELS[color]} Team`;
+
+      const content = document.createElement('div');
+      content.textContent = '0 players';
+
+      box.appendChild(title);
+      box.appendChild(content);
+      summaryGridEl.appendChild(box);
+      summaryContentEls[color] = content;
+    });
+
+    // Two columns for 2 teams; four columns (wrapping) for 3+.
+    summaryGridEl.classList.toggle('four-team-summary', colors.length > 2);
+
+    recordButtonsEl.innerHTML = '';
+    colors.forEach(color => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `${color}-button`;
+      button.textContent = `${TEAM_LABELS[color]} Team Win`;
+      button.addEventListener('click', () => handleWinButton(color));
+      recordButtonsEl.appendChild(button);
+    });
+  }
+
+  // Fills the summary box content with current per-team rosters.
+  function updateTeamSummaries() {
+    getDisplayColors().forEach(color => {
+      const el = summaryContentEls[color];
+      if (!el) return;
+
+      if (isLeagueGameMode() && color === 'blue') {
+        el.textContent = `${LEAGUE_TEAM_NAME} (${LEAGUE_TEAM_SIZE} players)`;
+        return;
+      }
+
+      const names = getTeamNames(color);
+      el.textContent = names.length
+        ? `${names.length} players: ${names.join(', ')}`
+        : '0 players';
+    });
+  }
+
   function updateModeUI() {
     assignTeamsButtonEl.textContent = isLeagueGameMode()
       ? 'Assign Present to Red'
-      : isFourTeamMode()
-        ? 'Assign 4 Teams'
-        : 'Assign Teams';
+      : `Assign ${getTeamCount()} Teams`;
 
     forceTwoChangesCheckboxEl.disabled = isLeagueGameMode();
-    fourTeamModeCheckboxEl.disabled = isLeagueGameMode();
+    teamCountSliderEl.disabled = isLeagueGameMode();
     groupingCheckboxEl.disabled = isLeagueGameMode();
+    teamCountValueEl.textContent = String(getTeamCount());
 
     if (isLeagueGameMode()) {
       groupControlsEl.classList.add('hidden');
@@ -2230,14 +2178,9 @@
     decreaseGroupCountButtonEl.disabled = groupCount <= MIN_GROUP_COUNT;
     increaseGroupCountButtonEl.disabled = groupCount >= MAX_GROUP_COUNT;
 
-    greenSummaryBoxEl.classList.toggle('hidden', !isFourTeamMode());
-    yellowSummaryBoxEl.classList.toggle('hidden', !isFourTeamMode());
-    summaryGridEl.classList.toggle('four-team-summary', isFourTeamMode());
+    renderTeamControls();
 
-    recordGreenWinButtonEl.classList.toggle('hidden', !isFourTeamMode());
-    recordYellowWinButtonEl.classList.toggle('hidden', !isFourTeamMode());
-
-    if (isFourTeamMode()) {
+    if (isMultiTeamMode()) {
       redScoreLabelEl.textContent = 'Winning team score (optional)';
       blueScoreLabelEl.textContent = 'Losing team score (optional)';
     } else {
@@ -2353,12 +2296,9 @@
       emptyState.className = 'empty-state';
       emptyState.textContent = 'No players found. Add players in Player Management first.';
       playerListEl.appendChild(emptyState);
-      redSummaryEl.textContent = '0 players';
-      blueSummaryEl.textContent = isLeagueGameMode() ? `${LEAGUE_TEAM_NAME} (${LEAGUE_TEAM_SIZE} players)` : '0 players';
-      greenSummaryEl.textContent = '0 players';
-      yellowSummaryEl.textContent = '0 players';
       updateSelectedCount();
       updateModeUI();
+      updateTeamSummaries();
       renderLatestGame();
       return;
     }
@@ -2473,33 +2413,9 @@
       });
     }
 
-    const redPlayers = getTeamNames('red');
-    const bluePlayers = getTeamNames('blue');
-    const greenPlayers = getTeamNames('green');
-    const yellowPlayers = getTeamNames('yellow');
-
-    redSummaryEl.textContent = redPlayers.length
-      ? `${redPlayers.length} players: ${redPlayers.join(', ')}`
-      : '0 players';
-
-    if (isLeagueGameMode()) {
-      blueSummaryEl.textContent = `${LEAGUE_TEAM_NAME} (${LEAGUE_TEAM_SIZE} players)`;
-    } else {
-      blueSummaryEl.textContent = bluePlayers.length
-        ? `${bluePlayers.length} players: ${bluePlayers.join(', ')}`
-        : '0 players';
-    }
-
-    greenSummaryEl.textContent = greenPlayers.length
-      ? `${greenPlayers.length} players: ${greenPlayers.join(', ')}`
-      : '0 players';
-
-    yellowSummaryEl.textContent = yellowPlayers.length
-      ? `${yellowPlayers.length} players: ${yellowPlayers.join(', ')}`
-      : '0 players';
-
     updateSelectedCount();
     updateModeUI();
+    updateTeamSummaries();
     renderLatestGame();
     updateToggleButton();
   }
@@ -2770,7 +2686,7 @@
     redScoreEl.value = '';
     blueScoreEl.value = '';
     balanceSliderEl.value = String(DEFAULT_BALANCE_ATTEMPTS);
-    fourTeamModeCheckboxEl.checked = false;
+    teamCountSliderEl.value = String(MIN_TEAM_COUNT);
     forceTwoChangesCheckboxEl.checked = true;
     leagueLevelSelectEl.value = '';
     courtTypeSelectEl.value = 'indoor';
@@ -2793,8 +2709,9 @@
     savePageState();
   });
 
-  fourTeamModeCheckboxEl.addEventListener('change', () => {
+  teamCountSliderEl.addEventListener('input', () => {
     clearError();
+    teamCountValueEl.textContent = String(getTeamCount());
     savePageState();
     renderPlayers();
     updateBalanceStatus();
@@ -2837,7 +2754,6 @@
     clearError();
 
     if (isLeagueGameMode()) {
-      fourTeamModeCheckboxEl.checked = false;
       assignPresentPlayersToRedForLeagueGame();
     }
 
@@ -2857,10 +2773,7 @@
   document.getElementById('selectAllButton').addEventListener('click', markAllPresent);
   document.getElementById('clearPresentButton').addEventListener('click', clearPresent);
 
-  recordRedWinButtonEl.addEventListener('click', () => handleWinButton('red'));
-  recordBlueWinButtonEl.addEventListener('click', () => handleWinButton('blue'));
-  recordGreenWinButtonEl.addEventListener('click', () => handleWinButton('green'));
-  recordYellowWinButtonEl.addEventListener('click', () => handleWinButton('yellow'));
+  // Win buttons are created dynamically by renderTeamControls().
 
   toggleUnselectedButtonEl.addEventListener('click', toggleUnselectedPlayers);
 
@@ -2892,7 +2805,7 @@
     defaultDatabaseDialog.close();
   });
 
-  fourTeamModeCheckboxEl.checked = false;
+  teamCountSliderEl.value = String(MIN_TEAM_COUNT);
   forceTwoChangesCheckboxEl.checked = true;
   groupingCheckboxEl.checked = false;
 
@@ -2900,7 +2813,6 @@
   syncPresenceState();
 
   if (isLeagueGameMode()) {
-    fourTeamModeCheckboxEl.checked = false;
     assignPresentPlayersToRedForLeagueGame();
   }
 
@@ -2910,6 +2822,7 @@
   renderPlayers();
   updateBalanceStatus();
   maybeOfferDefaultDatabase();
+  console.log('[vball] index.html version:', VERSION);
 </script>
 </body>
 </html>

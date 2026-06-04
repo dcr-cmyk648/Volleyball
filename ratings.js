@@ -147,7 +147,7 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260603-12';
+export const VERSION = 'beta-20260603-13';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Depth-emphasis weights: reduced single-star dominance so two weak players on a
@@ -784,11 +784,13 @@ export function scoreVolleyballCandidateSplit({
   };
 }
 
-// Calibrates a linear map from team strength difference to expected point
-// margin, fit over historical scored non-league games using current ratings.
-// Regression is through the origin (equal strength => zero expected margin),
-// so marginSlope = sum(strengthDiff * actualMargin) / sum(strengthDiff^2).
-// actualMargin and strengthDiff both reference the game's stored red/blue sides.
+// Calibrates the expected point GAP (absolute margin) from team strength
+// difference, fit over historical scored non-league games using current ratings:
+//   expectedGap = baseMargin + slope * |strengthDiff|
+// Fit by ordinary least squares on |actualMargin| vs |strengthDiff|. Using
+// magnitudes is sign-agnostic, so it is unaffected by the winner=red convention
+// in 4+-team games. The baseMargin intercept captures the inherent gap of a
+// race to 21/25 even when teams are perfectly balanced (~5 points in practice).
 export function calibrateMarginModel({
   games = [],
   ratingMap = {},
@@ -796,9 +798,8 @@ export function calibrateMarginModel({
   options = {},
   volleyballOptions = {},
 } = {}) {
-  let sumXY = 0;
-  let sumXX = 0;
-  let sampleSize = 0;
+  const xs = [];
+  const ys = [];
 
   getIncludedGames(games, false).forEach(game => {
     const redPlayers = Array.isArray(game.redTeam) ? game.redTeam : [];
@@ -816,24 +817,37 @@ export function calibrateMarginModel({
       volleyballOptions,
     });
 
-    const strengthDiff = score.strengthDiff;
-    const actualMargin = game.scoreRed - game.scoreBlue;
-
-    sumXY += strengthDiff * actualMargin;
-    sumXX += strengthDiff * strengthDiff;
-    sampleSize += 1;
+    xs.push(Math.abs(score.strengthDiff));
+    ys.push(Math.abs(game.scoreRed - game.scoreBlue));
   });
 
-  const marginSlope = sumXX > 0 ? sumXY / sumXX : 0;
+  const sampleSize = xs.length;
+  if (sampleSize === 0) {
+    return { baseMargin: 0, slope: 0, sampleSize: 0 };
+  }
 
-  return { marginSlope, sampleSize };
+  const meanX = xs.reduce((a, b) => a + b, 0) / sampleSize;
+  const meanY = ys.reduce((a, b) => a + b, 0) / sampleSize;
+
+  let sxy = 0;
+  let sxx = 0;
+  for (let i = 0; i < sampleSize; i += 1) {
+    sxy += (xs[i] - meanX) * (ys[i] - meanY);
+    sxx += (xs[i] - meanX) * (xs[i] - meanX);
+  }
+
+  const slope = sxx > 0 ? sxy / sxx : 0;
+  const baseMargin = meanY - slope * meanX;
+
+  return { baseMargin, slope, sampleSize };
 }
 
+// Expected point gap (always >= 0) for a given strength difference.
 export function predictExpectedMargin(strengthDiff, marginModel) {
-  const slope = marginModel && Number.isFinite(marginModel.marginSlope)
-    ? marginModel.marginSlope
-    : 0;
-  return slope * strengthDiff;
+  if (!marginModel) return 0;
+  const base = Number.isFinite(marginModel.baseMargin) ? marginModel.baseMargin : 0;
+  const slope = Number.isFinite(marginModel.slope) ? marginModel.slope : 0;
+  return Math.max(0, base + slope * Math.abs(strengthDiff));
 }
 
 function getOpenSkillWinnerProbability(redTeam, blueTeam, winner) {

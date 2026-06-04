@@ -62,13 +62,12 @@ function evaluate(label, vbOverrides = {}) {
     const pred = score.redWinProbability >= 0.5 ? 'red' : 'blue';
     if (pred === g.winner) correct++;
     if (typeof g.scoreRed === 'number' && typeof g.scoreBlue === 'number') {
-      const actual = g.scoreRed - g.scoreBlue;
-      const absd = Math.abs(actual);
+      const absd = Math.abs(g.scoreRed - g.scoreBlue);
       diffSum += absd;
       if (absd <= 5) within5++;
       if (absd > 8) blowouts++;
       scored++;
-      maeSum += Math.abs(predictExpectedMargin(score.strengthDiff, marginModel) - actual);
+      maeSum += Math.abs(predictExpectedMargin(score.strengthDiff, marginModel) - absd);
     }
   }
 
@@ -80,7 +79,8 @@ function evaluate(label, vbOverrides = {}) {
     within5: scored ? within5 / scored : NaN,
     avgDiff: scored ? diffSum / scored : NaN,
     blowouts,
-    slope: marginModel.marginSlope,
+    slope: marginModel.slope,
+    baseMargin: marginModel.baseMargin,
   };
 }
 

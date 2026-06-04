@@ -28,11 +28,11 @@ function evaluate(vb = {}) {
     const s = scoreVolleyballCandidateSplit({ redPlayers: g.redTeam, bluePlayers: g.blueTeam, ratingMap, carryScoreMap: carryMap, volleyballOptions: vb });
     if ((s.redWinProbability >= 0.5 ? 'red' : 'blue') === g.winner) correct++;
     if (typeof g.scoreRed === 'number' && typeof g.scoreBlue === 'number') {
-      mae += Math.abs(predictExpectedMargin(s.strengthDiff, marginModel) - (g.scoreRed - g.scoreBlue));
+      mae += Math.abs(predictExpectedMargin(s.strengthDiff, marginModel) - Math.abs(g.scoreRed - g.scoreBlue));
       scored++;
     }
   }
-  return { acc: correct / analyzable.length, mae: mae / scored, slope: marginModel.marginSlope };
+  return { acc: correct / analyzable.length, mae: mae / scored, slope: marginModel.slope };
 }
 
 const cap = (min, max) => ({ finalUpdateMultiplierMin: min, finalUpdateMultiplierMax: max });

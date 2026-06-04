@@ -337,6 +337,49 @@
       background: rgba(255,255,255,0.03);
     }
 
+    .quality-summary {
+      cursor: pointer;
+      list-style: none;
+    }
+    .quality-summary h2 {
+      display: inline-block;
+      margin: 0;
+    }
+    .quality-summary::after {
+      content: ' ▸';
+      color: var(--muted);
+    }
+    details[open] .quality-summary::after {
+      content: ' ▾';
+    }
+    .quality-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .quality-metric {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      background: rgba(255,255,255,0.03);
+    }
+    .quality-metric .metric-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .quality-metric .metric-label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .quality-chart-wrap {
+      margin-top: 16px;
+      height: 260px;
+      position: relative;
+    }
+
     .team-box.red-team { border-left: 5px solid var(--red); }
     .team-box.blue-team { border-left: 5px solid var(--blue); }
     .team-box.green-team { border-left: 5px solid var(--green); }
@@ -700,6 +743,7 @@
       h1 { font-size: 1.7rem; }
     }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
   <div class="container">
@@ -855,6 +899,20 @@
       </section>
     </div>
 
+    <details class="card" id="algorithmQualityCard">
+      <summary class="quality-summary"><h2>Algorithm Quality</h2></summary>
+      <div class="small">
+        How well the current ratings and balancing model explain past games.
+        League games are excluded. Uses current ratings retroactively, not
+        ratings as they were at game time.
+      </div>
+      <div id="qualityMetrics" class="quality-grid"></div>
+      <div class="quality-chart-wrap">
+        <canvas id="qualityChart" height="220"></canvas>
+      </div>
+      <div id="qualityEmpty" class="small hidden">Not enough non-league games to analyze yet.</div>
+    </details>
+
     <div class="card">
       <h2>Game History</h2>
       <div class="small hidden" id="historyModeDescription"></div>
@@ -898,6 +956,8 @@
     import {
       VERSION,
       replayRatings,
+      scoreVolleyballCandidateSplit,
+      getGamesSortedOldestFirst,
       formatDisplayedRating,
       LEAGUE_TEAM_ID,
       LEAGUE_TEAM_NAME,
@@ -956,6 +1016,11 @@
     const clearOverallPlayerLookupButtonEl = document.getElementById('clearOverallPlayerLookupButton');
     const overallPlayerLookupResultEl = document.getElementById('overallPlayerLookupResult');
     const historyList = document.getElementById('historyList');
+    const algorithmQualityCardEl = document.getElementById('algorithmQualityCard');
+    const qualityMetricsEl = document.getElementById('qualityMetrics');
+    const qualityEmptyEl = document.getElementById('qualityEmpty');
+    const qualityChartEl = document.getElementById('qualityChart');
+    let qualityChart = null;
     const databaseStatus = document.getElementById('databaseStatus');
     const seasonStartDateStatusEl = document.getElementById('seasonStartDateStatus');
     const importFileInput = document.getElementById('importFileInput');
@@ -2113,12 +2178,146 @@
       });
     }
 
+    // Predicts the winner of a past game using the current ratings and the
+    // volleyball-adjusted balancing model (the same model index.html balances with).
+    function predictGameWinnerWithCurrentRatings(game, ratingMap, carryMap) {
+      const score = scoreVolleyballCandidateSplit({
+        redPlayers: Array.isArray(game.redTeam) ? game.redTeam : [],
+        bluePlayers: Array.isArray(game.blueTeam) ? game.blueTeam : [],
+        ratingMap,
+        carryScoreMap: carryMap,
+      });
+      return score.redWinProbability >= 0.5 ? 'red' : 'blue';
+    }
+
+    function getAnalyzableGames() {
+      // Non-league games with two real teams and a recorded winner, oldest first.
+      return getGamesSortedOldestFirst(loadGames()).filter(game =>
+        game && !game.isLeagueGame &&
+        Array.isArray(game.redTeam) && game.redTeam.length > 0 &&
+        Array.isArray(game.blueTeam) && game.blueTeam.length > 0 &&
+        (game.winner === 'red' || game.winner === 'blue')
+      );
+    }
+
+    function renderAlgorithmQuality() {
+      const replay = getReplayResult();
+      const ratingMap = replay.ratingMap;
+      const carryMap = replay.carryMap || {};
+      const analyzable = getAnalyzableGames();
+
+      if (analyzable.length === 0) {
+        qualityMetricsEl.innerHTML = '';
+        qualityEmptyEl.classList.remove('hidden');
+        if (qualityChart) { qualityChart.destroy(); qualityChart = null; }
+        return;
+      }
+      qualityEmptyEl.classList.add('hidden');
+
+      let correctCount = 0;
+      let scoredGames = 0;
+      let within5 = 0;
+      let diffSum = 0;
+      const corrects = [];
+
+      analyzable.forEach(game => {
+        const predicted = predictGameWinnerWithCurrentRatings(game, ratingMap, carryMap);
+        const isCorrect = predicted === game.winner;
+        if (isCorrect) correctCount += 1;
+        corrects.push(isCorrect ? 1 : 0);
+
+        const hasScores =
+          typeof game.scoreRed === 'number' && typeof game.scoreBlue === 'number';
+        if (hasScores) {
+          const diff = Math.abs(game.scoreRed - game.scoreBlue);
+          diffSum += diff;
+          if (diff <= 5) within5 += 1;
+          scoredGames += 1;
+        }
+      });
+
+      const accuracy = correctCount / analyzable.length;
+      const avgDiff = scoredGames > 0 ? diffSum / scoredGames : null;
+      const within5Pct = scoredGames > 0 ? within5 / scoredGames : null;
+
+      const metrics = [
+        ['Games analyzed', String(analyzable.length)],
+        ['Prediction accuracy', `${Math.round(accuracy * 100)}%`],
+        ['Avg point differential', avgDiff === null ? 'n/a' : avgDiff.toFixed(1)],
+        ['% within 5 points', within5Pct === null ? 'n/a' : `${Math.round(within5Pct * 100)}%`],
+      ];
+
+      qualityMetricsEl.innerHTML = metrics.map(([label, value]) => `
+        <div class="quality-metric">
+          <div class="metric-value">${escapeHtml(value)}</div>
+          <div class="metric-label">${escapeHtml(label)}</div>
+        </div>
+      `).join('');
+
+      renderQualityChart(corrects);
+    }
+
+    // Rolling N-game prediction accuracy, oldest -> newest.
+    function renderQualityChart(corrects) {
+      const windowSize = 5;
+      const labels = corrects.map((_, i) => String(i + 1));
+      const rolling = corrects.map((_, i) => {
+        const windowVals = corrects.slice(Math.max(0, i - windowSize + 1), i + 1);
+        const mean = windowVals.reduce((sum, v) => sum + v, 0) / windowVals.length;
+        return Math.round(mean * 100);
+      });
+
+      if (qualityChart) qualityChart.destroy();
+      qualityChart = new Chart(qualityChartEl, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: `Rolling ${windowSize}-game prediction accuracy (%)`,
+            data: rolling,
+            borderColor: '#60a5fa',
+            backgroundColor: 'rgba(96, 165, 250, 0.15)',
+            tension: 0.25,
+            pointRadius: 2,
+            fill: true,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              min: 0,
+              max: 100,
+              ticks: { color: '#94a3b8' },
+              grid: { color: 'rgba(255,255,255,0.06)' },
+            },
+            x: {
+              ticks: { color: '#94a3b8', maxTicksLimit: 12 },
+              grid: { display: false },
+            },
+          },
+          plugins: {
+            legend: { labels: { color: '#f3f4f6' } },
+            tooltip: {
+              callbacks: {
+                title: (items) => `Game ${items[0].label}`,
+              },
+            },
+          },
+        },
+      });
+    }
+
     function renderAll() {
       updateSeasonStartDateStatus();
       updateConfidenceSliderUI();
       updateModeDescriptions();
       renderStats();
       renderHistory();
+      // Only compute the (relatively expensive) quality analysis when the
+      // collapsible card is open.
+      if (algorithmQualityCardEl.open) renderAlgorithmQuality();
       updateServerSyncButton();
       if (activeStatsTab === 'seasonMovers') {
         renderSeasonMovers();
@@ -2699,6 +2898,10 @@
     includeLeagueGamesToggleEl.addEventListener('change', () => {
       saveIncludeLeagueGamesEnabled(includeLeagueGamesToggleEl.checked);
       renderAll();
+    });
+
+    algorithmQualityCardEl.addEventListener('toggle', () => {
+      if (algorithmQualityCardEl.open) renderAlgorithmQuality();
     });
 
     seasonLengthSliderEl.value = String(loadSeasonLengthMonths());

@@ -147,7 +147,7 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260603-5';
+export const VERSION = 'beta-20260603-8';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Top player carries 45% of team strength — reflects volleyball's star-player dominance (MAX algorithm)

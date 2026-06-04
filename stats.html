@@ -152,40 +152,6 @@
       margin-top: 12px;
     }
 
-    .slider-stack {
-      display: grid;
-      gap: 12px;
-    }
-
-    .season-slider {
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 12px;
-      background: rgba(255,255,255,0.03);
-    }
-
-    .season-slider label {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      color: var(--text);
-      font-size: 14px;
-      font-weight: 700;
-      margin-bottom: 10px;
-    }
-
-    .season-slider input[type="range"] {
-      width: 100%;
-      accent-color: #93c5fd;
-    }
-
-    .slider-explain {
-      font-size: 12px;
-      color: var(--muted);
-      line-height: 1.35;
-      margin-top: 6px;
-    }
-
     .toggle-row {
       display: grid;
       gap: 10px;
@@ -277,18 +243,6 @@
     .standings-wrap {
       max-height: 520px;
       overflow-y: auto;
-    }
-    .badge-prov {
-      display: inline-block;
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      color: var(--muted);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 1px 4px;
-      margin-left: 6px;
-      vertical-align: middle;
     }
     .trend-up    { color: #4ade80; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .trend-down  { color: #f87171; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -844,50 +798,7 @@
         </div>
 
         <div id="advancedModelSettings" class="model-controls hidden">
-          <div class="slider-stack">
-            <div id="seasonLengthSliderPanel" class="season-slider hidden">
-              <label for="seasonLengthSlider">
-                <span>Season length</span>
-                <span><span id="seasonLengthValue">6</span> months</span>
-              </label>
-              <input type="range" id="seasonLengthSlider" min="1" max="12" value="6" />
-              <div class="slider-explain">
-                Controls the seasonal recency taper used by the standings, history, and season movers calculations.
-              </div>
-            </div>
-
-            <div id="confidenceSliderPanel" class="season-slider hidden">
-              <label for="confidenceAdjustmentSlider">
-                <span>Confidence adjustment</span>
-                <span>
-                  position <span id="confidenceAdjustmentValue">50</span>
-                  · strength <span id="confidencePenaltyStrengthValue">1.50</span>
-                </span>
-              </label>
-              <input type="range" id="confidenceAdjustmentSlider" min="0" max="100" step="1" value="50" />
-              <div class="slider-explain">
-                Nonlinear scale: actual penalty strength = 6 × (slider ÷ 100)².
-                This uses sigma range 6.4–8.4 plus a small missing-games penalty below 6 games.
-              </div>
-            </div>
-          </div>
-
           <div class="toggle-row">
-            <label for="showSeasonLengthSliderToggle">
-              <input type="checkbox" id="showSeasonLengthSliderToggle" />
-              Show season length slider
-            </label>
-
-            <label for="showConfidenceSliderToggle">
-              <input type="checkbox" id="showConfidenceSliderToggle" />
-              Show confidence slider
-            </label>
-
-            <label for="volleyballAdjustedToggle">
-              <input type="checkbox" id="volleyballAdjustedToggle" />
-              Volleyball-adjusted model
-            </label>
-
             <label for="includeLeagueGamesToggle">
               <input type="checkbox" id="includeLeagueGamesToggle" />
               Include league games (beta)
@@ -904,10 +815,10 @@
               <tr>
                 <th>#</th>
                 <th>Player</th>
+                <th>Volatility</th>
                 <th id="statsSortHeader">Rating</th>
                 <th>Games</th>
                 <th>Trend</th>
-                <th>Volatility</th>
               </tr>
             </thead>
             <tbody id="statsTableBody"></tbody>
@@ -1032,28 +943,21 @@
     const DEFAULT_MODEL_SIGMA = 25 / 3;
 
     const DEFAULT_SEASON_LENGTH_MONTHS = 6;
-    const DEFAULT_CONFIDENCE_SLIDER_POSITION = 50;
 
-    const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
-    const CONFIDENCE_SLIDER_STORAGE_KEY = 'gameDayLeaderboardConfidenceSliderPosition';
-    const VOLLEYBALL_ADJUSTED_STORAGE_KEY = 'gameDayVolleyballAdjustedModelEnabled';
     const INCLUDE_LEAGUE_GAMES_STORAGE_KEY = 'gameDayIncludeLeagueGamesEnabled';
     const SEASON_START_DATE_STORAGE_KEY = 'gameDaySeasonStartDate';
     const SHOW_ADVANCED_SETTINGS_STORAGE_KEY = 'gameDayStatsShowAdvancedSettings';
-    const SHOW_SEASON_LENGTH_SLIDER_STORAGE_KEY = 'gameDayStatsShowSeasonLengthSlider';
-    const SHOW_CONFIDENCE_SLIDER_STORAGE_KEY = 'gameDayStatsShowConfidenceSlider';
     const SEASON_PLAYER_LOOKUP_STORAGE_KEY = 'gameDaySeasonPlayerLookup';
     const OVERALL_PLAYER_LOOKUP_STORAGE_KEY = 'gameDayOverallPlayerLookup';
 
     const LEADERBOARD_LOW_SIGMA = 6.4;
     const LEADERBOARD_HIGH_SIGMA = 8.4;
-    const LEADERBOARD_SIGMA_POWER = 2;
-    const LEADERBOARD_MAX_SIGMA_PENALTY_STRENGTH = 6;
     const LEADERBOARD_MINIMUM_GAMES = 6;
-    const LEADERBOARD_MISSING_GAME_PENALTY_AT_FULL_STRENGTH = 0.35;
     const SEASON_MOVER_BASELINE_NON_LEAGUE_GAMES = 5;
     const SEASON_MOVER_POST_BASELINE_CONFIDENCE_GAMES = 8;
     const OVERALL_STANDINGS_MIN_GAMES = 5;
+    const OVERALL_STANDINGS_CONFIDENCE_GAMES = 22;
+    const OVERALL_STANDINGS_CONFIDENCE_POWER = 1.35;
 
     const TEAM_COLORS = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'cyan', 'pink'];
     const TEAM_LABELS = {
@@ -1087,19 +991,9 @@
     const loadDefaultDatabaseButtonEl = document.getElementById('loadDefaultDatabaseButton');
     const serverStatsDateEl = document.getElementById('serverStatsDate');
 
-    const seasonLengthSliderEl = document.getElementById('seasonLengthSlider');
-    const seasonLengthValueEl = document.getElementById('seasonLengthValue');
-    const confidenceAdjustmentSliderEl = document.getElementById('confidenceAdjustmentSlider');
-    const confidenceAdjustmentValueEl = document.getElementById('confidenceAdjustmentValue');
-    const confidencePenaltyStrengthValueEl = document.getElementById('confidencePenaltyStrengthValue');
-    const confidenceSliderPanelEl = document.getElementById('confidenceSliderPanel');
-    const seasonLengthSliderPanelEl = document.getElementById('seasonLengthSliderPanel');
     const advancedModelSettingsEl = document.getElementById('advancedModelSettings');
     const showAdvancedSettingsToggleEl = document.getElementById('showAdvancedSettingsToggle');
-    const showSeasonLengthSliderToggleEl = document.getElementById('showSeasonLengthSliderToggle');
-    const showConfidenceSliderToggleEl = document.getElementById('showConfidenceSliderToggle');
 
-    const volleyballAdjustedToggleEl = document.getElementById('volleyballAdjustedToggle');
     const includeLeagueGamesToggleEl = document.getElementById('includeLeagueGamesToggle');
     const rankingModeDescriptionEl = document.getElementById('rankingModeDescription');
     const historyModeDescriptionEl = document.getElementById('historyModeDescription');
@@ -1187,71 +1081,12 @@
       localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(games));
     }
 
-    function loadSeasonLengthMonths() {
-      const raw = localStorage.getItem(SEASON_LENGTH_MONTHS_STORAGE_KEY);
-      if (raw === null) return DEFAULT_SEASON_LENGTH_MONTHS;
-
-      const saved = Number(raw);
-      if (!Number.isFinite(saved) || saved < 1 || saved > 12) {
-        return DEFAULT_SEASON_LENGTH_MONTHS;
-      }
-
-      return Math.round(saved);
-    }
-
-    function saveSeasonLengthMonths(value) {
-      localStorage.setItem(SEASON_LENGTH_MONTHS_STORAGE_KEY, String(value));
-    }
-
     function getSeasonLengthMonths() {
-      return Number(seasonLengthSliderEl.value) || DEFAULT_SEASON_LENGTH_MONTHS;
+      return DEFAULT_SEASON_LENGTH_MONTHS;
     }
 
     function getSeasonalTaperDays() {
       return Math.round(getSeasonLengthMonths() * 30.4375);
-    }
-
-    function loadConfidenceSliderPosition() {
-      const raw = localStorage.getItem(CONFIDENCE_SLIDER_STORAGE_KEY);
-      if (raw === null) return DEFAULT_CONFIDENCE_SLIDER_POSITION;
-
-      const saved = Number(raw);
-      if (!Number.isFinite(saved) || saved < 0 || saved > 100) {
-        return DEFAULT_CONFIDENCE_SLIDER_POSITION;
-      }
-
-      return Math.round(saved);
-    }
-
-    function saveConfidenceSliderPosition(value) {
-      localStorage.setItem(CONFIDENCE_SLIDER_STORAGE_KEY, String(value));
-    }
-
-    function getConfidenceSliderPosition() {
-      const value = Number(confidenceAdjustmentSliderEl.value);
-      return Number.isFinite(value)
-        ? Math.max(0, Math.min(100, Math.round(value)))
-        : DEFAULT_CONFIDENCE_SLIDER_POSITION;
-    }
-
-    function getUncertaintyPenaltyStrength() {
-      const position = getConfidenceSliderPosition();
-      const normalized = position / 100;
-      return LEADERBOARD_MAX_SIGMA_PENALTY_STRENGTH * normalized * normalized;
-    }
-
-    function getUncertaintyPenaltyScale() {
-      return getUncertaintyPenaltyStrength() / LEADERBOARD_MAX_SIGMA_PENALTY_STRENGTH;
-    }
-
-    function loadVolleyballAdjustedEnabled() {
-      const saved = localStorage.getItem(VOLLEYBALL_ADJUSTED_STORAGE_KEY);
-      if (saved === null) return true;
-      return saved === 'true';
-    }
-
-    function saveVolleyballAdjustedEnabled(value) {
-      localStorage.setItem(VOLLEYBALL_ADJUSTED_STORAGE_KEY, value ? 'true' : 'false');
     }
 
     function loadIncludeLeagueGamesEnabled() {
@@ -1262,10 +1097,6 @@
 
     function saveIncludeLeagueGamesEnabled(value) {
       localStorage.setItem(INCLUDE_LEAGUE_GAMES_STORAGE_KEY, value ? 'true' : 'false');
-    }
-
-    function isVolleyballAdjustedMode() {
-      return volleyballAdjustedToggleEl.checked;
     }
 
     function isIncludeLeagueGamesMode() {
@@ -1280,7 +1111,7 @@
         players,
         games,
         seasonal: true,
-        volleyballAdjusted: isVolleyballAdjustedMode(),
+        volleyballAdjusted: false,
         includeLeagueGames: isIncludeLeagueGamesMode(),
         options: {
           seasonalTaperDays: getSeasonalTaperDays()
@@ -1383,8 +1214,8 @@
     function getExperimentalLeaderboardRaw(player) {
       // rawOrdinal is already conservative (mu − 3σ). Multiply by a game-count
       // confidence factor that pulls low-game players toward the 0 baseline
-      // (displayed as 1500). Approximate confidence: 5 games ≈ 30%, 10 ≈ 47%,
-      // 20 ≈ 65%, 40 ≈ 78%. Leaderboard display only — no effect on ratings.
+      // (displayed as 1500). Approximate confidence: 5 games ≈ 10%, 10 ≈ 22%,
+      // 20 ≈ 42%, 40 ≈ 68%. Leaderboard display only — no effect on ratings.
       const conservativeRaw =
         typeof player.rawOrdinal === 'number'
           ? player.rawOrdinal
@@ -1392,7 +1223,10 @@
             ? player.rating
             : 0;
       const games = Math.max(0, Number(player.games) || 0);
-      const gameConfidence = Math.pow(games / (games + 10), 1.1);
+      const gameConfidence = Math.pow(
+        games / (games + OVERALL_STANDINGS_CONFIDENCE_GAMES),
+        OVERALL_STANDINGS_CONFIDENCE_POWER
+      );
       return gameConfidence * conservativeRaw;
     }
 
@@ -1448,7 +1282,7 @@
         players,
         games,
         seasonal: true,
-        volleyballAdjusted: isVolleyballAdjustedMode(),
+        volleyballAdjusted: false,
         includeLeagueGames: isIncludeLeagueGamesMode(),
         options: {
           seasonalTaperDays: getSeasonalTaperDays()
@@ -1456,17 +1290,41 @@
       });
     }
 
-    // Returns a replay result excluding the last `n` scored non-league games.
-    function getLeaderboardSnapshot(n, allGames) {
-      const games = allGames ?? loadGames();
-      const scored = getGamesSortedOldestFirst(games).filter(g =>
-        g && !g.isLeagueGame &&
-        Array.isArray(g.redTeam) && g.redTeam.length > 0 &&
-        Array.isArray(g.blueTeam) && g.blueTeam.length > 0 &&
-        typeof g.scoreRed === 'number' && typeof g.scoreBlue === 'number' &&
-        (g.winner === 'red' || g.winner === 'blue')
+    function isScoredNonLeagueGame(game) {
+      return (
+        game && !game.isLeagueGame &&
+        Array.isArray(game.redTeam) && game.redTeam.length > 0 &&
+        Array.isArray(game.blueTeam) && game.blueTeam.length > 0 &&
+        typeof game.scoreRed === 'number' && typeof game.scoreBlue === 'number' &&
+        (game.winner === 'red' || game.winner === 'blue')
       );
-      const excludeIds = new Set(scored.slice(-n).map(g => g.id));
+    }
+
+    function getPreviousDateString(dateString) {
+      if (!isValidDateString(dateString)) return '';
+      const date = new Date(`${dateString}T00:00:00`);
+      date.setDate(date.getDate() - 1);
+      return date.toISOString().slice(0, 10);
+    }
+
+    function getRecentSessionGames(allGames) {
+      const scored = getGamesSortedOldestFirst(allGames).filter(isScoredNonLeagueGame);
+      const dates = [...new Set(scored.map(getGameDateValue).filter(isValidDateString))].sort();
+      const latestDate = dates.at(-1);
+      if (!latestDate) return [];
+
+      const sessionDates = new Set([latestDate]);
+      const previousDate = getPreviousDateString(latestDate);
+      if (dates.includes(previousDate)) {
+        sessionDates.add(previousDate);
+      }
+
+      return scored.filter(game => sessionDates.has(getGameDateValue(game)));
+    }
+
+    function getLeaderboardSnapshotExcludingGames(excludedGames, allGames) {
+      const games = allGames ?? loadGames();
+      const excludeIds = new Set(excludedGames.map(g => g.id));
       return getReplayResultForGames(games.filter(g => g && !excludeIds.has(g.id)));
     }
 
@@ -1490,7 +1348,7 @@
       return map;
     }
 
-    // Trend: rank change between currentMap and priorMap (prior = snapshot excluding last 10).
+    // Trend: rank change between currentMap and priorMap (prior = snapshot before the latest session).
     function computeTrend(playerId, currentMap, priorMap) {
       const key = String(playerId);
       if (!currentMap[key]) return null;
@@ -1501,22 +1359,14 @@
       return '—';
     }
 
-    // Volatility: how much the leaderboard position has shifted across recent checkpoints.
-    // rankMaps order: [current, minus5, minus10, minus20]
-    function computeVolatility(playerId, games, rankMaps) {
+    // Volatility: how much the leaderboard position shifted during the latest session.
+    function computeVolatility(playerId, games, currentMap, priorMap) {
       if (games < 10) return 'High'; // too few games to be considered stable
       const key = String(playerId);
-      const [currMap, m5Map, m10Map, m20Map] = rankMaps;
-      const curr = currMap[key]?.rank;
-      const m5   = m5Map[key]?.rank;
-      const m10  = m10Map[key]?.rank;
-      const m20  = m20Map[key]?.rank;
-      const movements = [];
-      if (curr !== undefined && m5  !== undefined) movements.push(Math.abs(curr - m5));
-      if (m5  !== undefined && m10 !== undefined) movements.push(Math.abs(m5  - m10));
-      if (m10 !== undefined && m20 !== undefined) movements.push(Math.abs(m10 - m20));
-      const volatilityMovement = movements.length
-        ? movements.reduce((a, b) => a + b, 0) / movements.length : 0;
+      const curr = currentMap[key]?.rank;
+      const prior = priorMap[key]?.rank;
+      const volatilityMovement =
+        curr !== undefined && prior !== undefined ? Math.abs(curr - prior) : 8;
       const gameUncertainty = 1 - games / (games + 10);
       const volatilityScore = volatilityMovement + 5 * gameUncertainty;
       if (volatilityScore >= 8) return 'High';
@@ -1944,31 +1794,13 @@
 
     function updateAdvancedSettingsUI() {
       const showAdvanced = showAdvancedSettingsToggleEl.checked;
-      const showSeasonLength = showAdvanced && showSeasonLengthSliderToggleEl.checked;
-      const showConfidence = showAdvanced && showConfidenceSliderToggleEl.checked;
-
       advancedModelSettingsEl.classList.toggle('hidden', !showAdvanced);
-      seasonLengthSliderPanelEl.classList.toggle('hidden', !showSeasonLength);
-      confidenceSliderPanelEl.classList.toggle('hidden', !showConfidence);
-    }
-
-    function updateConfidenceSliderUI() {
-      const position = getConfidenceSliderPosition();
-      const strength = getUncertaintyPenaltyStrength();
-
-      confidenceAdjustmentValueEl.textContent = String(position);
-      confidencePenaltyStrengthValueEl.textContent = strength.toFixed(2);
-      updateAdvancedSettingsUI();
     }
 
     function updateModeDescriptions() {
       const modes = [
         `${getSeasonLengthMonths()}-month seasonal recency weighting`
       ];
-
-      if (isVolleyballAdjustedMode()) {
-        modes.push('volleyball-adjusted expectation model');
-      }
 
       modes.push(isIncludeLeagueGamesMode()
         ? 'league games included by context'
@@ -1993,11 +1825,6 @@
       params.set('id', player.id);
       params.set('seasonal', '1');
       params.set('seasonMonths', String(getSeasonLengthMonths()));
-      params.set('confidenceSlider', String(getConfidenceSliderPosition()));
-
-      if (isVolleyballAdjustedMode()) {
-        params.set('volleyballAdjusted', '1');
-      }
 
       if (isIncludeLeagueGamesMode()) {
         params.set('includeLeagueGames', '1');
@@ -2175,27 +2002,25 @@
         return;
       }
 
-      // Snapshot rank maps for Trend (last 10) and Volatility (5/10/20 checkpoints).
+      // Snapshot rank maps for Trend and Volatility around the latest session.
       const allGames = loadGames();
+      const recentSessionGames = getRecentSessionGames(allGames);
       const currentMap = getRatingBasedRankMap(result);
-      const map10 = getRatingBasedRankMap(getLeaderboardSnapshot(10, allGames));
-      const map5  = getRatingBasedRankMap(getLeaderboardSnapshot(5,  allGames));
-      const map20 = getRatingBasedRankMap(getLeaderboardSnapshot(20, allGames));
-      const rankMaps = [currentMap, map5, map10, map20];
+      const priorSessionMap = getRatingBasedRankMap(
+        getLeaderboardSnapshotExcludingGames(recentSessionGames, allGames)
+      );
 
       rows.forEach((player, index) => {
-        const trend      = computeTrend(player.id, currentMap, map10);
-        const volatility = computeVolatility(player.id, player.games, rankMaps);
-        const badge      = player.games < 10
-          ? ' <span class="badge-prov">PROV</span>' : '';
+        const trend      = computeTrend(player.id, currentMap, priorSessionMap);
+        const volatility = computeVolatility(player.id, player.games, currentMap, priorSessionMap);
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${index + 1}</td>
-          <td>${formatPlayerNameCell(player)}${badge}</td>
+          <td>${formatPlayerNameCell(player)}</td>
+          <td>${renderVolatilityCell(volatility)}</td>
           <td>${getSortedFieldDisplay(player)}</td>
           <td>${player.games}</td>
           <td>${renderTrendCell(trend)}</td>
-          <td>${renderVolatilityCell(volatility)}</td>
         `;
         statsTableBody.appendChild(tr);
       });
@@ -2504,7 +2329,7 @@
 
     function renderAll() {
       updateSeasonStartDateStatus();
-      updateConfidenceSliderUI();
+      updateAdvancedSettingsUI();
       updateModeDescriptions();
       renderStats();
       renderHistory();
@@ -3054,37 +2879,7 @@
 
     showAdvancedSettingsToggleEl.addEventListener('change', () => {
       saveBooleanSetting(SHOW_ADVANCED_SETTINGS_STORAGE_KEY, showAdvancedSettingsToggleEl.checked);
-      updateConfidenceSliderUI();
-      renderAll();
-    });
-
-    showSeasonLengthSliderToggleEl.addEventListener('change', () => {
-      saveBooleanSetting(SHOW_SEASON_LENGTH_SLIDER_STORAGE_KEY, showSeasonLengthSliderToggleEl.checked);
-      updateConfidenceSliderUI();
-    });
-
-    showConfidenceSliderToggleEl.addEventListener('change', () => {
-      saveBooleanSetting(SHOW_CONFIDENCE_SLIDER_STORAGE_KEY, showConfidenceSliderToggleEl.checked);
-      updateConfidenceSliderUI();
-    });
-
-    seasonLengthSliderEl.addEventListener('input', () => {
-      const value = getSeasonLengthMonths();
-      seasonLengthValueEl.textContent = String(value);
-      saveSeasonLengthMonths(value);
-      renderAll();
-    });
-
-    confidenceAdjustmentSliderEl.addEventListener('input', () => {
-      const value = getConfidenceSliderPosition();
-      confidenceAdjustmentValueEl.textContent = String(value);
-      confidencePenaltyStrengthValueEl.textContent = getUncertaintyPenaltyStrength().toFixed(2);
-      saveConfidenceSliderPosition(value);
-      renderAll();
-    });
-
-    volleyballAdjustedToggleEl.addEventListener('change', () => {
-      saveVolleyballAdjustedEnabled(volleyballAdjustedToggleEl.checked);
+      updateAdvancedSettingsUI();
       renderAll();
     });
 
@@ -3097,14 +2892,7 @@
       if (algorithmQualityCardEl.open) renderQuality();
     });
 
-    seasonLengthSliderEl.value = String(loadSeasonLengthMonths());
-    seasonLengthValueEl.textContent = seasonLengthSliderEl.value;
-
-    confidenceAdjustmentSliderEl.value = String(loadConfidenceSliderPosition());
-
     showAdvancedSettingsToggleEl.checked = loadBooleanSetting(SHOW_ADVANCED_SETTINGS_STORAGE_KEY, false);
-    showSeasonLengthSliderToggleEl.checked = loadBooleanSetting(SHOW_SEASON_LENGTH_SLIDER_STORAGE_KEY, false);
-    showConfidenceSliderToggleEl.checked = loadBooleanSetting(SHOW_CONFIDENCE_SLIDER_STORAGE_KEY, false);
 
     if (overallPlayerLookupInputEl) {
       overallPlayerLookupInputEl.value = localStorage.getItem(OVERALL_PLAYER_LOOKUP_STORAGE_KEY) || '';
@@ -3114,13 +2902,12 @@
       seasonPlayerLookupInputEl.value = localStorage.getItem(SEASON_PLAYER_LOOKUP_STORAGE_KEY) || '';
     }
 
-    volleyballAdjustedToggleEl.checked = loadVolleyballAdjustedEnabled();
     includeLeagueGamesToggleEl.checked = loadIncludeLeagueGamesEnabled();
 
     seasonStartDateInputEl.value = loadSeasonStartDate();
     updateSeasonStartDateStatus();
 
-    updateConfidenceSliderUI();
+    updateAdvancedSettingsUI();
 
     // Read URL params — sortBy forces the overall tab and sets the sort field
     const _initParams = new URLSearchParams(window.location.search);

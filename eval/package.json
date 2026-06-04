@@ -1,0 +1,9 @@
+{
+  "name": "vball-eval",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "dependencies": {
+    "openskill": "4.1.1"
+  }
+}

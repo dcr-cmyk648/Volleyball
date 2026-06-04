@@ -147,16 +147,17 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260603-8';
+export const VERSION = 'beta-20260603-12';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
-  // Top player carries 45% of team strength — reflects volleyball's star-player dominance (MAX algorithm)
-  topPlayerWeight: 0.45,
-  secondPlayerWeight: 0.20,
-  averageWeight: 0.17,
-  depthWeight: 0.12,
+  // Depth-emphasis weights: reduced single-star dominance so two weak players on a
+  // small team drag the team down more (better reflects close-game reality).
+  topPlayerWeight: 0.30,
+  secondPlayerWeight: 0.24,
+  averageWeight: 0.28,
+  depthWeight: 0.10,
   // worstPlayerWeight is scaled by match closeness at runtime — full weight only in even matchups
-  worstPlayerWeight: 0.06,
+  worstPlayerWeight: 0.08,
   // Carry score: bonus raw ordinal added to top player's effective rating
   // when they have a history of winning above their team's modeled probability
   carryScale: 8,
@@ -167,6 +168,11 @@ export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   maxWinProbability: 0.95,
   minUpdateMultiplier: 0.35,
   maxUpdateMultiplier: 2.0,
+  // Hard cap on the per-game volatility core (marginFactor * surpriseMultiplier),
+  // applied before seasonal weighting and size damping. Keeps one surprising blowout
+  // from whipsawing the leaderboard, without overriding seasonal taper of old games.
+  finalUpdateMultiplierMin: 0.5,
+  finalUpdateMultiplierMax: 1.75,
 };
 
 function clamp(value, min, max) {
@@ -778,6 +784,58 @@ export function scoreVolleyballCandidateSplit({
   };
 }
 
+// Calibrates a linear map from team strength difference to expected point
+// margin, fit over historical scored non-league games using current ratings.
+// Regression is through the origin (equal strength => zero expected margin),
+// so marginSlope = sum(strengthDiff * actualMargin) / sum(strengthDiff^2).
+// actualMargin and strengthDiff both reference the game's stored red/blue sides.
+export function calibrateMarginModel({
+  games = [],
+  ratingMap = {},
+  carryScoreMap = {},
+  options = {},
+  volleyballOptions = {},
+} = {}) {
+  let sumXY = 0;
+  let sumXX = 0;
+  let sampleSize = 0;
+
+  getIncludedGames(games, false).forEach(game => {
+    const redPlayers = Array.isArray(game.redTeam) ? game.redTeam : [];
+    const bluePlayers = Array.isArray(game.blueTeam) ? game.blueTeam : [];
+
+    if (!redPlayers.length || !bluePlayers.length) return;
+    if (typeof game.scoreRed !== 'number' || typeof game.scoreBlue !== 'number') return;
+
+    const score = scoreVolleyballCandidateSplit({
+      redPlayers,
+      bluePlayers,
+      ratingMap,
+      carryScoreMap,
+      options,
+      volleyballOptions,
+    });
+
+    const strengthDiff = score.strengthDiff;
+    const actualMargin = game.scoreRed - game.scoreBlue;
+
+    sumXY += strengthDiff * actualMargin;
+    sumXX += strengthDiff * strengthDiff;
+    sampleSize += 1;
+  });
+
+  const marginSlope = sumXX > 0 ? sumXY / sumXX : 0;
+
+  return { marginSlope, sampleSize };
+}
+
+export function predictExpectedMargin(strengthDiff, marginModel) {
+  const slope = marginModel && Number.isFinite(marginModel.marginSlope)
+    ? marginModel.marginSlope
+    : 0;
+  return slope * strengthDiff;
+}
+
 function getOpenSkillWinnerProbability(redTeam, blueTeam, winner) {
   const predicted = predictWin([redTeam, blueTeam]);
   const redProbability = predicted?.[0] ?? 0.5;
@@ -927,7 +985,15 @@ export function rateSingleGame(game, ratingMap, options = {}) {
         volleyballWinnerProbability: null,
       };
 
-  const baseUpdateMultiplier = marginFactor * seasonalWeight * adjustment.multiplier;
+  const vbCfg = mergeVolleyballBalanceOptions(volleyballOptions);
+  // Cap the volatility core (margin x surprise) before applying seasonal weight,
+  // so seasonal taper of old games is preserved.
+  const cappedVolatility = clamp(
+    marginFactor * adjustment.multiplier,
+    vbCfg.finalUpdateMultiplierMin,
+    vbCfg.finalUpdateMultiplierMax
+  );
+  const baseUpdateMultiplier = cappedVolatility * seasonalWeight;
 
   // Per-team size damping: players on teams larger than 6 have less individual impact
   // per game (more rotations, fewer touches). Damper = 6 / teamSize for teams > 6.

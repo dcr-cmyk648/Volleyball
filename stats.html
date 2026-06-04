@@ -957,6 +957,8 @@
       VERSION,
       replayRatings,
       scoreVolleyballCandidateSplit,
+      calibrateMarginModel,
+      predictExpectedMargin,
       getGamesSortedOldestFirst,
       formatDisplayedRating,
       LEAGUE_TEAM_ID,
@@ -2178,18 +2180,6 @@
       });
     }
 
-    // Predicts the winner of a past game using the current ratings and the
-    // volleyball-adjusted balancing model (the same model index.html balances with).
-    function predictGameWinnerWithCurrentRatings(game, ratingMap, carryMap) {
-      const score = scoreVolleyballCandidateSplit({
-        redPlayers: Array.isArray(game.redTeam) ? game.redTeam : [],
-        bluePlayers: Array.isArray(game.blueTeam) ? game.blueTeam : [],
-        ratingMap,
-        carryScoreMap: carryMap,
-      });
-      return score.redWinProbability >= 0.5 ? 'red' : 'blue';
-    }
-
     function getAnalyzableGames() {
       // Non-league games with two real teams and a recorded winner, oldest first.
       return getGamesSortedOldestFirst(loadGames()).filter(game =>
@@ -2214,37 +2204,57 @@
       }
       qualityEmptyEl.classList.add('hidden');
 
+      const marginModel = calibrateMarginModel({
+        games: loadGames(),
+        ratingMap,
+        carryScoreMap: carryMap,
+      });
+
       let correctCount = 0;
       let scoredGames = 0;
       let within5 = 0;
       let diffSum = 0;
-      const corrects = [];
+      let marginErrSum = 0;
+      const diffs = [];
 
       analyzable.forEach(game => {
-        const predicted = predictGameWinnerWithCurrentRatings(game, ratingMap, carryMap);
-        const isCorrect = predicted === game.winner;
-        if (isCorrect) correctCount += 1;
-        corrects.push(isCorrect ? 1 : 0);
+        const score = scoreVolleyballCandidateSplit({
+          redPlayers: game.redTeam,
+          bluePlayers: game.blueTeam,
+          ratingMap,
+          carryScoreMap: carryMap,
+        });
+
+        const predictedWinner = score.redWinProbability >= 0.5 ? 'red' : 'blue';
+        if (predictedWinner === game.winner) correctCount += 1;
 
         const hasScores =
           typeof game.scoreRed === 'number' && typeof game.scoreBlue === 'number';
         if (hasScores) {
-          const diff = Math.abs(game.scoreRed - game.scoreBlue);
-          diffSum += diff;
-          if (diff <= 5) within5 += 1;
+          const actualMargin = game.scoreRed - game.scoreBlue;
+          const absDiff = Math.abs(actualMargin);
+          diffSum += absDiff;
+          if (absDiff <= 5) within5 += 1;
           scoredGames += 1;
+          diffs.push(absDiff);
+
+          const predictedMargin = predictExpectedMargin(score.strengthDiff, marginModel);
+          marginErrSum += Math.abs(predictedMargin - actualMargin);
         }
       });
 
       const accuracy = correctCount / analyzable.length;
       const avgDiff = scoredGames > 0 ? diffSum / scoredGames : null;
       const within5Pct = scoredGames > 0 ? within5 / scoredGames : null;
+      const marginMAE = scoredGames > 0 ? marginErrSum / scoredGames : null;
 
       const metrics = [
         ['Games analyzed', String(analyzable.length)],
         ['Prediction accuracy', `${Math.round(accuracy * 100)}%`],
         ['Avg point differential', avgDiff === null ? 'n/a' : avgDiff.toFixed(1)],
         ['% within 5 points', within5Pct === null ? 'n/a' : `${Math.round(within5Pct * 100)}%`],
+        ['Mean margin error', marginMAE === null ? 'n/a' : `${marginMAE.toFixed(1)} pts`],
+        ['Pts per strength unit', marginModel.sampleSize > 0 ? marginModel.marginSlope.toFixed(2) : 'n/a'],
       ];
 
       qualityMetricsEl.innerHTML = metrics.map(([label, value]) => `
@@ -2254,26 +2264,28 @@
         </div>
       `).join('');
 
-      renderQualityChart(corrects);
+      renderQualityChart(diffs);
     }
 
-    // Rolling N-game prediction accuracy, oldest -> newest.
-    function renderQualityChart(corrects) {
+    // Rolling N-game average point differential, oldest -> newest.
+    function renderQualityChart(diffs) {
+      if (qualityChart) { qualityChart.destroy(); qualityChart = null; }
+      if (!diffs.length) return;
+
       const windowSize = 5;
-      const labels = corrects.map((_, i) => String(i + 1));
-      const rolling = corrects.map((_, i) => {
-        const windowVals = corrects.slice(Math.max(0, i - windowSize + 1), i + 1);
+      const labels = diffs.map((_, i) => String(i + 1));
+      const rolling = diffs.map((_, i) => {
+        const windowVals = diffs.slice(Math.max(0, i - windowSize + 1), i + 1);
         const mean = windowVals.reduce((sum, v) => sum + v, 0) / windowVals.length;
-        return Math.round(mean * 100);
+        return Math.round(mean * 10) / 10;
       });
 
-      if (qualityChart) qualityChart.destroy();
       qualityChart = new Chart(qualityChartEl, {
         type: 'line',
         data: {
           labels,
           datasets: [{
-            label: `Rolling ${windowSize}-game prediction accuracy (%)`,
+            label: `Rolling ${windowSize}-game avg point differential`,
             data: rolling,
             borderColor: '#60a5fa',
             backgroundColor: 'rgba(96, 165, 250, 0.15)',
@@ -2288,7 +2300,8 @@
           scales: {
             y: {
               min: 0,
-              max: 100,
+              suggestedMax: 10,
+              title: { display: true, text: 'Point differential', color: '#94a3b8' },
               ticks: { color: '#94a3b8' },
               grid: { color: 'rgba(255,255,255,0.06)' },
             },

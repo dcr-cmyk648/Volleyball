@@ -8,3 +8,6 @@ default_database.js
 
 # Broken patch artifacts
 broken-*.patch
+
+# Eval harness dependencies
+eval/node_modules/

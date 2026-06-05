@@ -29,6 +29,9 @@
       --success: #22c55e;
       --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
       --link: #93c5fd;
+      --page-accent: #60a5fa;
+      --page-accent-soft: rgba(96, 165, 250, 0.12);
+      --page-accent-border: rgba(96, 165, 250, 0.38);
     }
 
     * { box-sizing: border-box; }
@@ -38,7 +41,8 @@
       margin: 0;
       font-family: Arial, sans-serif;
       background:
-        radial-gradient(circle at top, #172033 0%, var(--bg) 45%),
+        radial-gradient(circle at top left, var(--page-accent-soft) 0%, transparent 42%),
+        radial-gradient(circle at top, #172033 0%, var(--bg) 48%),
         var(--bg);
       color: var(--text);
       padding: 16px;
@@ -46,16 +50,77 @@
 
     .container { max-width: 1100px; margin: 0 auto; }
 
-    .topbar {
+    .app-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 12px;
       flex-wrap: wrap;
       margin-bottom: 16px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.78);
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
     }
 
-    .nav-links { display: flex; gap: 10px; flex-wrap: wrap; }
+    .app-brand {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 0 6px;
+    }
+
+    .app-tabs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .app-tab {
+      --tab-color: var(--button);
+      border: 1px solid var(--border);
+      border-top: 4px solid var(--tab-color);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      padding: 9px 16px 10px;
+      border-radius: 8px;
+      min-width: 92px;
+      text-align: center;
+      font-size: 15px;
+      font-weight: 800;
+      text-decoration: none;
+      transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+    }
+
+    .app-tab:hover {
+      transform: translateY(-1px);
+      background: rgba(255, 255, 255, 0.07);
+    }
+
+    .app-tab.active {
+      background: var(--page-accent-soft);
+      border-color: var(--page-accent-border);
+      color: #ffffff;
+    }
+
+    .app-tab-play { --tab-color: #22c55e; }
+    .app-tab-stats { --tab-color: #60a5fa; }
+    .app-tab-help { --tab-color: #f59e0b; }
+
+    .page-title {
+      margin: 0 0 16px;
+      padding: 0 2px;
+    }
+
+    .page-title p {
+      margin: 0;
+      max-width: 720px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
 
     h1, h2, h3 { margin: 0 0 12px; letter-spacing: 0.01em; }
     h1 { font-size: 2rem; }
@@ -72,7 +137,7 @@
 
     .card {
       background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)), var(--card);
-      border-radius: 18px;
+      border-radius: 8px;
       padding: 18px;
       border: 1px solid var(--border);
       box-shadow: var(--shadow);
@@ -91,6 +156,9 @@
       cursor: pointer;
       text-decoration: none;
       display: inline-block;
+      min-height: 44px;
+      line-height: 1.2;
+      text-align: center;
       transition: transform 0.12s ease, opacity 0.12s ease, background 0.12s ease;
     }
 
@@ -123,12 +191,35 @@
 
     a.player-link:hover { text-decoration: underline; }
 
+    .maintenance-footer {
+      text-align: center;
+      margin: 8px 0 2px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .maintenance-footer a {
+      color: var(--muted);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+    }
+
+    .maintenance-footer a:hover {
+      color: var(--link);
+      border-bottom-color: var(--link);
+    }
+
     .controls {
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
       margin-bottom: 10px;
       align-items: center;
+    }
+
+    .controls > button,
+    .controls > a.button-link {
+      flex: 1 1 170px;
     }
 
     .server-stats-control {
@@ -522,6 +613,7 @@
     .season-date-field input {
       padding: 10px 12px;
       font-size: 15px;
+      min-height: 44px;
       border: 1px solid var(--border);
       border-radius: 12px;
       background: #0f172a;
@@ -563,6 +655,7 @@
       min-width: 0;
       padding: 10px 12px;
       font-size: 15px;
+      min-height: 44px;
       border: 1px solid var(--border);
       border-radius: 12px;
       background: #0f172a;
@@ -690,6 +783,7 @@
       width: 100%;
       padding: 12px;
       font-size: 16px;
+      min-height: 46px;
       border: 1px solid var(--border);
       border-radius: 12px;
       background: #0f172a;
@@ -707,6 +801,10 @@
       gap: 10px;
       flex-wrap: wrap;
       margin-top: 14px;
+    }
+
+    .dialog-actions button {
+      flex: 1 1 150px;
     }
 
 
@@ -753,6 +851,139 @@
     @media (max-width: 750px) {
       .teams-grid { grid-template-columns: 1fr; }
       .model-controls { grid-template-columns: 1fr; }
+      body {
+        padding: 10px;
+      }
+
+      .card {
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+
+      .page-title {
+        margin-bottom: 12px;
+      }
+
+      .page-title p {
+        font-size: 13px;
+      }
+
+      .app-header {
+        align-items: stretch;
+        gap: 8px;
+        margin-bottom: 12px;
+        padding: 8px;
+      }
+
+      .app-brand {
+        width: 100%;
+        font-size: 12px;
+      }
+
+      .app-tabs {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        width: 100%;
+      }
+
+      .app-tab {
+        min-width: 0;
+        min-height: 42px;
+        padding-left: 10px;
+        padding-right: 10px;
+        font-size: 14px;
+      }
+
+      .controls,
+      .season-movers-controls,
+      .season-player-lookup-row {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 8px;
+        align-items: stretch;
+      }
+
+      .controls > *,
+      .controls > button,
+      .controls > a.button-link,
+      .server-stats-control,
+      .server-stats-control button,
+      .season-movers-controls > *,
+      .season-player-lookup-row > * {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .section-heading {
+        display: grid;
+        align-items: stretch;
+      }
+
+      .section-heading a.button-link {
+        width: 100%;
+      }
+
+      .tab-row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .tab-row button {
+        width: 100%;
+      }
+
+      table {
+        min-width: 560px;
+      }
+
+      th, td {
+        padding: 10px 8px;
+        font-size: 13px;
+      }
+
+      .standings-wrap {
+        max-height: 62vh;
+      }
+
+      .history-list {
+        max-height: none;
+        overflow-y: visible;
+        padding-right: 0;
+      }
+
+      .game-card,
+      .team-box,
+      .season-mover-row {
+        border-radius: 8px;
+        padding: 10px;
+      }
+
+      .game-header {
+        align-items: flex-start;
+      }
+
+      .quality-chart-wrap {
+        height: 220px;
+      }
+
+      .quality-score-banner {
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+      }
+
+      dialog {
+        width: calc(100vw - 20px);
+        max-height: calc(100dvh - 20px);
+      }
+
+      .dialog-content {
+        max-height: calc(100dvh - 20px);
+        overflow-y: auto;
+        padding: 14px;
+      }
+
       h1 { font-size: 1.7rem; }
     }
   </style>
@@ -760,12 +991,18 @@
 </head>
 <body>
   <div class="container">
-    <div class="topbar">
-      <h1>Stats and History</h1>
-      <div class="nav-links">
-        <a href="index.html" class="button-link">Main Page</a>
-        <a href="players.html" class="button-link">Player Management</a>
-      </div>
+    <header class="app-header">
+      <div class="app-brand">Volleyball Tracker</div>
+      <nav class="app-tabs" aria-label="Primary">
+        <a href="index.html" class="app-tab app-tab-play">Play</a>
+        <a href="stats.html" class="app-tab app-tab-stats active" aria-current="page">Stats</a>
+        <a href="help.html" class="app-tab app-tab-help">Help</a>
+      </nav>
+    </header>
+
+    <div class="page-title">
+      <h1>Stats</h1>
+      <p>Export the current database, sync from the server before play starts, and review standings after games are recorded.</p>
     </div>
 
     <div class="card">
@@ -875,6 +1112,10 @@
       <div class="small hidden" id="historyModeDescription"></div>
       <div id="historyList" class="history-list" style="margin-top: 12px;"></div>
     </div>
+
+    <div class="maintenance-footer">
+      Need to remove a player? <a href="players.html">Open player maintenance</a>
+    </div>
   </div>
 
   <dialog id="deleteGameDialog">
@@ -898,9 +1139,7 @@
       <div id="defaultDatabaseText" class="small">
         A bundled server stats database is available.
       </div>
-      <div class="warning-red">
-        This will overwrite any local data.
-      </div>
+      <div id="defaultDatabaseDestructiveWarning" class="warning-red hidden"></div>
       <div id="defaultDatabaseStatus" class="status">Checking server stats...</div>
       <div class="dialog-actions">
         <button id="confirmLoadDefaultDatabaseButton" class="success">Yes, load newest stats</button>
@@ -984,6 +1223,7 @@
     const databaseStatus = document.getElementById('databaseStatus');
     const seasonStartDateStatusEl = document.getElementById('seasonStartDateStatus');
     const importFileInput = document.getElementById('importFileInput');
+    const exportDatabaseButtonEl = document.getElementById('exportDatabaseButton');
     const deleteGameDialog = document.getElementById('deleteGameDialog');
     const deleteGameInput = document.getElementById('deleteGameInput');
     const deleteGameText = document.getElementById('deleteGameText');
@@ -1007,6 +1247,7 @@
 
     const defaultDatabaseDialog = document.getElementById('defaultDatabaseDialog');
     const defaultDatabaseTextEl = document.getElementById('defaultDatabaseText');
+    const defaultDatabaseDestructiveWarningEl = document.getElementById('defaultDatabaseDestructiveWarning');
     const defaultDatabaseStatusEl = document.getElementById('defaultDatabaseStatus');
     const confirmLoadDefaultDatabaseButtonEl = document.getElementById('confirmLoadDefaultDatabaseButton');
     const declineLoadDefaultDatabaseButtonEl = document.getElementById('declineLoadDefaultDatabaseButton');
@@ -2786,13 +3027,54 @@
       });
     }
 
+    function getLocalGamesMissingFromServer(meta) {
+      if (!meta || !Array.isArray(meta.games)) return [];
+
+      const serverGameIds = new Set(
+        meta.games
+          .map(getGameIdentity)
+          .filter(Boolean)
+      );
+
+      return loadGames().filter(game => {
+        const identity = getGameIdentity(game);
+        return identity && !serverGameIds.has(identity);
+      });
+    }
+
+    function updateExportDatabaseButton(meta = defaultDatabaseMeta) {
+      if (!exportDatabaseButtonEl) return;
+
+      const localGamesMissingFromServer = getLocalGamesMissingFromServer(meta);
+      const hasUnsyncedLocalGames = localGamesMissingFromServer.length > 0;
+
+      exportDatabaseButtonEl.classList.toggle('success', hasUnsyncedLocalGames);
+      exportDatabaseButtonEl.title = hasUnsyncedLocalGames
+        ? `${localGamesMissingFromServer.length} local game${localGamesMissingFromServer.length === 1 ? '' : 's'} not on the server. Export before syncing.`
+        : '';
+    }
+
     function updateServerSyncButton(meta = defaultDatabaseMeta) {
+      updateExportDatabaseButton(meta);
+
       if (!loadDefaultDatabaseButtonEl) return;
 
       if (!meta || !Array.isArray(meta.games)) {
         loadDefaultDatabaseButtonEl.classList.remove('success');
+        loadDefaultDatabaseButtonEl.classList.remove('danger');
         loadDefaultDatabaseButtonEl.classList.add('ghost');
         loadDefaultDatabaseButtonEl.textContent = DEFAULT_SERVER_DATABASE_BUTTON_TEXT;
+        return;
+      }
+
+      const localGamesMissingFromServer = getLocalGamesMissingFromServer(meta);
+      const wouldDeleteLocalGames = localGamesMissingFromServer.length > 0;
+      if (wouldDeleteLocalGames) {
+        loadDefaultDatabaseButtonEl.classList.remove('success');
+        loadDefaultDatabaseButtonEl.classList.remove('ghost');
+        loadDefaultDatabaseButtonEl.classList.add('danger');
+        loadDefaultDatabaseButtonEl.textContent =
+          `sync would delete ${localGamesMissingFromServer.length} local game${localGamesMissingFromServer.length === 1 ? '' : 's'}`;
         return;
       }
 
@@ -2801,6 +3083,7 @@
 
       loadDefaultDatabaseButtonEl.classList.toggle('success', hasNewServerGames);
       loadDefaultDatabaseButtonEl.classList.toggle('ghost', !hasNewServerGames);
+      loadDefaultDatabaseButtonEl.classList.remove('danger');
       loadDefaultDatabaseButtonEl.textContent = hasNewServerGames
         ? NEW_SERVER_GAMES_BUTTON_TEXT
         : UP_TO_DATE_SERVER_DATABASE_BUTTON_TEXT;
@@ -2948,14 +3231,26 @@
 
     function openDefaultDatabaseDialog(meta, mode = 'prompt') {
       defaultDatabaseDialogMode = mode;
+      const localGamesMissingFromServer = getLocalGamesMissingFromServer(meta);
+      const wouldDeleteLocalGames = localGamesMissingFromServer.length > 0;
 
       defaultDatabaseTextEl.textContent =
         `The server stats file includes games through ${meta.latestGameDate}.`;
 
+      defaultDatabaseDestructiveWarningEl.classList.toggle('hidden', !wouldDeleteLocalGames);
+      defaultDatabaseDestructiveWarningEl.textContent = wouldDeleteLocalGames
+        ? `Warning: syncing now would remove ${localGamesMissingFromServer.length} local game${localGamesMissingFromServer.length === 1 ? '' : 's'} that are not on the server. If you already recorded games today, export the database instead of syncing.`
+        : '';
+
       defaultDatabaseStatusEl.textContent =
-        `Server stats file has ${meta.players.length} players and ${meta.games.length} games.`;
+        `Server stats file has ${meta.players.length} players and ${meta.games.length} games. This replaces local players and games with the server copy.`;
 
       confirmLoadDefaultDatabaseButtonEl.disabled = false;
+      confirmLoadDefaultDatabaseButtonEl.classList.toggle('danger', wouldDeleteLocalGames);
+      confirmLoadDefaultDatabaseButtonEl.classList.toggle('success', !wouldDeleteLocalGames);
+      confirmLoadDefaultDatabaseButtonEl.textContent = wouldDeleteLocalGames
+        ? 'Overwrite Local Games'
+        : 'Yes, load newest stats';
       showDefaultDatabaseDialog();
     }
 
@@ -2978,6 +3273,8 @@
 
         defaultDatabaseDialogMode = 'prompt';
         defaultDatabaseTextEl.textContent = 'A server stats file is available.';
+        defaultDatabaseDestructiveWarningEl.classList.add('hidden');
+        defaultDatabaseDestructiveWarningEl.textContent = '';
         defaultDatabaseStatusEl.textContent = 'Could not read the server stats file.';
         confirmLoadDefaultDatabaseButtonEl.disabled = true;
         if (serverStatsDateEl) serverStatsDateEl.textContent = 'Server date unavailable';
@@ -3000,6 +3297,8 @@
         openDefaultDatabaseDialog(meta, 'manual');
       } catch {
         defaultDatabaseTextEl.textContent = 'A server stats file is available.';
+        defaultDatabaseDestructiveWarningEl.classList.add('hidden');
+        defaultDatabaseDestructiveWarningEl.textContent = '';
         defaultDatabaseStatusEl.textContent = 'Could not read the server stats file.';
         confirmLoadDefaultDatabaseButtonEl.disabled = true;
         if (serverStatsDateEl) serverStatsDateEl.textContent = 'Server date unavailable';

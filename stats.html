@@ -806,11 +806,11 @@
             <thead>
               <tr>
                 <th>#</th>
+                <th>Trend</th>
                 <th>Player</th>
                 <th>Volatility</th>
                 <th id="statsSortHeader">Rating</th>
                 <th>Games</th>
-                <th>Trend</th>
               </tr>
             </thead>
             <tbody id="statsTableBody"></tbody>
@@ -944,8 +944,15 @@
     const LEADERBOARD_LOW_SIGMA = 6.4;
     const LEADERBOARD_HIGH_SIGMA = 8.4;
     const LEADERBOARD_MINIMUM_GAMES = 6;
-    const SEASON_MOVER_BASELINE_NON_LEAGUE_GAMES = 5;
-    const SEASON_MOVER_POST_BASELINE_CONFIDENCE_GAMES = 8;
+    const SEASON_MOVER_BASELINE_NON_LEAGUE_GAMES = 6;
+    const SEASON_MOVER_POST_BASELINE_CONFIDENCE_GAMES = 10;
+    const SEASON_MOVER_SETTLING_SLOPE_START = 0.18;
+    const SEASON_MOVER_SETTLING_SLOPE_RANGE = 0.35;
+    const SEASON_MOVER_SETTLING_MAX_DISCOUNT = 0.50;
+    const SEASON_MOVER_SUSTAINED_MIN_GAMES = 5;
+    const SEASON_MOVER_SUSTAINED_MIN_CONSISTENCY = 0.65;
+    const SEASON_MOVER_SUSTAINED_CONFIDENCE_GAMES = 8;
+    const SEASON_MOVER_SUSTAINED_MAX_BONUS = 0.15;
     const OVERALL_STANDINGS_MIN_GAMES = 5;
     const OVERALL_STANDINGS_CONFIDENCE_GAMES = 22;
     const OVERALL_STANDINGS_CONFIDENCE_POWER = 1.35;
@@ -1011,6 +1018,7 @@
     let isLoadingDefaultDatabase = false;
     let activeStatsTab = 'seasonMovers';
     let activeSortBy = null;
+    let activeSeasonStartDate = '';
 
     const SORT_CONFIGS = {
       rating:     { field: 'experimentalLeaderboardRaw', dir: 'desc', header: 'Rating' },
@@ -1129,9 +1137,24 @@
       return isValidDateString(saved) ? saved : getDefaultSeasonStartDate();
     }
 
+    function setSeasonStartDateValue(value, { persist = false } = {}) {
+      const nextDate = isValidDateString(value) ? value : getDefaultSeasonStartDate();
+      activeSeasonStartDate = nextDate;
+
+      if (seasonStartDateInputEl && seasonStartDateInputEl.value !== nextDate) {
+        seasonStartDateInputEl.value = nextDate;
+      }
+
+      if (persist) {
+        localStorage.setItem(SEASON_START_DATE_STORAGE_KEY, nextDate);
+      }
+
+      return nextDate;
+    }
+
     function saveSeasonStartDate(value) {
       if (!isValidDateString(value)) return;
-      localStorage.setItem(SEASON_START_DATE_STORAGE_KEY, value);
+      setSeasonStartDateValue(value, { persist: true });
       updateSeasonStartDateStatus();
     }
 
@@ -1154,8 +1177,11 @@
     }
 
     function getSeasonStartDate() {
-      const inputValue = seasonStartDateInputEl?.value || '';
-      return isValidDateString(inputValue) ? inputValue : loadSeasonStartDate();
+      if (isValidDateString(activeSeasonStartDate)) {
+        return activeSeasonStartDate;
+      }
+
+      return setSeasonStartDateValue(loadSeasonStartDate());
     }
 
     function applyImportedSeasonStartDate(parsed) {
@@ -1163,9 +1189,6 @@
 
       if (isValidDateString(importedDate)) {
         saveSeasonStartDate(importedDate);
-        if (seasonStartDateInputEl) {
-          seasonStartDateInputEl.value = importedDate;
-        }
         updateSeasonStartDateStatus('imported from database');
         return importedDate;
       }
@@ -1374,8 +1397,9 @@
     function renderTrendCell(trend) {
       if (!trend) return `<span class="trend-stable">—</span>`;
       if (trend === 'NEW') return `<span class="trend-new">NEW</span>`;
-      if (trend.startsWith('▲')) return `<span class="trend-up">${escapeHtml(trend)}</span>`;
-      if (trend.startsWith('▼')) return `<span class="trend-down">${escapeHtml(trend)}</span>`;
+      const displayTrend = String(trend).replace(/([▲▼])\s*[+-](\d+)/u, '$1 $2');
+      if (displayTrend.startsWith('▲')) return `<span class="trend-up">${escapeHtml(displayTrend)}</span>`;
+      if (displayTrend.startsWith('▼')) return `<span class="trend-down">${escapeHtml(displayTrend)}</span>`;
       return `<span class="trend-stable">${escapeHtml(trend)}</span>`;
     }
 
@@ -1475,9 +1499,19 @@
         getPlayerIdsForGame(game).forEach(id => {
           const nextCount = (counts.get(id) || 0) + 1;
           counts.set(id, nextCount);
+          const existing = baselineMap.get(id) || {};
 
-          if (nextCount === SEASON_MOVER_BASELINE_NON_LEAGUE_GAMES && !baselineMap.has(id)) {
+          if (nextCount === 1 && typeof existing.firstGameIndex === 'undefined') {
             baselineMap.set(id, {
+              ...existing,
+              firstGameIndex: index,
+              firstGameDate: getGameDateValue(game)
+            });
+          }
+
+          if (nextCount === SEASON_MOVER_BASELINE_NON_LEAGUE_GAMES && !existing.baselineReached) {
+            baselineMap.set(id, {
+              ...baselineMap.get(id),
               baselineReached: true,
               baselineGameIndex: index,
               baselineDate: getGameDateValue(game),
@@ -1510,6 +1544,34 @@
       return lastIndex;
     }
 
+    function getSettlingDiscount(earlySlope, postSlope) {
+      if (!(earlySlope > 0 && postSlope > 0)) return 1;
+
+      const settlingStrength = clamp(
+        (earlySlope - SEASON_MOVER_SETTLING_SLOPE_START) /
+          Math.max(0.01, SEASON_MOVER_SETTLING_SLOPE_RANGE),
+        0,
+        1
+      );
+
+      return 1 - SEASON_MOVER_SETTLING_MAX_DISCOUNT * settlingStrength;
+    }
+
+    function getSustainedImprovementBonus({ postBaselineGames, positiveStepConsistency, settlingDiscount }) {
+      if (postBaselineGames < SEASON_MOVER_SUSTAINED_MIN_GAMES) return 1;
+      if (positiveStepConsistency < SEASON_MOVER_SUSTAINED_MIN_CONSISTENCY) return 1;
+      if (settlingDiscount < 0.9) return 1;
+
+      const volume = postBaselineGames /
+        (postBaselineGames + SEASON_MOVER_SUSTAINED_CONFIDENCE_GAMES);
+      const consistency = Math.max(
+        0,
+        (positiveStepConsistency - 0.5) * 2
+      );
+
+      return 1 + SEASON_MOVER_SUSTAINED_MAX_BONUS * volume * consistency;
+    }
+
     function countPlayerGamesAfterIndex(games, playerId, startIndex) {
       const id = String(playerId);
       let count = 0;
@@ -1536,8 +1598,7 @@
       return game && typeof game === 'object' && !game.isLeagueGame;
     }
 
-    function getSeasonMoverCandidateRows() {
-      const seasonStartDate = getSeasonStartDate();
+    function getSeasonMoverCandidateRows(seasonStartDate = getSeasonStartDate()) {
       const allGames = getSeasonGamesSortedOldestFirst(loadGames().filter(isSeasonMoversGame));
       const currentResult = getReplayResultForGames(allGames);
       const baselineMap = getSeasonMoverBaselineMap(allGames);
@@ -1552,6 +1613,29 @@
         }
 
         return startResultCache.get(safeIndex);
+      }
+
+      function getPlayerMuAtIndex(index, id, fallback = DEFAULT_MODEL_MU) {
+        const standing = getStartStandingMapForIndex(index).get(id);
+        return standing ? getModelMuFromStanding(standing, fallback) : fallback;
+      }
+
+      function getPostBaselinePathStats(id, postGameIndexes, startMu) {
+        let previousMu = startMu;
+        let positiveSteps = 0;
+        let totalSteps = 0;
+
+        postGameIndexes.forEach(index => {
+          const nextMu = getPlayerMuAtIndex(index, id, previousMu);
+          const delta = nextMu - previousMu;
+          if (delta > 0) positiveSteps += 1;
+          totalSteps += 1;
+          previousMu = nextMu;
+        });
+
+        return {
+          positiveStepConsistency: totalSteps > 0 ? positiveSteps / totalSteps : 0
+        };
       }
 
       return (currentResult.standings || [])
@@ -1601,6 +1685,12 @@
           const gamesSinceDate = countPlayerGamesAfterIndex(allGames, id, deltaStartIndex);
 
           const rawMuChange = currentMu - startMu;
+          const firstMu = typeof baselineInfo.firstGameIndex === 'number'
+            ? getPlayerMuAtIndex(baselineInfo.firstGameIndex, id, DEFAULT_MODEL_MU)
+            : DEFAULT_MODEL_MU;
+          const baselineMu = getPlayerMuAtIndex(Number(baselineInfo.baselineGameIndex), id, firstMu);
+          const earlyGameSpan = Math.max(1, SEASON_MOVER_BASELINE_NON_LEAGUE_GAMES - 1);
+          const earlySlope = (baselineMu - firstMu) / earlyGameSpan;
           const uncertainty = clamp(
             (currentSigma - LEADERBOARD_LOW_SIGMA) /
               Math.max(0.01, LEADERBOARD_HIGH_SIGMA - LEADERBOARD_LOW_SIGMA),
@@ -1609,9 +1699,21 @@
           );
 
           const postBaselineGames = gamesSinceDate;
+          const postSlope = postBaselineGames > 0 ? rawMuChange / postBaselineGames : 0;
+          const postGameIndexes = allGames
+            .map((game, index) => ({ game, index }))
+            .filter(entry => entry.index > deltaStartIndex && getPlayerIdsForGame(entry.game).has(id))
+            .map(entry => entry.index);
+          const pathStats = getPostBaselinePathStats(id, postGameIndexes, startMu);
           const gamesConfidence = postBaselineGames / (postBaselineGames + SEASON_MOVER_POST_BASELINE_CONFIDENCE_GAMES);
           const certaintyConfidence = 1 - 0.35 * uncertainty;
-          const confidence = gamesConfidence * certaintyConfidence;
+          const settlingDiscount = getSettlingDiscount(earlySlope, postSlope);
+          const sustainedBonus = getSustainedImprovementBonus({
+            postBaselineGames,
+            positiveStepConsistency: pathStats.positiveStepConsistency,
+            settlingDiscount
+          });
+          const confidence = gamesConfidence * certaintyConfidence * settlingDiscount * sustainedBonus;
           const adjustedMuChange = rawMuChange * confidence;
 
           return {
@@ -1630,6 +1732,9 @@
             confidence,
             gamesConfidence,
             certaintyConfidence,
+            settlingDiscount,
+            sustainedBonus,
+            positiveStepConsistency: pathStats.positiveStepConsistency,
             isNewThisSeason: false
           };
         })
@@ -1763,7 +1868,7 @@
         seasonStartDateInputEl.value = seasonStartDate;
       }
 
-      const candidateRows = getSeasonMoverCandidateRows();
+      const candidateRows = getSeasonMoverCandidateRows(seasonStartDate);
       const rows = getSeasonMoverRows(candidateRows);
       seasonMoversListEl.innerHTML = '';
 
@@ -1772,12 +1877,12 @@
 
       if (!rows.length) {
         seasonMoversSummaryEl.textContent =
-          `No season movers found since ${seasonStartDate}. Requires 5 baseline non-league games; changes count from game 6 and are weighted by post-baseline volume.`;
+          `No season movers found since ${seasonStartDate}. Requires 6 baseline non-league games; changes count from game 7 and are weighted by post-baseline volume and sustained improvement.`;
         return;
       }
 
       seasonMoversSummaryEl.textContent =
-        `Top ${rows.length} season movers since ${seasonStartDate}. Requires 5 baseline non-league games; changes count from game 6 and are weighted by post-baseline volume.`;
+        `Top ${rows.length} season movers since ${seasonStartDate}. Requires 6 baseline non-league games; changes count from game 7 and are weighted by post-baseline volume and sustained improvement.`;
 
       rows.forEach((row, index) => {
         seasonMoversListEl.appendChild(createSeasonMoverRow(row, {
@@ -2129,11 +2234,11 @@
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${index + 1}</td>
+          <td>${renderTrendCell(trend)}</td>
           <td>${formatPlayerNameCell(player)}</td>
           <td>${renderVolatilityCell(volatility)}</td>
           <td>${getSortedFieldDisplay(player)}</td>
           <td>${player.games}</td>
-          <td>${renderTrendCell(trend)}</td>
         `;
         statsTableBody.appendChild(tr);
       });
@@ -2721,6 +2826,27 @@
       updateServerSyncButton(meta);
     }
 
+    function maybeSyncSeasonStartDateFromServerMeta(meta) {
+      if (!meta || !isValidDateString(meta.seasonStartDate)) return false;
+
+      const missingServerGames = getServerGamesMissingLocally(meta);
+      if (missingServerGames.length > 0) return false;
+
+      const savedDate = localStorage.getItem(SEASON_START_DATE_STORAGE_KEY);
+      const derivedDefaultDate = getDefaultSeasonStartDate();
+      const canAdoptServerDate =
+        !isValidDateString(savedDate) ||
+        savedDate === derivedDefaultDate;
+
+      if (!canAdoptServerDate || getSeasonStartDate() === meta.seasonStartDate) {
+        return false;
+      }
+
+      saveSeasonStartDate(meta.seasonStartDate);
+      updateSeasonStartDateStatus('from server database');
+      return true;
+    }
+
     async function fetchJsonFromGoogleStatsEndpoint() {
       const response = await fetch(GOOGLE_STATS_ENDPOINT, { cache: 'no-store' });
 
@@ -2806,7 +2932,11 @@
       }
 
       defaultDatabaseMeta = await fetchDefaultDatabase();
+      const seasonDateChanged = maybeSyncSeasonStartDateFromServerMeta(defaultDatabaseMeta);
       updateServerStatsDate(defaultDatabaseMeta);
+      if (seasonDateChanged && activeStatsTab === 'seasonMovers') {
+        renderSeasonMovers();
+      }
       return defaultDatabaseMeta;
     }
 
@@ -2887,9 +3017,6 @@
 
       if (isValidDateString(meta.seasonStartDate)) {
         saveSeasonStartDate(meta.seasonStartDate);
-        if (seasonStartDateInputEl) {
-          seasonStartDateInputEl.value = meta.seasonStartDate;
-        }
       }
 
       renderAll();
@@ -3008,7 +3135,7 @@
       seasonPlayerLookupInputEl.value = localStorage.getItem(SEASON_PLAYER_LOOKUP_STORAGE_KEY) || '';
     }
 
-    seasonStartDateInputEl.value = loadSeasonStartDate();
+    setSeasonStartDateValue(loadSeasonStartDate());
     updateSeasonStartDateStatus();
 
     // Read URL params — sortBy forces the overall tab and sets the sort field

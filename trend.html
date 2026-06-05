@@ -24,6 +24,9 @@
       --purple: #c084fc;
       --cyan: #22d3ee;
       --pink: #f472b6;
+      --page-accent: #60a5fa;
+      --page-accent-soft: rgba(96, 165, 250, 0.12);
+      --page-accent-border: rgba(96, 165, 250, 0.38);
     }
 
     * { box-sizing: border-box; }
@@ -33,7 +36,8 @@
       margin: 0;
       font-family: Arial, sans-serif;
       background:
-        radial-gradient(circle at top, #172033 0%, var(--bg) 45%),
+        radial-gradient(circle at top left, var(--page-accent-soft) 0%, transparent 42%),
+        radial-gradient(circle at top, #172033 0%, var(--bg) 48%),
         var(--bg);
       color: var(--text);
       padding: 16px;
@@ -41,16 +45,78 @@
 
     .container { max-width: 1200px; margin: 0 auto; }
 
-    .topbar {
+    .app-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 12px;
       flex-wrap: wrap;
       margin-bottom: 16px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.78);
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
     }
 
-    .nav-links { display: flex; gap: 10px; flex-wrap: wrap; }
+    .app-brand {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 0 6px;
+    }
+
+    .app-tabs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .app-tab {
+      --tab-color: var(--button);
+      border: 1px solid var(--border);
+      border-top: 4px solid var(--tab-color);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      padding: 9px 16px 10px;
+      border-radius: 8px;
+      min-width: 92px;
+      min-height: 44px;
+      text-align: center;
+      font-size: 15px;
+      font-weight: 800;
+      text-decoration: none;
+      transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+    }
+
+    .app-tab:hover {
+      transform: translateY(-1px);
+      background: rgba(255, 255, 255, 0.07);
+    }
+
+    .app-tab.active {
+      background: var(--page-accent-soft);
+      border-color: var(--page-accent-border);
+      color: #ffffff;
+    }
+
+    .app-tab-play { --tab-color: #22c55e; }
+    .app-tab-stats { --tab-color: #60a5fa; }
+    .app-tab-help { --tab-color: #f59e0b; }
+
+    .page-title {
+      margin: 0 0 16px;
+      padding: 0 2px;
+    }
+
+    .page-title p {
+      margin: 0;
+      max-width: 720px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
 
     h1, h2 { margin: 0 0 12px; letter-spacing: 0.01em; }
     h1 { font-size: 2rem; }
@@ -58,7 +124,7 @@
 
     .card {
       background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)), var(--card);
-      border-radius: 18px;
+      border-radius: 8px;
       padding: 18px;
       border: 1px solid var(--border);
       box-shadow: var(--shadow);
@@ -76,6 +142,9 @@
       cursor: pointer;
       text-decoration: none;
       display: inline-block;
+      min-height: 44px;
+      line-height: 1.2;
+      text-align: center;
       transition: transform 0.12s ease, opacity 0.12s ease, background 0.12s ease;
     }
 
@@ -255,6 +324,54 @@
     @media (max-width: 900px) {
       .summary-grid { grid-template-columns: 1fr 1fr; }
       .chart-wrap { height: 320px; }
+      body {
+        padding: 10px;
+      }
+
+      .card {
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+
+      .page-title {
+        margin-bottom: 12px;
+      }
+
+      .page-title p {
+        font-size: 13px;
+      }
+
+      .app-header {
+        align-items: stretch;
+        gap: 8px;
+        margin-bottom: 12px;
+        padding: 8px;
+      }
+
+      .app-brand {
+        width: 100%;
+        font-size: 12px;
+      }
+
+      .app-tabs {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        width: 100%;
+      }
+
+      .app-tab {
+        min-width: 0;
+        min-height: 42px;
+        padding-left: 10px;
+        padding-right: 10px;
+        font-size: 14px;
+      }
+
+      th, td {
+        padding: 10px 8px;
+        font-size: 13px;
+      }
+
       h1 { font-size: 1.7rem; }
     }
 
@@ -265,12 +382,18 @@
 </head>
 <body>
   <div class="container">
-    <div class="topbar">
+    <header class="app-header">
+      <div class="app-brand">Volleyball Tracker</div>
+      <nav class="app-tabs" aria-label="Primary">
+        <a href="index.html" class="app-tab app-tab-play">Play</a>
+        <a href="stats.html" class="app-tab app-tab-stats active" aria-current="page">Stats</a>
+        <a href="help.html" class="app-tab app-tab-help">Help</a>
+      </nav>
+    </header>
+
+    <div class="page-title">
       <h1 id="pageTitle">Rating Trend</h1>
-      <div class="nav-links">
-        <a href="stats.html" class="button-link">Back to Stats</a>
-        <a href="index.html" class="button-link">Main Page</a>
-      </div>
+      <p>This is a Stats detail view for one player or league context.</p>
     </div>
 
     <div class="card">

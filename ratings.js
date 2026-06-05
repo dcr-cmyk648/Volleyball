@@ -147,7 +147,7 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260605-1';
+export const VERSION = 'beta-20260605-9';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Depth-emphasis weights: reduced single-star dominance so two weak players on a
@@ -538,6 +538,14 @@ function buildTeamObjectsFromIds(ids, ratingMap) {
 
 function findRatingEntry(entries, playerId) {
   return entries.find(entry => String(entry.id) === String(playerId)) || null;
+}
+
+function syncRatingEntry(entries, playerId, skill, options = {}) {
+  const entry = findRatingEntry(entries, playerId);
+  if (!entry || !skill) return;
+  entry.mu = Number(skill.mu);
+  entry.sigma = Number(skill.sigma);
+  entry.rating = getRawOrdinal(skill, options);
 }
 
 function getGamePlayerIds(game) {
@@ -1261,7 +1269,10 @@ export function replayRatings({
       [...getRedTeamIds(game), ...getBlueTeamIds(game)].forEach(id => {
         const cal = _calibratedStarts[id];
         if (cal && (statsMap[id]?.games ?? 0) < calibrationGamesLimit) {
-          ratingMap[id] = rating({ mu: Number(cal.mu), sigma: Number(cal.sigma) });
+          const calibratedSkill = rating({ mu: Number(cal.mu), sigma: Number(cal.sigma) });
+          ratingMap[id] = calibratedSkill;
+          syncRatingEntry(historyEntry.after.red, id, calibratedSkill, cfg);
+          syncRatingEntry(historyEntry.after.blue, id, calibratedSkill, cfg);
         }
       });
     }
@@ -1572,7 +1583,10 @@ export function getPlayerRatingTimeline({
       [...getRedTeamIds(game), ...getBlueTeamIds(game)].forEach(id => {
         const cal = _calibratedStarts[id];
         if (cal && (statsMap[id]?.games ?? 0) < calibrationGamesLimit) {
-          ratingMap[id] = rating({ mu: Number(cal.mu), sigma: Number(cal.sigma) });
+          const calibratedSkill = rating({ mu: Number(cal.mu), sigma: Number(cal.sigma) });
+          ratingMap[id] = calibratedSkill;
+          syncRatingEntry(result.after.red, id, calibratedSkill, cfg);
+          syncRatingEntry(result.after.blue, id, calibratedSkill, cfg);
         }
       });
     }

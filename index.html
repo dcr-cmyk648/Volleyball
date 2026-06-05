@@ -717,6 +717,7 @@
 
   const DEFAULT_SEASON_LENGTH_MONTHS = 6;
   const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
+  const SEASON_START_DATE_STORAGE_KEY = 'gameDaySeasonStartDate';
 
   const TEAM_COLORS = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'cyan', 'pink'];
   const MIN_TEAM_COUNT = 2;
@@ -2906,6 +2907,10 @@
     return latest || 'unknown date';
   }
 
+  function isValidSeasonStartDate(value) {
+    return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  }
+
   async function fetchGoogleDriveStats() {
     if (!GOOGLE_STATS_ENDPOINT || GOOGLE_STATS_ENDPOINT.includes('PASTE_')) {
       throw new Error('Google Drive stats endpoint is not configured.');
@@ -2963,6 +2968,9 @@
       players: normalizedPlayers,
       games: normalizedGames,
       latestGameDate: getLatestGameDate(normalizedGames),
+      seasonStartDate: isValidSeasonStartDate(parsed.seasonStartDate)
+        ? parsed.seasonStartDate
+        : (isValidSeasonStartDate(parsed.metadata?.seasonStartDate) ? parsed.metadata.seasonStartDate : ''),
       sourceLabel: options.sourceLabel || 'server',
       sourceFileName: parsed.source?.fileName || '',
       sourceLastUpdated: parsed.source?.lastUpdated || '',
@@ -3074,6 +3082,9 @@
 
     localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(meta.players));
     localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(meta.games));
+    if (isValidSeasonStartDate(meta.seasonStartDate)) {
+      localStorage.setItem(SEASON_START_DATE_STORAGE_KEY, meta.seasonStartDate);
+    }
 
     presenceState = buildPresenceState(meta.players);
     players = loadPlayers();
@@ -3104,8 +3115,8 @@
     updateBalanceStatus();
 
     defaultDatabaseStatusEl.textContent = meta.usedFallback
-      ? `Loaded bundled fallback database with ${meta.players.length} players and ${meta.games.length} games. Server connection is still failing.`
-      : `Loaded newest cloud stats with ${meta.players.length} players and ${meta.games.length} games.`;
+      ? `Loaded bundled fallback database with ${meta.players.length} players and ${meta.games.length} games. Season start date: ${meta.seasonStartDate || 'unchanged'}. Server connection is still failing.`
+      : `Loaded newest cloud stats with ${meta.players.length} players and ${meta.games.length} games. Season start date: ${meta.seasonStartDate || 'unchanged'}.`;
   }
 
   balanceSliderEl.addEventListener('input', () => {

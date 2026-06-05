@@ -147,7 +147,7 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260603-37';
+export const VERSION = 'beta-20260605-1';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Depth-emphasis weights: reduced single-star dominance so two weak players on a
@@ -164,6 +164,9 @@ export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   carryConfidenceGames: 15,
   sizeBonusPerExtraPlayer: 0.7,
   probabilityScale: 4.4,
+  // Post-hoc probability calibration. This sharpens displayed/model win
+  // probabilities without changing team-strength construction.
+  probabilityTemperature: 0.75,
   minWinProbability: 0.05,
   maxWinProbability: 0.95,
   minUpdateMultiplier: 0.35,
@@ -742,7 +745,13 @@ export function scoreVolleyballCandidateSplit({
 
   const strengthDiff = redStrength - blueStrength;
 
-  const rawRedWinProbability = sigmoid(strengthDiff / volleyballCfg.probabilityScale);
+  const probabilityTemperature = Math.max(
+    0.01,
+    Number(volleyballCfg.probabilityTemperature) || 1
+  );
+  const rawRedWinProbability = sigmoid(
+    (strengthDiff / volleyballCfg.probabilityScale) / probabilityTemperature
+  );
   const redWinProbability = clamp(
     rawRedWinProbability,
     volleyballCfg.minWinProbability,
@@ -931,8 +940,16 @@ function getVolleyballUpdateMultiplier({
     0.99
   );
 
+  // Keep rating-update surprise on the original probability scale. The
+  // probabilityTemperature calibration is for prediction/UI confidence only,
+  // and should not silently retune replayed ratings.
+  const updateVolleyballOptions = {
+    ...volleyballOptions,
+    probabilityTemperature: 1,
+  };
+
   const volleyballWinnerProbability = clamp(
-    getVolleyballWinnerProbability(game, ratingMap, options, volleyballOptions) ?? openSkillWinnerProbability,
+    getVolleyballWinnerProbability(game, ratingMap, options, updateVolleyballOptions) ?? openSkillWinnerProbability,
     0.01,
     0.99
   );

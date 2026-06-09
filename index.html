@@ -881,9 +881,9 @@
 
       <div class="slider-row">
         <label for="balanceSlider">
-          Balance thoroughness: <span id="balanceValue">50%</span>
+          Balance thoroughness: <span id="balanceValue">100%</span>
         </label>
-        <input type="range" id="balanceSlider" min="1" max="100" value="50" />
+        <input type="range" id="balanceSlider" min="1" max="100" value="100" />
       </div>
 
       <div class="checkbox-row">
@@ -1051,7 +1051,7 @@
   const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
   const DEFAULT_DB_SOURCE_PATH = './default_database';
   const GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwahqGocPhBwCTaB2HjnM3WIjoTOoc-lk94i8JjkRaTfEXf-rT-OXe0pkpQkZk5u0Tm/exec';
-  const DEFAULT_BALANCE_ATTEMPTS = 50;
+  const DEFAULT_BALANCE_ATTEMPTS = 100;
 
   // Provisional-player balancing: players with fewer than this many career games
   // carry wider outcome uncertainty. The penalty weight (in fairness units per
@@ -1059,6 +1059,8 @@
   // w=0.03 cuts provisional imbalance ~45% at a cost of <0.01 predicted pts/game.
   const PROV_THRESHOLD = 5;
   const PROV_PENALTY   = 0.03;
+  const SAME_SIZE_MATCHUP_FAIRNESS_TOLERANCE = 0.04;
+  const SAME_SIZE_MATCHUP_SCORE_BONUS = 30;
 
   const DEFAULT_SEASON_LENGTH_MONTHS = 6;
   const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
@@ -1994,9 +1996,164 @@
     );
   }
 
+  function getPairKey(colorA, colorB) {
+    return [colorA, colorB].sort().join('|');
+  }
+
+  function getPairMetric(pairMetrics, colorA, colorB) {
+    return pairMetrics.get(getPairKey(colorA, colorB));
+  }
+
+  function getScheduledMatchupScore(schedule) {
+    if (!schedule) return -Infinity;
+    return (
+      (schedule.worstFairness ?? 0) * 1000 +
+      (schedule.averageFairness ?? 0) * 100 -
+      (schedule.maxStrengthDiff ?? 0)
+    );
+  }
+
+  function buildPairMetrics(teamsByColor, colors, ratingMap, carryMap = {}) {
+    const pairMetrics = new Map();
+
+    for (let i = 0; i < colors.length; i += 1) {
+      for (let j = i + 1; j < colors.length; j += 1) {
+        const colorA = colors[i];
+        const colorB = colors[j];
+        const teamA = teamsByColor[colorA] || [];
+        const teamB = teamsByColor[colorB] || [];
+
+        if (teamA.length === 0 || teamB.length === 0) continue;
+
+        const score = scoreVolleyballCandidateSplit({
+          redPlayers: teamA,
+          bluePlayers: teamB,
+          ratingMap,
+          carryScoreMap: carryMap
+        });
+
+        pairMetrics.set(getPairKey(colorA, colorB), {
+          fairness: score.fairness,
+          strengthDiff: Math.abs(score.strengthDiff),
+          sameSize: teamA.length === teamB.length
+        });
+      }
+    }
+
+    return pairMetrics;
+  }
+
+  function getScheduleFromPairs(pairs, unpairedColors, pairMetrics, strengthsByColor) {
+    const fairnessValues = [];
+    const strengthDiffs = [];
+    let sameSizePairs = 0;
+
+    pairs.forEach(([colorA, colorB]) => {
+      const metric = getPairMetric(pairMetrics, colorA, colorB);
+      if (!metric) return;
+      fairnessValues.push(metric.fairness);
+      strengthDiffs.push(metric.strengthDiff);
+      if (metric.sameSize) sameSizePairs += 1;
+    });
+
+    const orderedPairs = pairs
+      .map(pair => pair.slice().sort((a, b) =>
+        (strengthsByColor[b] || 0) - (strengthsByColor[a] || 0)
+      ))
+      .sort((pairA, pairB) => {
+        const maxA = Math.max(...pairA.map(color => strengthsByColor[color] || 0));
+        const maxB = Math.max(...pairB.map(color => strengthsByColor[color] || 0));
+        return maxB - maxA;
+      });
+
+    const orderedUnpaired = unpairedColors.slice().sort((a, b) =>
+      (strengthsByColor[b] || 0) - (strengthsByColor[a] || 0)
+    );
+
+    return {
+      scheduledColors: [...orderedPairs.flat(), ...orderedUnpaired],
+      averageFairness: fairnessValues.length
+        ? fairnessValues.reduce((sum, value) => sum + value, 0) / fairnessValues.length
+        : 0,
+      worstFairness: fairnessValues.length ? Math.min(...fairnessValues) : 0,
+      maxStrengthDiff: strengthDiffs.length ? Math.max(...strengthDiffs) : 0,
+      sameSizePairs,
+      totalPairs: pairs.length
+    };
+  }
+
+  function getScheduledMatchupCandidates(colors, teamsByColor, strengthsByColor, ratingMap, carryMap = {}) {
+    const pairMetrics = buildPairMetrics(teamsByColor, colors, ratingMap, carryMap);
+    const candidates = [];
+
+    function visit(remainingColors, pairs, unpairedColors) {
+      if (remainingColors.length < 2) {
+        candidates.push(getScheduleFromPairs(
+          pairs,
+          [...unpairedColors, ...remainingColors],
+          pairMetrics,
+          strengthsByColor
+        ));
+        return;
+      }
+
+      if (remainingColors.length % 2 === 1 && unpairedColors.length === 0) {
+        remainingColors.forEach((color, index) => {
+          const nextRemaining = remainingColors.filter((_, i) => i !== index);
+          visit(nextRemaining, pairs, [color]);
+        });
+        return;
+      }
+
+      const firstColor = remainingColors[0];
+      for (let i = 1; i < remainingColors.length; i += 1) {
+        const secondColor = remainingColors[i];
+        const nextRemaining = remainingColors.filter((_, index) => index !== 0 && index !== i);
+        visit(nextRemaining, [...pairs, [firstColor, secondColor]], unpairedColors);
+      }
+    }
+
+    visit(colors, [], []);
+    return candidates;
+  }
+
+  function getPreferredScheduledMatchups(teamsByColor, colors, strengthsByColor, ratingMap, carryMap = {}) {
+    const candidates = getScheduledMatchupCandidates(colors, teamsByColor, strengthsByColor, ratingMap, carryMap);
+
+    if (!candidates.length) {
+      return {
+        scheduledColors: getColorsByStrength(colors, strengthsByColor),
+        averageFairness: 0,
+        worstFairness: 0,
+        maxStrengthDiff: 0,
+        sameSizePairs: 0,
+        totalPairs: 0
+      };
+    }
+
+    const bestByFairness = candidates.reduce((best, candidate) =>
+      getScheduledMatchupScore(candidate) > getScheduledMatchupScore(best) ? candidate : best
+    );
+
+    const maxSameSizePairs = Math.max(...candidates.map(candidate => candidate.sameSizePairs));
+    const bestSameSize = candidates
+      .filter(candidate => candidate.sameSizePairs === maxSameSizePairs)
+      .reduce((best, candidate) =>
+        getScheduledMatchupScore(candidate) > getScheduledMatchupScore(best) ? candidate : best
+      );
+
+    const sameSizeIsCloseEnough =
+      bestSameSize &&
+      bestByFairness.worstFairness - bestSameSize.worstFairness <= SAME_SIZE_MATCHUP_FAIRNESS_TOLERANCE &&
+      bestByFairness.averageFairness - bestSameSize.averageFairness <= SAME_SIZE_MATCHUP_FAIRNESS_TOLERANCE;
+
+    return sameSizeIsCloseEnough ? bestSameSize : bestByFairness;
+  }
+
   function getScheduledMatchupFairness(teamsByColor, scheduledColors, ratingMap, carryMap = {}) {
     const fairnessValues = [];
     const strengthDiffs = [];
+    let sameSizePairs = 0;
 
     getScheduledPairColors(scheduledColors).forEach(([colorA, colorB]) => {
       const teamA = teamsByColor[colorA] || [];
@@ -2012,20 +2169,25 @@
 
       fairnessValues.push(score.fairness);
       strengthDiffs.push(Math.abs(score.strengthDiff));
+      if (teamA.length === teamB.length) sameSizePairs += 1;
     });
 
     if (!fairnessValues.length) {
       return {
         averageFairness: 0,
         worstFairness: 0,
-        maxStrengthDiff: 0
+        maxStrengthDiff: 0,
+        sameSizePairs: 0,
+        totalPairs: 0
       };
     }
 
     return {
       averageFairness: fairnessValues.reduce((sum, value) => sum + value, 0) / fairnessValues.length,
       worstFairness: Math.min(...fairnessValues),
-      maxStrengthDiff: Math.max(...strengthDiffs)
+      maxStrengthDiff: Math.max(...strengthDiffs),
+      sameSizePairs,
+      totalPairs: fairnessValues.length
     };
   }
 
@@ -2102,8 +2264,7 @@
     const spread = maxStrength - minStrength;
     const averagePairwiseDifference = getAveragePairwiseDifference(strengths);
     const averagePairwiseFairness = getPairwiseFairness(teamsByColor, colors, ratingMap, carryMap);
-    const colorsByStrength = getColorsByStrength(colors, strengthsByColor);
-    const scheduledMatchups = getScheduledMatchupFairness(teamsByColor, colorsByStrength, ratingMap, carryMap);
+    const scheduledMatchups = getPreferredScheduledMatchups(teamsByColor, colors, strengthsByColor, ratingMap, carryMap);
 
     const provCounts = colors.map(color =>
       teamsByColor[color].filter(p => (statsMap[String(p.id)]?.games ?? 0) < PROV_THRESHOLD).length
@@ -2117,9 +2278,12 @@
       spread,
       averagePairwiseDifference,
       averagePairwiseFairness,
+      scheduledColors: scheduledMatchups.scheduledColors,
       scheduledAverageFairness: scheduledMatchups.averageFairness,
       scheduledWorstFairness: scheduledMatchups.worstFairness,
       scheduledMaxStrengthDiff: scheduledMatchups.maxStrengthDiff,
+      scheduledSameSizePairs: scheduledMatchups.sameSizePairs,
+      scheduledTotalPairs: scheduledMatchups.totalPairs,
       provisionalImbalance,
       maxStrength,
       minStrength
@@ -2131,6 +2295,7 @@
     const score = c =>
       (c.scheduledWorstFairness ?? 0) * 1000 +
       (c.scheduledAverageFairness ?? 0) * 100 +
+      ((c.scheduledSameSizePairs ?? 0) / Math.max(1, c.scheduledTotalPairs ?? 1)) * SAME_SIZE_MATCHUP_SCORE_BONUS +
       c.averagePairwiseFairness * 10 -
       (c.scheduledMaxStrengthDiff ?? 0) -
       PROV_PENALTY * (c.provisionalImbalance ?? 0);
@@ -2371,11 +2536,13 @@
       if (state.present) state.team = '';
     });
 
-    // Sort teams by descending strength so the strongest teams get the earliest
-    // colors. This makes adjacent colors the natural same-strength matchups.
-    const colorsByStrength = getColorsByStrength(colors, bestCandidate.strengthsByColor);
+    // Map teams into the display colors in scheduled order, so adjacent colors
+    // are the matchups the balancer actually preferred.
+    const scheduledColors = Array.isArray(bestCandidate.scheduledColors)
+      ? bestCandidate.scheduledColors
+      : getColorsByStrength(colors, bestCandidate.strengthsByColor);
 
-    colorsByStrength.forEach((oldColor, rank) => {
+    scheduledColors.forEach((oldColor, rank) => {
       const newColor = colors[rank];
       bestCandidate.teamsByColor[oldColor].forEach(player => {
         presenceState[player.id].team = newColor;
@@ -2460,8 +2627,6 @@
       const lines = [
         `${getLeagueLevelLabel()} league mode is on.`,
         `Court type: ${getCourtTypeLabel()}`,
-        `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
-        `Season length: ${loadSeasonLengthMonths()} months`,
         `Red average Rating: ${formatDisplayedRating(redAvg)}`,
         `Blue Rating: ${formatDisplayedRating(leagueRawOrdinal)} (${LEAGUE_TEAM_NAME})`,
         `Blue mu: ${formatMu(league.mu)}`,
@@ -2497,8 +2662,6 @@
         'No team assignment yet.',
         `Teams: ${teamCount}`,
         `Court type: ${getCourtTypeLabel()}`,
-        `Stats model: ${loadIncludeLeagueGamesEnabled() ? 'league games included' : 'league games excluded'}`,
-        `Season length: ${loadSeasonLengthMonths()} months`,
         `Similarity rule: ${forceTwoChangesCheckboxEl.checked ? 'on' : 'off'}`
       ];
 
@@ -2522,20 +2685,29 @@
       marginModel
     });
 
+    const sizeMatchText = scheduledMatchups.totalPairs > 0
+      ? ` | same-size ${scheduledMatchups.sameSizePairs}/${scheduledMatchups.totalPairs}`
+      : '';
+
     const lines = [
-      `Scheduled matchup fairness: ${formatPercent(scheduledMatchups.averageFairness)} avg | ${formatPercent(scheduledMatchups.worstFairness)} worst`,
+      `Scheduled matchup fairness: ${formatPercent(scheduledMatchups.averageFairness)} avg | ${formatPercent(scheduledMatchups.worstFairness)} worst${sizeMatchText}`,
       `Pairwise fairness: ${formatPercent(averagePairwiseFairness)}`
     ];
 
     let warningLine = '';
     if (blowoutRisk) {
       const label = getBlowoutRiskLabel(blowoutRisk);
-      const restrictionNote = shouldForceTwoChanges() || isGroupingActive()
+      const isAlgorithmAssignment = lastAssignment?.source === 'algorithm';
+      const warningPrefix = isAlgorithmAssignment ? 'Blowout warning' : 'Manual team warning';
+      const riskDescription = isAlgorithmAssignment
+        ? `${label} risk`
+        : `${label.toLowerCase()} risk of an unbalanced game`;
+      const restrictionNote = isAlgorithmAssignment && (shouldForceTwoChanges() || isGroupingActive())
         ? ' Restrictions may be limiting balance.'
         : '';
 
       warningLine =
-        `Blowout warning: ${label} risk - ${TEAM_LABELS[blowoutRisk.winnerColor]} over ${TEAM_LABELS[blowoutRisk.loserColor]} projects around ${formatExpectedPoints(blowoutRisk.expectedMargin)} points (${formatPercent(blowoutRisk.winnerProbability)} win probability).${restrictionNote}`;
+        `${warningPrefix}: ${riskDescription} - ${TEAM_LABELS[blowoutRisk.winnerColor]} over ${TEAM_LABELS[blowoutRisk.loserColor]} projects around ${formatExpectedPoints(blowoutRisk.expectedMargin)} points (${formatPercent(blowoutRisk.winnerProbability)} win probability).${restrictionNote}`;
     }
 
     colors.forEach(color => {
@@ -3380,7 +3552,15 @@
         winner: game.winner === 'blue' ? 'blue' : 'red',
         isLeagueGame: Boolean(game.isLeagueGame),
         level: game.level === 'intermediate' ? 'intermediate' : undefined,
+        createdAt: typeof game.createdAt === 'undefined' ? undefined : game.createdAt,
         assignmentId: typeof game.assignmentId === 'string' ? game.assignmentId : undefined,
+        assignmentSource: ['algorithm', 'modified', 'manual'].includes(game.assignmentSource)
+          ? game.assignmentSource
+          : undefined,
+        assignmentVersion: typeof game.assignmentVersion === 'string' ? game.assignmentVersion : undefined,
+        predictedAtAssignment: typeof game.predictedAtAssignment === 'number'
+          ? game.predictedAtAssignment
+          : null,
         courtType: normalizeImportedCourtType(game.courtType),
         displayWinnerColor: TEAM_COLORS.includes(game.displayWinnerColor) ? game.displayWinnerColor : undefined,
         displayLoserColor: TEAM_COLORS.includes(game.displayLoserColor) ? game.displayLoserColor : undefined,
@@ -3394,7 +3574,10 @@
       }))
       .map(game => {
         if (typeof game.level === 'undefined') delete game.level;
+        if (typeof game.createdAt === 'undefined') delete game.createdAt;
         if (typeof game.assignmentId === 'undefined') delete game.assignmentId;
+        if (typeof game.assignmentSource === 'undefined') delete game.assignmentSource;
+        if (typeof game.assignmentVersion === 'undefined') delete game.assignmentVersion;
         if (typeof game.displayWinnerColor === 'undefined') delete game.displayWinnerColor;
         if (typeof game.displayLoserColor === 'undefined') delete game.displayLoserColor;
         return game;
@@ -3810,7 +3993,7 @@
     assignPresentPlayersToRedForLeagueGame();
   }
 
-  balanceValueEl.textContent = balanceSliderEl.value;
+  updateBalanceSliderLabel();
   updateToggleButton();
   updateModeUI();
   renderPlayers();

@@ -335,21 +335,39 @@
       max-height: 520px;
       overflow-y: auto;
     }
+
+    .standings-table {
+      table-layout: fixed;
+      min-width: 0;
+    }
+
+    .standings-table .rank-col { width: 42px; }
+    .standings-table .trend-col { width: 70px; }
+    .standings-table .player-col { width: auto; }
+    .standings-table .rating-col { width: 86px; }
+    .standings-table .games-col { width: 64px; }
+
+    .standings-table th,
+    .standings-table td {
+      white-space: nowrap;
+    }
+
+    .standings-table .player-cell {
+      min-width: 0;
+    }
+
+    .standings-table .player-cell .player-link {
+      display: block;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .trend-up    { color: #4ade80; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .trend-down  { color: #f87171; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .trend-stable { color: var(--muted); }
     .trend-new   { font-size: 10px; font-weight: 700; color: #60a5fa; letter-spacing: 0.04em; }
-    .volatility-pill {
-      display: inline-block;
-      font-size: 11px;
-      font-weight: 600;
-      border-radius: 6px;
-      padding: 2px 8px;
-      white-space: nowrap;
-    }
-    .vol-low    { background: rgba(74,222,128,0.12); color: #4ade80; }
-    .vol-medium { background: rgba(251,191,36,0.12); color: #fbbf24; }
-    .vol-high   { background: rgba(248,113,113,0.12); color: #f87171; }
 
     table { width: 100%; border-collapse: collapse; }
 
@@ -438,6 +456,32 @@
       gap: 12px;
       margin-top: 14px;
     }
+    .quality-split {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 14px;
+    }
+    .quality-panel {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      background: rgba(255,255,255,0.025);
+    }
+    .quality-panel h3 {
+      margin: 0;
+      font-size: 1rem;
+    }
+    .quality-panel-note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+      margin-top: 4px;
+    }
+    .quality-panel .quality-grid {
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      margin-top: 12px;
+    }
     .quality-metric {
       border: 1px solid var(--border);
       border-radius: 12px;
@@ -469,20 +513,39 @@
       border-radius: 12px;
       background: rgba(255,255,255,0.03);
     }
-    .quality-score-grade {
+    .quality-panel .quality-score-banner {
+      margin-top: 12px;
+      padding: 12px;
+    }
+    .quality-score-value {
       font-size: 3.5rem;
       font-weight: 800;
       line-height: 1;
-      min-width: 3rem;
+      min-width: 4rem;
+      color: var(--text);
     }
-    .quality-score-grade.grade-a { color: #4ade80; }
-    .quality-score-grade.grade-b { color: #60a5fa; }
-    .quality-score-grade.grade-c { color: #facc15; }
-    .quality-score-grade.grade-d { color: #fb923c; }
-    .quality-score-grade.grade-f { color: #f87171; }
     .quality-score-detail { display: flex; flex-direction: column; gap: 2px; }
-    .quality-score-number { font-size: 1.1rem; font-weight: 600; color: var(--text); }
     .quality-score-label { font-size: 12px; color: var(--muted); }
+
+    .quality-tier-table {
+      margin-top: 12px;
+    }
+
+    .quality-tier-table table {
+      min-width: 0;
+      table-layout: fixed;
+    }
+
+    .quality-tier-table th,
+    .quality-tier-table td {
+      padding: 9px 8px;
+      font-size: 13px;
+    }
+
+    .quality-tier-table .tier-label {
+      font-weight: 800;
+      color: var(--text);
+    }
 
     .team-box.red-team { border-left: 5px solid var(--red); }
     .team-box.blue-team { border-left: 5px solid var(--blue); }
@@ -672,49 +735,36 @@
       margin-top: 10px;
     }
 
-    .season-player-lookup-result .season-mover-row {
-      background: rgba(147, 197, 253, 0.06);
-      border-color: rgba(147, 197, 253, 0.28);
-    }
-
     .season-movers-list {
-      display: grid;
-      gap: 10px;
       margin-top: 12px;
     }
 
-    .season-mover-row {
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 12px;
-      background: rgba(255,255,255,0.03);
-    }
-
-    .season-mover-header {
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
-      gap: 10px;
-      align-items: center;
-      margin-bottom: 8px;
-    }
-
-    .season-mover-rank {
-      width: 30px;
-      height: 30px;
-      border-radius: 999px;
-      display: grid;
-      place-items: center;
-      font-weight: 800;
-      background: rgba(147, 197, 253, 0.14);
-      color: #dbeafe;
-      border: 1px solid rgba(147, 197, 253, 0.35);
-    }
-
-    .season-mover-name {
+    .season-movers-table {
+      table-layout: fixed;
       min-width: 0;
-      font-size: 16px;
-      font-weight: 800;
-      word-break: break-word;
+    }
+
+    .season-movers-table .trend-col { width: 70px; }
+    .season-movers-table .rank-col { width: 42px; }
+    .season-movers-table .player-col { width: auto; }
+    .season-movers-table .movement-col { width: 96px; }
+    .season-movers-table .season-games-col { width: 116px; }
+
+    .season-movers-table th,
+    .season-movers-table td {
+      white-space: nowrap;
+    }
+
+    .season-movers-table .player-cell {
+      min-width: 0;
+    }
+
+    .season-movers-table .player-cell .player-link {
+      display: block;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .season-mover-score {
@@ -723,37 +773,89 @@
       white-space: nowrap;
     }
 
-    .season-mover-bar-track {
-      height: 12px;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.08);
-      overflow: hidden;
-      border: 1px solid var(--border);
+    .season-player-lookup-result .season-mover-row {
+      border: 1px solid rgba(147, 197, 253, 0.28);
+      border-radius: 12px;
+      padding: 10px;
+      background: rgba(147, 197, 253, 0.06);
     }
 
-    .season-mover-bar {
-      height: 100%;
-      min-width: 3px;
-      border-radius: 999px;
-      background: linear-gradient(90deg, rgba(34, 197, 94, 0.45), rgba(34, 197, 94, 0.95));
+    .season-player-lookup-result .season-mover-header {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
     }
 
-    .season-mover-meta {
-      margin-top: 8px;
+    .season-player-lookup-result .season-mover-rank {
+      color: var(--muted);
+      font-weight: 800;
+    }
+
+    .season-player-lookup-result .season-mover-name {
+      min-width: 0;
+      font-weight: 800;
+    }
+
+    .season-player-lookup-result .season-mover-meta {
+      margin-top: 6px;
       font-size: 12px;
       color: var(--muted);
-      line-height: 1.35;
     }
 
-    .season-sample-pill {
-      display: inline-block;
-      margin-left: 6px;
-      padding: 2px 7px;
-      border-radius: 999px;
-      border: 1px solid rgba(250, 204, 21, 0.35);
-      background: rgba(250, 204, 21, 0.12);
-      color: #fef08a;
-      font-weight: 700;
+    .awards-summary {
+      margin-bottom: 12px;
+    }
+
+    .awards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 12px;
+    }
+
+    .award-badge {
+      --award-accent: #93c5fd;
+      --award-accent-2: var(--award-accent);
+      --award-accent-soft: rgba(147, 197, 253, 0.16);
+      --award-accent-2-soft: var(--award-accent-soft);
+      --award-border: rgba(147, 197, 253, 0.42);
+      border: 1px solid var(--border);
+      border-color: var(--award-border);
+      border-radius: 8px;
+      padding: 12px;
+      background:
+        linear-gradient(135deg, var(--award-accent-soft), var(--award-accent-2-soft)),
+        linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015));
+      box-shadow: inset 4px 0 0 var(--award-accent);
+      min-width: 0;
+    }
+
+    .award-title {
+      color: var(--award-accent);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .award-player {
+      margin-top: 5px;
+      font-size: 18px;
+      font-weight: 900;
+      line-height: 1.15;
+      min-width: 0;
+    }
+
+    .award-player .player-link {
+      display: inline;
+      overflow-wrap: anywhere;
+    }
+
+    .award-stat {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
     }
 
     .hidden { display: none !important; }
@@ -810,41 +912,19 @@
 
 
     @media (max-width: 750px) {
-      .season-mover-row {
-        padding: 8px 10px;
-        border-radius: 12px;
-      }
+      .season-movers-table .trend-col { width: 48px; }
+      .season-movers-table .rank-col { width: 30px; }
+      .season-movers-table .movement-col { width: 74px; }
+      .season-movers-table .season-games-col { width: 56px; }
 
-      .season-mover-header {
-        grid-template-columns: 24px minmax(0, 1fr) auto;
-        gap: 8px;
-        margin-bottom: 6px;
-      }
-
-      .season-mover-rank {
-        width: 24px;
-        height: 24px;
+      .season-movers-table th,
+      .season-movers-table td {
+        padding: 8px 4px;
         font-size: 12px;
       }
 
-      .season-mover-name {
-        font-size: 14px;
-      }
-
-      .season-mover-score {
-        font-size: 14px;
-      }
-
-      .season-mover-bar-track {
-        height: 8px;
-      }
-
-      .season-movers-list {
-        gap: 6px;
-      }
-
-      .season-movers-list .season-mover-meta {
-        display: none;
+      .season-movers-table th {
+        font-size: 11px;
       }
     }
 
@@ -925,7 +1005,7 @@
 
       .tab-row {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 8px;
       }
 
@@ -937,9 +1017,36 @@
         min-width: 560px;
       }
 
+      .season-movers-table {
+        min-width: 0;
+      }
+
+      .awards-grid {
+        grid-template-columns: 1fr;
+      }
+
       th, td {
         padding: 10px 8px;
         font-size: 13px;
+      }
+
+      .standings-table {
+        min-width: 0;
+      }
+
+      .standings-table .rank-col { width: 30px; }
+      .standings-table .trend-col { width: 48px; }
+      .standings-table .rating-col { width: 62px; }
+      .standings-table .games-col { width: 42px; }
+
+      .standings-table th,
+      .standings-table td {
+        padding: 8px 4px;
+        font-size: 12px;
+      }
+
+      .standings-table th {
+        font-size: 11px;
       }
 
       .standings-wrap {
@@ -965,6 +1072,10 @@
 
       .quality-chart-wrap {
         height: 220px;
+      }
+
+      .quality-split {
+        grid-template-columns: 1fr;
       }
 
       .quality-score-banner {
@@ -1030,6 +1141,7 @@
       <div class="tab-row" role="tablist" aria-label="Stats views">
         <button id="seasonMoversTabButton" class="tab-button active" type="button">Season Movers</button>
         <button id="overallStandingsTabButton" class="tab-button" type="button">Overall Standings</button>
+        <button id="awardsTabButton" class="tab-button" type="button">Awards</button>
       </div>
 
       <section id="overallStandingsPanel" class="tab-panel hidden">
@@ -1039,15 +1151,14 @@
 
         <div id="sortIndicator" class="small hidden" style="margin-top: 12px;"></div>
         <div class="table-wrap standings-wrap" style="margin-top: 8px;">
-          <table>
+          <table class="standings-table">
             <thead>
               <tr>
-                <th>#</th>
-                <th>Trend</th>
-                <th>Player</th>
-                <th>Volatility</th>
-                <th id="statsSortHeader">Rating</th>
-                <th>Games</th>
+                <th class="trend-col">Trend</th>
+                <th class="rank-col">#</th>
+                <th class="player-col">Player</th>
+                <th class="rating-col" id="statsSortHeader">Rating</th>
+                <th class="games-col">Games</th>
               </tr>
             </thead>
             <tbody id="statsTableBody"></tbody>
@@ -1090,17 +1201,34 @@
           <div id="seasonPlayerLookupResult" class="season-player-lookup-result"></div>
         </div>
       </section>
+
+      <section id="awardsPanel" class="tab-panel hidden">
+        <div id="awardsSummary" class="status awards-summary">Awards will appear once games are loaded.</div>
+        <div id="awardsGrid" class="awards-grid"></div>
+      </section>
     </div>
 
     <details class="card" id="algorithmQualityCard">
       <summary class="quality-summary"><h2>Quality Overview</h2></summary>
       <div class="small">
-        Model accuracy and balance outcomes for non-league games. A regression detector —
-        these numbers shift only when actual game balance or prediction quality changes.
-        Uses current ratings retroactively, not ratings at game time.
+        Predictive validation uses only ratings available before each non-league game.
+        Explanatory validation is a fit check using today's full data and model.
       </div>
-      <div id="qualityScore" class="quality-score-banner hidden"></div>
-      <div id="qualityMetrics" class="quality-grid"></div>
+      <div id="qualityPanels" class="quality-split hidden">
+        <section class="quality-panel" aria-labelledby="qualityExplanatoryHeading">
+          <h3 id="qualityExplanatoryHeading">Explanatory</h3>
+          <div class="quality-panel-note">Back-prediction using the current full dataset and rating model.</div>
+          <div id="qualityExplanatoryScore" class="quality-score-banner hidden"></div>
+          <div id="qualityExplanatoryMetrics" class="quality-grid"></div>
+        </section>
+        <section class="quality-panel" aria-labelledby="qualityPredictiveHeading">
+          <h3 id="qualityPredictiveHeading">Predictive</h3>
+          <div class="quality-panel-note">Play-forward validation using only the ratings available before each game.</div>
+          <div id="qualityPredictiveScore" class="quality-score-banner hidden"></div>
+          <div id="qualityPredictiveMetrics" class="quality-grid"></div>
+        </section>
+      </div>
+      <div id="qualityTierTable" class="table-wrap quality-tier-table hidden"></div>
       <div class="quality-chart-wrap">
         <canvas id="qualityChart" height="220"></canvas>
       </div>
@@ -1157,7 +1285,6 @@
       predictExpectedMargin,
       getGamesSortedOldestFirst,
       formatDisplayedRating,
-      toDisplayRating,
       LEAGUE_TEAM_ID,
       LEAGUE_TEAM_NAME,
     } from './ratings.js';
@@ -1179,10 +1306,10 @@
     const SEASON_START_DATE_STORAGE_KEY = 'gameDaySeasonStartDate';
     const SEASON_PLAYER_LOOKUP_STORAGE_KEY = 'gameDaySeasonPlayerLookup';
     const OVERALL_PLAYER_LOOKUP_STORAGE_KEY = 'gameDayOverallPlayerLookup';
+    const QUALITY_CACHE_STORAGE_KEY = 'gameDayQualityOverviewCache';
 
     const LEADERBOARD_LOW_SIGMA = 6.4;
     const LEADERBOARD_HIGH_SIGMA = 8.4;
-    const LEADERBOARD_MINIMUM_GAMES = 6;
     const SEASON_MOVER_BASELINE_NON_LEAGUE_GAMES = 6;
     const SEASON_MOVER_POST_BASELINE_CONFIDENCE_GAMES = 10;
     const SEASON_MOVER_SETTLING_SLOPE_START = 0.18;
@@ -1195,7 +1322,6 @@
     const OVERALL_STANDINGS_MIN_GAMES = 5;
     const OVERALL_STANDINGS_CONFIDENCE_GAMES = 22;
     const OVERALL_STANDINGS_CONFIDENCE_POWER = 1.35;
-    const VOLATILITY_RECENT_GAMES = 12;
 
     const TEAM_COLORS = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'cyan', 'pink'];
     const TEAM_LABELS = {
@@ -1215,10 +1341,14 @@
     const overallPlayerLookupResultEl = document.getElementById('overallPlayerLookupResult');
     const historyList = document.getElementById('historyList');
     const algorithmQualityCardEl = document.getElementById('algorithmQualityCard');
-    const qualityScoreEl = document.getElementById('qualityScore');
-    const qualityMetricsEl = document.getElementById('qualityMetrics');
+    const qualityPanelsEl = document.getElementById('qualityPanels');
+    const qualityExplanatoryScoreEl = document.getElementById('qualityExplanatoryScore');
+    const qualityPredictiveScoreEl = document.getElementById('qualityPredictiveScore');
+    const qualityExplanatoryMetricsEl = document.getElementById('qualityExplanatoryMetrics');
+    const qualityPredictiveMetricsEl = document.getElementById('qualityPredictiveMetrics');
     const qualityEmptyEl = document.getElementById('qualityEmpty');
     const qualityChartEl = document.getElementById('qualityChart');
+    const qualityTierTableEl = document.getElementById('qualityTierTable');
     let qualityChart = null;
     const databaseStatus = document.getElementById('databaseStatus');
     const seasonStartDateStatusEl = document.getElementById('seasonStartDateStatus');
@@ -1235,8 +1365,12 @@
 
     const overallStandingsTabButtonEl = document.getElementById('overallStandingsTabButton');
     const seasonMoversTabButtonEl = document.getElementById('seasonMoversTabButton');
+    const awardsTabButtonEl = document.getElementById('awardsTabButton');
     const overallStandingsPanelEl = document.getElementById('overallStandingsPanel');
     const seasonMoversPanelEl = document.getElementById('seasonMoversPanel');
+    const awardsPanelEl = document.getElementById('awardsPanel');
+    const awardsSummaryEl = document.getElementById('awardsSummary');
+    const awardsGridEl = document.getElementById('awardsGrid');
     const seasonStartDateInputEl = document.getElementById('seasonStartDateInput');
     const applySeasonStartDateButtonEl = document.getElementById('applySeasonStartDateButton');
     const seasonMoversSummaryEl = document.getElementById('seasonMoversSummary');
@@ -1439,16 +1573,22 @@
     }
 
     function setStatsTab(tabName) {
-      activeStatsTab = tabName === 'seasonMovers' ? 'seasonMovers' : 'overall';
+      activeStatsTab = ['overall', 'seasonMovers', 'awards'].includes(tabName)
+        ? tabName
+        : 'seasonMovers';
       sessionStorage.setItem('statsActiveTab', activeStatsTab);
 
       overallStandingsTabButtonEl.classList.toggle('active', activeStatsTab === 'overall');
       seasonMoversTabButtonEl.classList.toggle('active', activeStatsTab === 'seasonMovers');
+      awardsTabButtonEl.classList.toggle('active', activeStatsTab === 'awards');
       overallStandingsPanelEl.classList.toggle('hidden', activeStatsTab !== 'overall');
       seasonMoversPanelEl.classList.toggle('hidden', activeStatsTab !== 'seasonMovers');
+      awardsPanelEl.classList.toggle('hidden', activeStatsTab !== 'awards');
 
       if (activeStatsTab === 'seasonMovers') {
         renderSeasonMovers();
+      } else if (activeStatsTab === 'awards') {
+        renderAwards();
       }
     }
 
@@ -1601,40 +1741,6 @@
       return '—';
     }
 
-    function getPlayerRecentRatingDeltas(playerId, history) {
-      const key = String(playerId);
-      const deltas = [];
-
-      history.forEach(entry => {
-        const beforeEntries = [...(entry.before.red || []), ...(entry.before.blue || [])];
-        const afterEntries = [...(entry.after.red || []), ...(entry.after.blue || [])];
-        const index = beforeEntries.findIndex(player => String(player.id) === key);
-        if (index < 0 || !afterEntries[index]) return;
-
-        const beforeRating = toDisplayRating(beforeEntries[index].rating);
-        const afterRating = toDisplayRating(afterEntries[index].rating);
-        deltas.push(afterRating - beforeRating);
-      });
-
-      return deltas.slice(-VOLATILITY_RECENT_GAMES);
-    }
-
-    // Volatility: recent rating-path choppiness. A steady rise/fall can have a large
-    // Trend without being volatile; alternating up/down movement is volatile.
-    function computeVolatility(playerId, games, history) {
-      const deltas = getPlayerRecentRatingDeltas(playerId, history);
-      if (deltas.length < 5) return 'High'; // too little evidence to call stable
-
-      const totalMovement = deltas.reduce((sum, delta) => sum + Math.abs(delta), 0);
-      const netMovement = Math.abs(deltas.reduce((sum, delta) => sum + delta, 0));
-      const choppiness = totalMovement - netMovement;
-      const averageChoppiness = choppiness / Math.max(1, deltas.length - 1);
-
-      if (averageChoppiness >= 50) return 'High';
-      if (averageChoppiness >= 30) return 'Medium';
-      return 'Low';
-    }
-
     function renderTrendCell(trend) {
       if (!trend) return `<span class="trend-stable">—</span>`;
       if (trend === 'NEW') return `<span class="trend-new">NEW</span>`;
@@ -1642,11 +1748,6 @@
       if (displayTrend.startsWith('▲')) return `<span class="trend-up">${escapeHtml(displayTrend)}</span>`;
       if (displayTrend.startsWith('▼')) return `<span class="trend-down">${escapeHtml(displayTrend)}</span>`;
       return `<span class="trend-stable">${escapeHtml(trend)}</span>`;
-    }
-
-    function renderVolatilityCell(label) {
-      const cls = label === 'Low' ? 'vol-low' : label === 'Medium' ? 'vol-medium' : 'vol-high';
-      return `<span class="volatility-pill ${cls}">${escapeHtml(label)}</span>`;
     }
 
     function getModelMuFromStanding(player, fallback = DEFAULT_MODEL_MU) {
@@ -1665,12 +1766,6 @@
 
       const displayDelta = Math.round(value * 50);
       return `${displayDelta >= 0 ? '+' : ''}${displayDelta}`;
-    }
-
-    function formatModelDelta(value) {
-      const modelDelta = Number(value);
-      if (!Number.isFinite(modelDelta)) return '+0.00';
-      return `${modelDelta >= 0 ? '+' : ''}${modelDelta.toFixed(2)}`;
     }
 
     function getGameDateValue(game) {
@@ -1839,10 +1934,11 @@
       return game && typeof game === 'object' && !game.isLeagueGame;
     }
 
-    function getSeasonMoverCandidateRows(seasonStartDate = getSeasonStartDate()) {
-      const allGames = getSeasonGamesSortedOldestFirst(loadGames().filter(isSeasonMoversGame));
+    function getSeasonMoverCandidateRows(seasonStartDate = getSeasonStartDate(), games = loadGames()) {
+      const allGames = getSeasonGamesSortedOldestFirst(games.filter(isSeasonMoversGame));
       const currentResult = getReplayResultForGames(allGames);
       const baselineMap = getSeasonMoverBaselineMap(allGames);
+      const seasonGameCountMap = getGamesPlayedSinceDateByPlayer(allGames, seasonStartDate);
       const lastBeforeSeasonIndex = getLastGameIndexBeforeDate(allGames, seasonStartDate);
       const startResultCache = new Map();
 
@@ -1897,6 +1993,7 @@
           if (!baselineInfo.baselineReached) {
             return {
               ...player,
+              gamesThisSeason: seasonGameCountMap.get(id) || 0,
               gamesSinceDate: 0,
               postBaselineGames: 0,
               totalNonLeagueGames: Number(baselineInfo.totalNonLeagueGames) || 0,
@@ -1959,6 +2056,7 @@
 
           return {
             ...player,
+            gamesThisSeason: seasonGameCountMap.get(id) || 0,
             gamesSinceDate,
             postBaselineGames,
             totalNonLeagueGames: Number(baselineInfo.totalNonLeagueGames) || 0,
@@ -1984,11 +2082,8 @@
 
     function sortSeasonMoverRows(rows) {
       return [...rows].sort((a, b) => {
-        if (b.adjustedMuChange !== a.adjustedMuChange) {
-          return b.adjustedMuChange - a.adjustedMuChange;
-        }
-
         if (b.rawMuChange !== a.rawMuChange) return b.rawMuChange - a.rawMuChange;
+        if (b.adjustedMuChange !== a.adjustedMuChange) return b.adjustedMuChange - a.adjustedMuChange;
         if (b.gamesSinceDate !== a.gamesSinceDate) return b.gamesSinceDate - a.gamesSinceDate;
         return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
       });
@@ -2001,7 +2096,18 @@
           player.gamesSinceDate >= 1 &&
           player.rawMuChange > 0
         )
-      ).slice(0, 10);
+      );
+    }
+
+    function getSeasonMoverRankMap(rows) {
+      const map = {};
+      rows.forEach((row, index) => {
+        map[String(row.id)] = {
+          rank: index + 1,
+          games: row.gamesThisSeason || row.gamesSinceDate || 0
+        };
+      });
+      return map;
     }
 
     function getSeasonPlayerLookupQuery() {
@@ -2021,51 +2127,49 @@
       );
     }
 
-    function getSeasonMoverMetaHtml(row, { includeEligibility = false } = {}) {
-      const adjustedDisplay = formatDisplayDeltaFromModelDelta(row.adjustedMuChange);
-      const rawDisplay = formatDisplayDeltaFromModelDelta(row.rawMuChange);
-      const adjustedMuText = formatModelDelta(row.adjustedMuChange);
-      const rawMuText = formatModelDelta(row.rawMuChange);
-      const confidencePct = Math.round(row.confidence * 100);
-      const smallSample = row.gamesSinceDate < LEADERBOARD_MINIMUM_GAMES;
-      const bits = [
-        `adjusted ${adjustedDisplay} display pts / mu ${adjustedMuText}`,
-        `raw ${rawDisplay} display pts / mu ${rawMuText}`,
-        `${row.totalNonLeagueGames || 0} total non-league game${(row.totalNonLeagueGames || 0) === 1 ? '' : 's'}`,
-        `${row.gamesSinceDate} eligible post-baseline game${row.gamesSinceDate === 1 ? '' : 's'}`,
-        `post-baseline confidence ${confidencePct}%`
-      ];
-
-      if (row.baselineDate) bits.push(`baseline after ${row.baselineDate}`);
-      if (includeEligibility && !row.baselineReached) bits.push(`needs ${SEASON_MOVER_BASELINE_NON_LEAGUE_GAMES} baseline non-league games`);
-      if (includeEligibility && row.baselineReached && row.gamesSinceDate < 1) bits.push('needs a post-baseline non-league game');
-      if (includeEligibility && row.rawMuChange <= 0) bits.push('not a positive mover');
-
-      return `${bits.map(escapeHtml).join(' · ')}${smallSample ? '<span class="season-sample-pill">small sample</span>' : ''}`;
+    function renderSeasonMoverTrendCell(row, trendMaps = {}) {
+      if (!trendMaps.current || !trendMaps.prior) {
+        return renderTrendCell(null);
+      }
+      return renderTrendCell(computeTrend(row.id, trendMaps.current, trendMaps.prior));
     }
 
-    function createSeasonMoverRow(row, { rank = '', maxAdjusted = 1, showMeta = false, includeEligibility = false } = {}) {
-      const width = Math.max(3, Math.round((Math.max(0, row.adjustedMuChange) / Math.max(maxAdjusted, 0.01)) * 100));
-      const adjustedDisplay = formatDisplayDeltaFromModelDelta(row.adjustedMuChange);
+    function renderSeasonMoverTable(container, rows, { rankMap = new Map(), trendMaps = null } = {}) {
+      if (!container) return;
 
-      const div = document.createElement('div');
-      div.className = 'season-mover-row';
-      div.innerHTML = `
-        <div class="season-mover-header">
-          <div class="season-mover-rank">${escapeHtml(rank || '—')}</div>
-          <div class="season-mover-name">${escapeHtml(row.name)}</div>
-          <div class="season-mover-score">${adjustedDisplay}</div>
+      container.innerHTML = `
+        <div class="table-wrap">
+          <table class="season-movers-table">
+            <thead>
+              <tr>
+                <th class="trend-col">Trend</th>
+                <th class="rank-col">#</th>
+                <th class="player-col">Player</th>
+                <th class="movement-col">Movement</th>
+                <th class="season-games-col">Games</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(row => {
+                const id = String(row.id);
+                const rank = rankMap.has(id) ? String(rankMap.get(id)) : '—';
+                return `
+                  <tr>
+                    <td>${renderSeasonMoverTrendCell(row, trendMaps || {})}</td>
+                    <td>${escapeHtml(rank)}</td>
+                    <td class="player-cell">${formatPlayerNameCell(row)}</td>
+                    <td class="season-mover-score">${escapeHtml(formatDisplayDeltaFromModelDelta(row.rawMuChange))}</td>
+                    <td>${escapeHtml(row.gamesThisSeason || 0)}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
         </div>
-        <div class="season-mover-bar-track">
-          <div class="season-mover-bar" style="width: ${width}%"></div>
-        </div>
-        ${showMeta ? `<div class="season-mover-meta">${getSeasonMoverMetaHtml(row, { includeEligibility })}</div>` : ''}
       `;
-
-      return div;
     }
 
-    function renderSeasonPlayerLookup(candidateRows, topRows, maxAdjusted) {
+    function renderSeasonPlayerLookup(candidateRows, moverRows, trendMaps = null) {
       if (!seasonPlayerLookupResultEl) return;
 
       const query = getSeasonPlayerLookupQuery();
@@ -2083,23 +2187,10 @@
         return;
       }
 
-      const topIndex = topRows.findIndex(row => String(row.id) === String(match.id));
-      const rank = topIndex >= 0 ? String(topIndex + 1) : '—';
-      const rowEl = createSeasonMoverRow(match, {
-        rank,
-        maxAdjusted,
-        showMeta: true,
-        includeEligibility: true
-      });
-
-      const note = document.createElement('div');
-      note.className = 'small';
-      note.textContent = topIndex >= 0
-        ? 'This player is currently in the top 10 season movers.'
-        : 'This player is shown here even though they are not currently in the top 10.';
-
-      seasonPlayerLookupResultEl.appendChild(rowEl);
-      seasonPlayerLookupResultEl.appendChild(note);
+      const rankMap = new Map(
+        moverRows.map((row, index) => [String(row.id), index + 1])
+      );
+      renderSeasonMoverTable(seasonPlayerLookupResultEl, [match], { rankMap, trendMaps });
     }
 
     function renderSeasonMovers() {
@@ -2109,29 +2200,981 @@
         seasonStartDateInputEl.value = seasonStartDate;
       }
 
-      const candidateRows = getSeasonMoverCandidateRows(seasonStartDate);
+      const allGames = loadGames();
+      const candidateRows = getSeasonMoverCandidateRows(seasonStartDate, allGames);
       const rows = getSeasonMoverRows(candidateRows);
       seasonMoversListEl.innerHTML = '';
 
-      const maxAdjusted = Math.max(...rows.map(row => Math.max(0, row.adjustedMuChange)), 0.01);
-      renderSeasonPlayerLookup(candidateRows, rows, maxAdjusted);
+      const rankMap = new Map(
+        rows.map((row, index) => [String(row.id), index + 1])
+      );
+      const recentSessionGames = getRecentSessionGames(allGames);
+      const excludeIds = new Set(recentSessionGames.map(game => game.id));
+      const priorRows = getSeasonMoverRows(
+        getSeasonMoverCandidateRows(
+          seasonStartDate,
+          allGames.filter(game => game && !excludeIds.has(game.id))
+        )
+      );
+      const trendMaps = {
+        current: getSeasonMoverRankMap(rows),
+        prior: getSeasonMoverRankMap(priorRows)
+      };
+
+      renderSeasonPlayerLookup(candidateRows, rows, trendMaps);
 
       if (!rows.length) {
         seasonMoversSummaryEl.textContent =
-          `No season movers found since ${seasonStartDate}. Requires 6 baseline non-league games; changes count from game 7 and are weighted by post-baseline volume and sustained improvement.`;
+          `No positive season movers found since ${seasonStartDate}. Baseline is each player's first 6 non-league games; movement is measured after that baseline and after the season date. This scale is more sensitive to recent improvement than Overall Standings, so the numbers will not match exactly.`;
         return;
       }
 
       seasonMoversSummaryEl.textContent =
-        `Top ${rows.length} season movers since ${seasonStartDate}. Requires 6 baseline non-league games; changes count from game 7 and are weighted by post-baseline volume and sustained improvement.`;
+        `${rows.length} positive season mover${rows.length === 1 ? '' : 's'} since ${seasonStartDate}. Ranked by raw mu gain after each player's first 6 non-league games. This scale is more sensitive to recent improvement than Overall Standings, so the numbers will not match exactly.`;
 
-      rows.forEach((row, index) => {
-        seasonMoversListEl.appendChild(createSeasonMoverRow(row, {
-          rank: String(index + 1),
-          maxAdjusted,
-          showMeta: false
-        }));
+      renderSeasonMoverTable(seasonMoversListEl, rows, { rankMap, trendMaps });
+    }
+
+    const AWARD_MIN_GAMES = 5;
+    const AWARD_MIN_RATE_GAMES = 5;
+    const AWARD_CLOSE_MARGIN = 5;
+    const AWARD_NARROW_MARGIN = 2;
+    const AWARD_BLOWOUT_MARGIN = 8;
+
+    function formatAwardPercent(value) {
+      return Number.isFinite(value) ? `${Math.round(value * 100)}%` : 'n/a';
+    }
+
+    function formatAwardRatingDelta(rawDelta) {
+      return `${Math.round(Number(rawDelta || 0) * 50)} rating pts`;
+    }
+
+    function formatAwardSignedRatingDelta(rawDelta) {
+      return formatDisplayDeltaFromModelDelta(Number(rawDelta) || 0);
+    }
+
+    function formatAwardProbability(value) {
+      return Number.isFinite(value) ? `${Math.round(value * 100)}%` : 'n/a';
+    }
+
+    function getAwardPlayerLink(playerMap, id) {
+      const player = playerMap.get(String(id));
+      return player ? formatPlayerNameCell(player) : escapeHtml(id);
+    }
+
+    function joinAwardPlayerLinks(playerMap, ids, separator = ' + ') {
+      return ids.map(id => getAwardPlayerLink(playerMap, id)).join(escapeHtml(separator));
+    }
+
+    function createAwardPlayerStat(player) {
+      return {
+        id: String(player.id),
+        name: player.name,
+        games: 0,
+        wins: 0,
+        scoredGames: 0,
+        scoredWins: 0,
+        scoredLosses: 0,
+        totalPoints: 0,
+        closeGames: 0,
+        closeWins: 0,
+        closeLosses: 0,
+        narrowWins: 0,
+        narrowLosses: 0,
+        blowoutGames: 0,
+        highMarginWins: 0,
+        marginSum: 0,
+        opponentPointsSum: 0,
+        opponentScoreGames: 0,
+        underdogGames: 0,
+        underdogWins: 0,
+        upsetWins: 0,
+        biggestUpsetGap: 0,
+        lowestWinProbability: null,
+        nearEvenGames: 0,
+        nearEvenWins: 0,
+        postLossGames: 0,
+        postLossWins: 0,
+        streakStopperGames: 0,
+        streakStopperWins: 0,
+        expectedWins: 0,
+        dates: new Set(),
+        gamesByDate: new Map(),
+        maxGamesInDay: 0,
+        teammates: new Set(),
+        winningTeammates: new Set(),
+        opponents: new Set(),
+        teammateSlots: 0,
+        teammateDeltaSum: 0,
+        teammateDeltaN: 0,
+        ratingMin: null,
+        ratingMax: null,
+        firstRating: null,
+        lastRating: null,
+        ratingPath: [],
+        ratingUpMovement: 0,
+        ratingDownMovement: 0,
+        largestRatingDrop: 0,
+        bestRecoveryAfterDrop: 0,
+        lowAfterDrop: null,
+        recentRatingGain: 0,
+        sessionRatingGains: new Map(),
+        sessionRatingGames: new Map(),
+        bestSessionRatingGain: 0,
+        bestSessionRatingGainGames: 0,
+        effectiveCarryScore: 0,
+        carryGames: 0,
+        standingGames: 0,
+        standingWins: 0,
+        distinctDates: 0,
+        longestDateStreak: 0
+      };
+    }
+
+    function getAwardPlayerStat(playerStats, playerMap, player) {
+      const id = String(player?.id ?? '');
+      if (!id) return null;
+
+      if (!playerStats.has(id)) {
+        const knownPlayer = playerMap.get(id) || { id, name: player?.name || id };
+        playerMap.set(id, knownPlayer);
+        playerStats.set(id, createAwardPlayerStat(knownPlayer));
+      }
+
+      return playerStats.get(id);
+    }
+
+    function recordAwardRating(stat, ratingValue) {
+      const rating = Number(ratingValue);
+      if (!Number.isFinite(rating)) return;
+
+      if (stat.firstRating === null) stat.firstRating = rating;
+      const previousRating = stat.ratingPath.length ? stat.ratingPath[stat.ratingPath.length - 1] : null;
+      stat.lastRating = rating;
+      stat.ratingMin = stat.ratingMin === null ? rating : Math.min(stat.ratingMin, rating);
+      stat.ratingMax = stat.ratingMax === null ? rating : Math.max(stat.ratingMax, rating);
+      stat.ratingPath.push(rating);
+
+      if (previousRating === null) return;
+
+      const delta = rating - previousRating;
+      if (delta > 0) {
+        stat.ratingUpMovement += delta;
+      } else if (delta < 0) {
+        const drop = Math.abs(delta);
+        stat.ratingDownMovement += drop;
+        stat.largestRatingDrop = Math.max(stat.largestRatingDrop, drop);
+        stat.lowAfterDrop = stat.lowAfterDrop === null ? rating : Math.min(stat.lowAfterDrop, rating);
+      }
+
+      if (stat.lowAfterDrop !== null) {
+        stat.bestRecoveryAfterDrop = Math.max(stat.bestRecoveryAfterDrop, rating - stat.lowAfterDrop);
+      }
+    }
+
+    function recordAwardSessionRatingDelta(stat, date, beforeRatingValue, afterRatingValue) {
+      if (!isValidDateString(date)) return;
+
+      const beforeRating = Number(beforeRatingValue);
+      const afterRating = Number(afterRatingValue);
+      if (!Number.isFinite(beforeRating) || !Number.isFinite(afterRating)) return;
+
+      const delta = afterRating - beforeRating;
+      stat.sessionRatingGains.set(date, (stat.sessionRatingGains.get(date) || 0) + delta);
+      stat.sessionRatingGames.set(date, (stat.sessionRatingGames.get(date) || 0) + 1);
+    }
+
+    function getAwardGameNameMap(game) {
+      const map = new Map();
+      [...(game.redTeam || []), ...(game.blueTeam || [])].forEach(player => {
+        if (player?.id) map.set(String(player.id), player.name || String(player.id));
       });
+      return map;
+    }
+
+    function getAwardSideEntries(entry, side) {
+      return Array.isArray(entry?.before?.[side]) ? entry.before[side] : [];
+    }
+
+    function getAwardAfterEntries(entry, side) {
+      return Array.isArray(entry?.after?.[side]) ? entry.after[side] : [];
+    }
+
+    function getAwardStoredWinnerProbability(entry) {
+      const raw = entry?.volleyballWinnerProbability ?? entry?.openSkillWinnerProbability;
+      if (raw === null || raw === undefined) return null;
+
+      const probability = Number(raw);
+      if (!Number.isFinite(probability)) return null;
+      return Math.max(0.01, Math.min(0.99, probability));
+    }
+
+    function getAwardTeamProbabilities(entry, carryScoreMap = {}) {
+      const redEntries = getAwardSideEntries(entry, 'red');
+      const blueEntries = getAwardSideEntries(entry, 'blue');
+
+      if (redEntries.length && blueEntries.length) {
+        const score = scoreVolleyballCandidateSplit({
+          redPlayers: redEntries.map(player => ({ id: player.id, name: player.name || String(player.id) })),
+          bluePlayers: blueEntries.map(player => ({ id: player.id, name: player.name || String(player.id) })),
+          ratingMap: buildPreGameRatingMap(entry),
+          carryScoreMap
+        });
+        const red = Number(score?.redWinProbability);
+        const blue = Number(score?.blueWinProbability);
+        if (Number.isFinite(red) && Number.isFinite(blue)) {
+          return {
+            red: Math.max(0.01, Math.min(0.99, red)),
+            blue: Math.max(0.01, Math.min(0.99, blue))
+          };
+        }
+      }
+
+      const winnerProbability = getAwardStoredWinnerProbability(entry);
+      const game = entry?.game || {};
+      if (winnerProbability !== null && (game.winner === 'red' || game.winner === 'blue')) {
+        return {
+          red: game.winner === 'red' ? winnerProbability : 1 - winnerProbability,
+          blue: game.winner === 'blue' ? winnerProbability : 1 - winnerProbability
+        };
+      }
+
+      return { red: 0.5, blue: 0.5 };
+    }
+
+    function getAwardPairKey(idA, idB) {
+      return [String(idA), String(idB)].sort((a, b) => a.localeCompare(b)).join('|');
+    }
+
+    function getAwardPairStat(map, idA, idB) {
+      const key = getAwardPairKey(idA, idB);
+      if (!map.has(key)) {
+        const ids = key.split('|');
+        map.set(key, {
+          key,
+          ids,
+          games: 0,
+          wins: 0,
+          winsById: { [ids[0]]: 0, [ids[1]]: 0 }
+        });
+      }
+      return map.get(key);
+    }
+
+    function getAwardTeamDeltas(beforeEntries, afterEntries) {
+      const deltas = new Map();
+      beforeEntries.forEach((before, index) => {
+        const after = afterEntries[index];
+        if (!after) return;
+        const beforeRating = Number(before.rating);
+        const afterRating = Number(after.rating);
+        if (!Number.isFinite(beforeRating) || !Number.isFinite(afterRating)) return;
+        deltas.set(String(before.id), afterRating - beforeRating);
+      });
+      return deltas;
+    }
+
+    function getAwardsData(result = getReplayResult()) {
+      const players = loadPlayers();
+      const games = loadGames();
+      const playerMap = new Map(players.map(player => [String(player.id), player]));
+      const playerStats = new Map(players.map(player => [String(player.id), createAwardPlayerStat(player)]));
+      const teammatePairs = new Map();
+      const rivalryPairs = new Map();
+      const lastWonById = new Map();
+      const awardCarryMap = {};
+      const globalPlayDates = [...new Set(
+        getGamesSortedOldestFirst(games).map(getGameDateValue).filter(isValidDateString)
+      )].sort();
+
+      result.standings.forEach(player => {
+        if (!playerMap.has(String(player.id))) return;
+        const stat = getAwardPlayerStat(playerStats, playerMap, player);
+        if (!stat) return;
+        stat.effectiveCarryScore = Number(player.effectiveCarryScore) || 0;
+        stat.carryGames = Number(player.carryGames) || 0;
+        stat.standingGames = Number(player.games) || 0;
+        stat.standingWins = Number(player.wins) || 0;
+      });
+
+      result.history.forEach(entry => {
+        const game = entry.game || {};
+        if (game.winner !== 'red' && game.winner !== 'blue') return;
+
+        const gameResultsById = new Map();
+        const gameNameMap = getAwardGameNameMap(game);
+        const date = getGameDateValue(game);
+        const teamProbabilities = getAwardTeamProbabilities(entry, awardCarryMap);
+        const redWinProbability = teamProbabilities.red;
+        const blueWinProbability = teamProbabilities.blue;
+        const teamPowers = getPreGameTeamPowers(entry, awardCarryMap);
+        const hasScores = typeof game.scoreRed === 'number' && typeof game.scoreBlue === 'number';
+        const pointTotal = hasScores ? game.scoreRed + game.scoreBlue : 0;
+        const margin = hasScores ? Math.abs(game.scoreRed - game.scoreBlue) : null;
+
+        const sides = ['red'];
+        if (!game.isLeagueGame) sides.push('blue');
+
+        sides.forEach(side => {
+          const beforeEntries = getAwardSideEntries(entry, side);
+          const afterEntries = getAwardAfterEntries(entry, side);
+          const opponentSide = side === 'red' ? 'blue' : 'red';
+          const opponentEntries = game.isLeagueGame ? [] : getAwardSideEntries(entry, opponentSide);
+          const teamProbability = side === 'red' ? redWinProbability : blueWinProbability;
+          const won = game.winner === side;
+          const teamPower = side === 'red' ? teamPowers.red : teamPowers.blue;
+          const opponentPower = side === 'red' ? teamPowers.blue : teamPowers.red;
+          const teammateDeltas = getAwardTeamDeltas(beforeEntries, afterEntries);
+          const opponentScore = hasScores ? (side === 'red' ? game.scoreBlue : game.scoreRed) : null;
+          const facedOpponentComingOffWin = opponentEntries
+            .some(opponent => lastWonById.get(String(opponent.id)) === true);
+          beforeEntries.forEach((player, index) => {
+            const id = String(player.id);
+            const stat = getAwardPlayerStat(playerStats, playerMap, {
+              id,
+              name: gameNameMap.get(id) || player.name || id
+            });
+            if (!stat) return;
+
+            recordAwardRating(stat, player.rating);
+            recordAwardRating(stat, afterEntries[index]?.rating);
+            recordAwardSessionRatingDelta(stat, date, player.rating, afterEntries[index]?.rating);
+
+            stat.games += 1;
+            if (won) stat.wins += 1;
+            stat.expectedWins += teamProbability;
+            gameResultsById.set(id, won);
+
+            if (lastWonById.get(id) === false) {
+              stat.postLossGames += 1;
+              if (won) stat.postLossWins += 1;
+            }
+
+            if (isValidDateString(date)) {
+              stat.dates.add(date);
+              const dateGames = (stat.gamesByDate.get(date) || 0) + 1;
+              stat.gamesByDate.set(date, dateGames);
+              stat.maxGamesInDay = Math.max(stat.maxGamesInDay, dateGames);
+            }
+
+            if (hasScores) {
+              stat.scoredGames += 1;
+              if (won) stat.scoredWins += 1;
+              else stat.scoredLosses += 1;
+              stat.totalPoints += pointTotal;
+              stat.marginSum += margin;
+              if (Number.isFinite(opponentScore)) {
+                stat.opponentPointsSum += opponentScore;
+                stat.opponentScoreGames += 1;
+              }
+
+              if (margin <= AWARD_CLOSE_MARGIN) {
+                stat.closeGames += 1;
+                if (won) stat.closeWins += 1;
+                else stat.closeLosses += 1;
+              }
+
+              if (margin <= AWARD_NARROW_MARGIN) {
+                if (won) stat.narrowWins += 1;
+                else stat.narrowLosses += 1;
+              }
+
+              if (margin > AWARD_BLOWOUT_MARGIN) {
+                stat.blowoutGames += 1;
+                if (won) stat.highMarginWins += 1;
+              }
+            }
+
+            if (!game.isLeagueGame) {
+              if (teamProbability < 0.5) {
+                stat.underdogGames += 1;
+                if (won) {
+                  stat.underdogWins += 1;
+                  stat.upsetWins += 1;
+                  stat.lowestWinProbability = stat.lowestWinProbability === null
+                    ? teamProbability
+                    : Math.min(stat.lowestWinProbability, teamProbability);
+                }
+              }
+
+              if (won && teamPower < opponentPower) {
+                stat.biggestUpsetGap = Math.max(stat.biggestUpsetGap, opponentPower - teamPower);
+              }
+
+              if (teamProbability >= 0.45 && teamProbability <= 0.55) {
+                stat.nearEvenGames += 1;
+                if (won) stat.nearEvenWins += 1;
+              }
+
+              if (facedOpponentComingOffWin) {
+                stat.streakStopperGames += 1;
+                if (won) stat.streakStopperWins += 1;
+              }
+
+              beforeEntries.forEach(teammate => {
+                const teammateId = String(teammate.id);
+                if (teammateId === id) return;
+                stat.teammateSlots += 1;
+                stat.teammates.add(teammateId);
+                if (won) stat.winningTeammates.add(teammateId);
+              });
+
+              opponentEntries.forEach(opponent => {
+                stat.opponents.add(String(opponent.id));
+              });
+
+              const teammateDeltaValues = [...teammateDeltas.entries()]
+                .filter(([teammateId]) => teammateId !== id)
+                .map(([, delta]) => delta);
+              if (teammateDeltaValues.length) {
+                stat.teammateDeltaSum += teammateDeltaValues.reduce((sum, delta) => sum + delta, 0);
+                stat.teammateDeltaN += teammateDeltaValues.length;
+              }
+            }
+          });
+
+          if (!game.isLeagueGame) {
+            for (let i = 0; i < beforeEntries.length; i += 1) {
+              for (let j = i + 1; j < beforeEntries.length; j += 1) {
+                const pair = getAwardPairStat(teammatePairs, beforeEntries[i].id, beforeEntries[j].id);
+                pair.games += 1;
+                if (won) pair.wins += 1;
+              }
+            }
+          }
+        });
+
+        if (!game.isLeagueGame) {
+          const redEntries = getAwardSideEntries(entry, 'red');
+          const blueEntries = getAwardSideEntries(entry, 'blue');
+          redEntries.forEach(redPlayer => {
+            blueEntries.forEach(bluePlayer => {
+              const pair = getAwardPairStat(rivalryPairs, redPlayer.id, bluePlayer.id);
+              pair.games += 1;
+              const winnerId = game.winner === 'red' ? String(redPlayer.id) : String(bluePlayer.id);
+              pair.winsById[winnerId] = (pair.winsById[winnerId] || 0) + 1;
+            });
+          });
+        }
+
+        gameResultsById.forEach((won, id) => {
+          lastWonById.set(id, won);
+        });
+
+        const winnerSide = game.winner === 'blue' ? 'blue' : 'red';
+        getAwardSideEntries(entry, 'red').forEach(player => {
+          updateHistoryCarryScore(
+            awardCarryMap,
+            String(player.id),
+            winnerSide === 'red',
+            redWinProbability
+          );
+        });
+
+        if (!game.isLeagueGame) {
+          getAwardSideEntries(entry, 'blue').forEach(player => {
+            updateHistoryCarryScore(
+              awardCarryMap,
+              String(player.id),
+              winnerSide === 'blue',
+              blueWinProbability
+            );
+          });
+        }
+      });
+
+      playerStats.forEach(stat => {
+        stat.distinctDates = stat.dates.size;
+        const recentPath = stat.ratingPath.slice(-8);
+        stat.recentRatingGain = recentPath.length >= 2
+          ? recentPath[recentPath.length - 1] - recentPath[0]
+          : 0;
+        stat.sessionRatingGains.forEach((gain, date) => {
+          if (gain > stat.bestSessionRatingGain) {
+            stat.bestSessionRatingGain = gain;
+            stat.bestSessionRatingGainGames = stat.sessionRatingGames.get(date) || 0;
+          }
+        });
+        let currentStreak = 0;
+        let longestStreak = 0;
+        globalPlayDates.forEach(date => {
+          if (stat.dates.has(date)) {
+            currentStreak += 1;
+            longestStreak = Math.max(longestStreak, currentStreak);
+          } else {
+            currentStreak = 0;
+          }
+        });
+        stat.longestDateStreak = longestStreak;
+      });
+
+      return {
+        result,
+        games,
+        playerMap,
+        players: [...playerStats.values()],
+        teammatePairs: [...teammatePairs.values()],
+        rivalryPairs: [...rivalryPairs.values()],
+      };
+    }
+
+    function rankAwardPlayers(players, getValue, {
+      filter = () => true,
+      ascending = false,
+      statLine,
+      playerIds = stat => [stat.id],
+      winnerHtml = null
+    } = {}) {
+      return players
+        .map(stat => ({ stat, value: getValue(stat) }))
+        .filter(item => Number.isFinite(item.value) && filter(item.stat, item.value))
+        .sort((a, b) => ascending ? a.value - b.value : b.value - a.value)
+        .map(item => ({
+          playerIds: playerIds(item.stat),
+          winnerHtml: winnerHtml ? winnerHtml(item.stat) : null,
+          statLine: statLine(item.stat, item.value),
+          value: item.value
+        }));
+    }
+
+    function selectAwardWinners(awardDefs) {
+      return awardDefs.map(def => {
+        const candidates = def.candidates.filter(Boolean);
+        if (!candidates.length) return null;
+
+        const selected = candidates[0];
+        return {
+          title: def.title,
+          ...selected
+        };
+      }).filter(Boolean);
+    }
+
+    function getAwardDefinitions(data) {
+      const { players, playerMap, teammatePairs, rivalryPairs, games } = data;
+      const seasonStartDate = getSeasonStartDate();
+      const seasonRows = getSeasonMoverRows(getSeasonMoverCandidateRows(seasonStartDate, games));
+      const recentSessionGames = getRecentSessionGames(games);
+      const recentParticipantIds = new Set();
+      recentSessionGames.forEach(game => {
+        [...(game.redTeam || []), ...(game.blueTeam || [])].forEach(player => {
+          if (player?.id) recentParticipantIds.add(String(player.id));
+        });
+      });
+      const priorResult = getLeaderboardSnapshotExcludingGames(recentSessionGames, games);
+      const priorRawMap = new Map(priorResult.standings.map(player => [String(player.id), Number(player.rawOrdinal)]));
+
+      const playerById = id => playerMap.get(String(id)) || { id, name: String(id) };
+      const pairWinnerHtml = pair => joinAwardPlayerLinks(playerMap, pair.ids);
+      const hasAwardGames = stat => stat.games >= AWARD_MIN_GAMES;
+      const hasPairAwardGames = pair => pair.games >= AWARD_MIN_GAMES;
+      const winRate = stat => stat.games > 0 ? stat.wins / stat.games : null;
+      const closeWinRate = stat => stat.closeGames > 0 ? stat.closeWins / stat.closeGames : null;
+      const closeGameRate = stat => stat.scoredGames > 0 ? stat.closeGames / stat.scoredGames : null;
+      const closeLossRate = stat => stat.scoredLosses > 0 ? stat.closeLosses / stat.scoredLosses : null;
+      const underdogGameRate = stat => stat.games > 0 ? stat.underdogGames / stat.games : null;
+      const narrowWinRate = stat => stat.scoredWins > 0 ? stat.narrowWins / stat.scoredWins : null;
+      const narrowLossRate = stat => stat.scoredLosses > 0 ? stat.narrowLosses / stat.scoredLosses : null;
+      const underdogWinRate = stat => stat.underdogGames > 0 ? stat.underdogWins / stat.underdogGames : null;
+      const nearEvenWinRate = stat => stat.nearEvenGames > 0 ? stat.nearEvenWins / stat.nearEvenGames : null;
+      const teammateDeltaAvg = stat => stat.teammateDeltaN > 0 ? stat.teammateDeltaSum / stat.teammateDeltaN : null;
+      const postLossWinRate = stat => stat.postLossGames > 0 ? stat.postLossWins / stat.postLossGames : null;
+      const streakStopperWinRate = stat => stat.streakStopperGames > 0
+        ? stat.streakStopperWins / stat.streakStopperGames
+        : null;
+      const averageOpponentScore = stat => stat.opponentScoreGames > 0
+        ? stat.opponentPointsSum / stat.opponentScoreGames
+        : null;
+      const teammateMixRate = stat => stat.teammateSlots > 0 ? stat.teammates.size / stat.teammateSlots : null;
+      const rollercoasterScore = stat => Math.min(stat.ratingUpMovement, stat.ratingDownMovement);
+      const currentRawMap = new Map(data.result.standings.map(player => [String(player.id), Number(player.rawOrdinal)]));
+      const hotStreakCandidates = [...currentRawMap.entries()].map(([id, raw]) => {
+        const priorRaw = priorRawMap.get(id);
+        return {
+          id,
+          stat: players.find(player => player.id === id) || createAwardPlayerStat(playerById(id)),
+          value: Number.isFinite(priorRaw) ? raw - priorRaw : null
+        };
+      });
+
+      const pairCandidates = (pairs, getValue, { filter = () => true, statLine, winnerHtml = pairWinnerHtml } = {}) =>
+        pairs
+          .map(pair => ({ pair, value: getValue(pair) }))
+          .filter(item => Number.isFinite(item.value) && filter(item.pair, item.value))
+          .sort((a, b) => b.value - a.value)
+          .map(item => ({
+            playerIds: item.pair.ids,
+            winnerHtml: winnerHtml(item.pair, item.value),
+            statLine: statLine(item.pair, item.value),
+            value: item.value
+          }));
+
+      const seasonCandidates = seasonRows
+        .filter(row => (Number(row.gamesThisSeason) || 0) >= AWARD_MIN_GAMES)
+        .map(row => ({
+          playerIds: [String(row.id)],
+          statLine: `season movement: ${formatAwardSignedRatingDelta(row.rawMuChange)} in ${row.gamesThisSeason || 0} games`,
+          value: Number(row.rawMuChange) || 0
+        }));
+
+      return [
+        {
+          title: 'Comeback Kid',
+          candidates: rankAwardPlayers(players, stat => stat.upsetWins, {
+            filter: stat => hasAwardGames(stat) && stat.upsetWins > 0,
+            statLine: stat => `most upset wins: ${stat.upsetWins}`
+          })
+        },
+        {
+          title: 'Giant Slayer',
+          candidates: rankAwardPlayers(players, stat => stat.biggestUpsetGap, {
+            filter: stat => hasAwardGames(stat) && stat.biggestUpsetGap > 0,
+            statLine: (stat, value) => `biggest rating gap overcome: ${formatAwardRatingDelta(value)}`
+          })
+        },
+        {
+          title: 'Slumdog Millionaire',
+          candidates: rankAwardPlayers(players, underdogGameRate, {
+            filter: stat => stat.games >= AWARD_MIN_GAMES && stat.underdogGames > 0,
+            statLine: stat => `highest underdog-game rate: ${formatAwardPercent(underdogGameRate(stat))} (${stat.underdogGames}/${stat.games})`
+          })
+        },
+        {
+          title: 'Against The Odds',
+          candidates: rankAwardPlayers(players, underdogWinRate, {
+            filter: stat => hasAwardGames(stat) && stat.underdogGames >= AWARD_MIN_GAMES,
+            statLine: stat => `best underdog win rate: ${formatAwardPercent(underdogWinRate(stat))} (${stat.underdogWins}/${stat.underdogGames})`
+          })
+        },
+        {
+          title: 'Trap Game Specialist',
+          candidates: rankAwardPlayers(players, nearEvenWinRate, {
+            filter: stat => hasAwardGames(stat) && stat.nearEvenGames >= AWARD_MIN_RATE_GAMES,
+            statLine: stat => `best win rate in evenly matched games: ${formatAwardPercent(nearEvenWinRate(stat))} (${stat.nearEvenWins}/${stat.nearEvenGames})`
+          })
+        },
+        {
+          title: 'Clutch Closer',
+          candidates: rankAwardPlayers(players, closeWinRate, {
+            filter: stat => hasAwardGames(stat) && stat.closeGames >= AWARD_MIN_GAMES,
+            statLine: stat => `best close-game record: ${formatAwardPercent(closeWinRate(stat))} (${stat.closeWins}/${stat.closeGames})`
+          })
+        },
+        {
+          title: 'Nailbiter Magnet',
+          candidates: rankAwardPlayers(players, closeGameRate, {
+            filter: stat => stat.scoredGames >= AWARD_MIN_GAMES && stat.closeGames > 0,
+            statLine: stat => `highest close-game rate: ${formatAwardPercent(closeGameRate(stat))} (${stat.closeGames}/${stat.scoredGames})`
+          })
+        },
+        {
+          title: 'Escape Artist',
+          candidates: rankAwardPlayers(players, narrowWinRate, {
+            filter: stat => hasAwardGames(stat) && stat.scoredWins >= AWARD_MIN_GAMES && stat.narrowWins > 0,
+            statLine: stat => `highest rate of narrow wins: ${formatAwardPercent(narrowWinRate(stat))} (${stat.narrowWins}/${stat.scoredWins})`
+          })
+        },
+        {
+          title: 'Heartbreaker',
+          candidates: rankAwardPlayers(players, narrowLossRate, {
+            filter: stat => hasAwardGames(stat) && stat.scoredLosses >= AWARD_MIN_GAMES && stat.narrowLosses > 0,
+            statLine: stat => `highest rate of narrow losses: ${formatAwardPercent(narrowLossRate(stat))} (${stat.narrowLosses}/${stat.scoredLosses})`
+          })
+        },
+        {
+          title: 'Missed It By...',
+          candidates: rankAwardPlayers(players, closeLossRate, {
+            filter: stat => hasAwardGames(stat) && stat.scoredLosses >= AWARD_MIN_GAMES && stat.closeLosses > 0,
+            statLine: stat => `most close losses out of total losses: ${formatAwardPercent(closeLossRate(stat))} (${stat.closeLosses}/${stat.scoredLosses})`
+          })
+        },
+        {
+          title: 'Bounce Back',
+          candidates: rankAwardPlayers(players, postLossWinRate, {
+            filter: stat => hasAwardGames(stat) && stat.postLossGames >= AWARD_MIN_GAMES,
+            statLine: stat => `best win rate after a loss: ${formatAwardPercent(postLossWinRate(stat))} (${stat.postLossWins}/${stat.postLossGames})`
+          })
+        },
+        {
+          title: 'Final Boss',
+          candidates: rankAwardPlayers(players, streakStopperWinRate, {
+            filter: stat => hasAwardGames(stat) && stat.streakStopperGames >= AWARD_MIN_GAMES,
+            statLine: stat => `best win rate vs opponents coming off wins: ${formatAwardPercent(streakStopperWinRate(stat))} (${stat.streakStopperWins}/${stat.streakStopperGames})`
+          })
+        },
+        {
+          title: 'Obsessive',
+          candidates: rankAwardPlayers(players, stat => stat.standingGames || stat.games, {
+            filter: stat => (stat.standingGames || stat.games) >= AWARD_MIN_GAMES,
+            statLine: stat => `most games played: ${stat.standingGames || stat.games}`
+          })
+        },
+        {
+          title: 'Ironman',
+          candidates: rankAwardPlayers(players, stat => stat.longestDateStreak, {
+            filter: stat => hasAwardGames(stat) && stat.longestDateStreak > 1,
+            statLine: stat => `longest play-date streak: ${stat.longestDateStreak}`
+          })
+        },
+        {
+          title: 'Double Shift',
+          candidates: rankAwardPlayers(players, stat => stat.maxGamesInDay, {
+            filter: stat => hasAwardGames(stat) && stat.maxGamesInDay > 1,
+            statLine: stat => `most games in one day: ${stat.maxGamesInDay}`
+          })
+        },
+        {
+          title: 'Reliable Regular',
+          candidates: rankAwardPlayers(players, stat => stat.distinctDates, {
+            filter: stat => hasAwardGames(stat) && stat.distinctDates > 0,
+            statLine: stat => `most distinct play dates: ${stat.distinctDates}`
+          })
+        },
+        {
+          title: 'Team Player',
+          candidates: rankAwardPlayers(players, stat => stat.effectiveCarryScore, {
+            filter: stat => stat.carryGames >= AWARD_MIN_GAMES && stat.effectiveCarryScore > 0,
+            statLine: stat => `highest carry score: +${stat.effectiveCarryScore.toFixed(3)}`
+          })
+        },
+        {
+          title: 'Good Company',
+          candidates: rankAwardPlayers(players, teammateDeltaAvg, {
+            filter: stat => hasAwardGames(stat) && stat.teammateDeltaN >= AWARD_MIN_GAMES && teammateDeltaAvg(stat) > 0,
+            statLine: stat => `best average teammate rating gain: ${formatAwardSignedRatingDelta(teammateDeltaAvg(stat))}`
+          })
+        },
+        {
+          title: 'Chemistry Magnet',
+          candidates: rankAwardPlayers(players, winRate, {
+            filter: stat => stat.games >= AWARD_MIN_GAMES && stat.teammates.size >= 6,
+            statLine: stat => `best win rate with 6+ teammates: ${formatAwardPercent(winRate(stat))} (${stat.wins}/${stat.games})`
+          })
+        },
+        {
+          title: 'Social Butterfly',
+          candidates: rankAwardPlayers(players, stat => stat.teammates.size, {
+            filter: stat => hasAwardGames(stat) && stat.teammates.size > 0,
+            statLine: stat => `most distinct teammates: ${stat.teammates.size}`
+          })
+        },
+        {
+          title: 'Mixer',
+          candidates: rankAwardPlayers(players, teammateMixRate, {
+            filter: stat => hasAwardGames(stat) && stat.teammateSlots >= AWARD_MIN_GAMES && stat.teammates.size > 0,
+            statLine: stat => `highest teammate mix rate: ${formatAwardPercent(teammateMixRate(stat))} (${stat.teammates.size} distinct / ${stat.teammateSlots} teammate slots)`
+          })
+        },
+        {
+          title: 'Plug And Play',
+          candidates: rankAwardPlayers(players, stat => stat.winningTeammates.size, {
+            filter: stat => hasAwardGames(stat) && stat.winningTeammates.size > 0,
+            statLine: stat => `wins with distinct teammates: ${stat.winningTeammates.size}`
+          })
+        },
+        {
+          title: 'Rival Magnet',
+          candidates: rankAwardPlayers(players, stat => stat.opponents.size, {
+            filter: stat => hasAwardGames(stat) && stat.opponents.size > 0,
+            statLine: stat => `most distinct opponents: ${stat.opponents.size}`
+          })
+        },
+        {
+          title: 'Rollercoaster',
+          candidates: rankAwardPlayers(players, rollercoasterScore, {
+            filter: stat => stat.games >= AWARD_MIN_GAMES && stat.ratingUpMovement > 0 && stat.ratingDownMovement > 0,
+            statLine: stat => `most two-way rating movement: ${formatAwardSignedRatingDelta(stat.ratingUpMovement)} up / ${formatAwardSignedRatingDelta(-stat.ratingDownMovement)} down`
+          })
+        },
+        {
+          title: 'Rocket Ship',
+          candidates: rankAwardPlayers(players, stat => stat.bestSessionRatingGain, {
+            filter: stat => hasAwardGames(stat) && stat.bestSessionRatingGain > 0,
+            statLine: stat => `largest rating surge in one session: ${formatAwardSignedRatingDelta(stat.bestSessionRatingGain)} over ${stat.bestSessionRatingGainGames} game${stat.bestSessionRatingGainGames === 1 ? '' : 's'}`
+          })
+        },
+        {
+          title: 'Breakout',
+          candidates: seasonCandidates
+        },
+        {
+          title: 'Hot Streak',
+          candidates: hotStreakCandidates
+            .filter(item => Number.isFinite(item.value) && item.value > 0 && hasAwardGames(item.stat) && recentParticipantIds.has(item.id))
+            .sort((a, b) => b.value - a.value)
+            .map(item => ({
+              playerIds: [item.id],
+              statLine: `latest-session rating gain: ${formatAwardSignedRatingDelta(item.value)}`,
+              value: item.value
+            }))
+        },
+        {
+          title: 'Finisher',
+          candidates: rankAwardPlayers(players, winRate, {
+            filter: stat => stat.games >= AWARD_MIN_GAMES,
+            statLine: stat => `best win rate: ${formatAwardPercent(winRate(stat))} (${stat.wins}/${stat.games})`
+          })
+        },
+        {
+          title: 'Grinder',
+          candidates: rankAwardPlayers(players, stat => stat.highMarginWins, {
+            filter: stat => hasAwardGames(stat) && stat.highMarginWins > 0,
+            statLine: stat => `most high-margin wins: ${stat.highMarginWins}`
+          })
+        },
+        {
+          title: 'Brick Wall',
+          candidates: rankAwardPlayers(players, averageOpponentScore, {
+            ascending: true,
+            filter: stat => hasAwardGames(stat) && stat.opponentScoreGames >= AWARD_MIN_GAMES,
+            statLine: (stat, value) => `lowest average opponent score: ${value.toFixed(1)} pts over ${stat.opponentScoreGames} games`
+          })
+        },
+        {
+          title: 'Chaos Agent',
+          candidates: rankAwardPlayers(players, stat => stat.scoredGames > 0 ? stat.marginSum / stat.scoredGames : null, {
+            filter: stat => stat.scoredGames >= AWARD_MIN_GAMES,
+            statLine: (stat, value) => `highest average game margin: ${value.toFixed(1)} pts`
+          })
+        },
+        {
+          title: 'Zen',
+          candidates: rankAwardPlayers(players, stat => stat.scoredGames > 0 ? stat.closeGames / stat.scoredGames : null, {
+            filter: stat => stat.scoredGames >= AWARD_MIN_GAMES,
+            statLine: stat => `highest rate of close games: ${formatAwardPercent(stat.closeGames / stat.scoredGames)} (${stat.closeGames}/${stat.scoredGames})`
+          })
+        },
+        {
+          title: 'The De-Equalizer',
+          candidates: rankAwardPlayers(players, stat => stat.scoredGames > 0 ? stat.blowoutGames / stat.scoredGames : null, {
+            filter: stat => stat.scoredGames >= AWARD_MIN_GAMES && stat.blowoutGames > 0,
+            statLine: stat => `highest blowout-game rate: ${formatAwardPercent(stat.blowoutGames / stat.scoredGames)} (${stat.blowoutGames}/${stat.scoredGames})`
+          })
+        },
+        {
+          title: 'Dynamic Duo',
+          candidates: pairCandidates(teammatePairs, pair => pair.games > 0 ? pair.wins / pair.games : null, {
+            filter: pair => hasPairAwardGames(pair),
+            statLine: pair => `best pair win rate: ${formatAwardPercent(pair.wins / pair.games)} (${pair.wins}/${pair.games})`
+          })
+        },
+        {
+          title: 'Familiar Faces',
+          candidates: pairCandidates(teammatePairs, pair => pair.games, {
+            filter: pair => hasPairAwardGames(pair),
+            statLine: pair => `most games as teammates: ${pair.games}`
+          })
+        },
+        {
+          title: 'Rivalry',
+          candidates: pairCandidates(rivalryPairs, pair => pair.games, {
+            filter: pair => hasPairAwardGames(pair),
+            winnerHtml: pair => joinAwardPlayerLinks(playerMap, pair.ids, ' vs '),
+            statLine: pair => `most head-to-head games: ${pair.games}`
+          })
+        }
+      ];
+    }
+
+    function getAwardPlayerHue(id) {
+      const text = String(id || 'award');
+      let hash = 0;
+      for (let i = 0; i < text.length; i += 1) {
+        hash = ((hash << 5) - hash + text.charCodeAt(i)) >>> 0;
+      }
+      return hash % 360;
+    }
+
+    function getAwardPlayerColor(id, alpha = 1) {
+      const hue = getAwardPlayerHue(id);
+      if (alpha >= 1) return `hsl(${hue} 72% 68%)`;
+      return `hsl(${hue} 72% 58% / ${alpha})`;
+    }
+
+    function getAwardBadgeStyle(award) {
+      const playerIds = (award.playerIds || []).map(String).filter(Boolean);
+      const primaryId = playerIds[0] || award.title || 'award';
+      const secondaryId = playerIds[1] || primaryId;
+      const styles = [
+        `--award-accent: ${getAwardPlayerColor(primaryId)}`,
+        `--award-accent-2: ${getAwardPlayerColor(secondaryId)}`,
+        `--award-accent-soft: ${getAwardPlayerColor(primaryId, 0.18)}`,
+        `--award-accent-2-soft: ${getAwardPlayerColor(secondaryId, 0.12)}`,
+        `--award-border: ${getAwardPlayerColor(primaryId, 0.42)}`
+      ];
+      return ` style="${styles.join('; ')}"`;
+    }
+
+    function renderAwardBadge(award) {
+      const winnerHtml = award.winnerHtml || '';
+      return `
+        <div class="award-badge"${getAwardBadgeStyle(award)}>
+          <div class="award-title">${escapeHtml(award.title)}</div>
+          <div class="award-player">${winnerHtml}</div>
+          <div class="award-stat">${escapeHtml(award.statLine)}</div>
+        </div>
+      `;
+    }
+
+    function createRecursionAward(awards, playerMap) {
+      const badgeCounts = new Map();
+
+      awards.forEach(award => {
+        (award.playerIds || []).forEach(id => {
+          const key = String(id);
+          badgeCounts.set(key, (badgeCounts.get(key) || 0) + 1);
+        });
+      });
+
+      if (!badgeCounts.size) return null;
+
+      const [winnerId, baseCount] = [...badgeCounts.entries()].sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        const nameA = playerMap.get(a[0])?.name || a[0];
+        const nameB = playerMap.get(b[0])?.name || b[0];
+        return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+      })[0];
+
+      return {
+        title: 'Recursion',
+        playerIds: [winnerId],
+        winnerHtml: getAwardPlayerLink(playerMap, winnerId),
+        statLine: `most badges: ${baseCount + 1} including this one`,
+        value: baseCount + 1
+      };
+    }
+
+    function renderAwards() {
+      if (!awardsSummaryEl || !awardsGridEl) return;
+
+      const data = getAwardsData();
+      const awardDefs = getAwardDefinitions(data);
+      const awards = selectAwardWinners(awardDefs).map(award => {
+        if (award.winnerHtml) return award;
+        return {
+          ...award,
+          winnerHtml: joinAwardPlayerLinks(data.playerMap, award.playerIds || [])
+        };
+      });
+
+      awardsGridEl.innerHTML = '';
+
+      if (!awards.length) {
+        awardsSummaryEl.textContent = 'No award-eligible games yet.';
+        return;
+      }
+
+      const recursionAward = createRecursionAward(awards, data.playerMap);
+      if (recursionAward) awards.push(recursionAward);
+
+      const uniqueWinners = new Set();
+      awards.forEach(award => {
+        (award.playerIds || []).forEach(id => uniqueWinners.add(String(id)));
+      });
+
+      awardsSummaryEl.textContent =
+        `${awards.length} awards across ${uniqueWinners.size} player${uniqueWinners.size === 1 ? '' : 's'}.`;
+      awardsGridEl.innerHTML = awards.map(renderAwardBadge).join('');
     }
 
 
@@ -2454,14 +3497,14 @@
       if (rows.length === 0) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 6;
+        td.colSpan = 5;
         td.innerHTML = '<div class="empty-state">No players have at least 5 games in the current model.</div>';
         tr.appendChild(td);
         statsTableBody.appendChild(tr);
         return;
       }
 
-      // Snapshot rank maps for Trend and Volatility around the latest session.
+      // Snapshot rank maps for Trend around the latest session.
       const allGames = loadGames();
       const recentSessionGames = getRecentSessionGames(allGames);
       const currentMap = getRatingBasedRankMap(result);
@@ -2471,13 +3514,11 @@
 
       rows.forEach((player, index) => {
         const trend      = computeTrend(player.id, currentMap, priorSessionMap);
-        const volatility = computeVolatility(player.id, player.games, result.history);
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td>${index + 1}</td>
           <td>${renderTrendCell(trend)}</td>
-          <td>${formatPlayerNameCell(player)}</td>
-          <td>${renderVolatilityCell(volatility)}</td>
+          <td>${index + 1}</td>
+          <td class="player-cell">${formatPlayerNameCell(player)}</td>
           <td>${getSortedFieldDisplay(player)}</td>
           <td>${player.games}</td>
         `;
@@ -2614,183 +3655,756 @@
       );
     }
 
-    function computeQualityScore(accuracy, within5Pct, blowoutRate) {
-      // Normalize each component against practical volleyball bounds, then weight.
-      // Accuracy: floor = 50% (random), ceiling = 90%.
-      // Within-5: floor = 0%, ceiling = 70% (physical limit given volleyball variance).
-      // Blowout rate: 0% = best, 40%+ = floor.
-      const accNorm  = Math.min(1, Math.max(0, (accuracy    - 0.50) / 0.40));
-      const w5Norm   = Math.min(1, Math.max(0,  within5Pct          / 0.70));
-      const blowNorm = Math.min(1, Math.max(0,  1 - blowoutRate     / 0.40));
-      return Math.round(35 * accNorm + 40 * w5Norm + 25 * blowNorm);
+    const QUALITY_CACHE_VERSION = 'model-relative-tiers-v5-assignment-metadata';
+    const QUALITY_TIERS = [
+      { key: 'balanced', label: 'Balanced', detail: 'expected + 1 error' },
+      { key: 'imbalanced', label: 'Imbalanced', detail: '+1-2 errors' },
+      { key: 'blowout', label: 'Blowout', detail: 'beyond +2 errors' },
+    ];
+
+    function getQualityTierKey({ actualGap, expectedGap, marginMAE }) {
+      const safeError = Math.max(0.01, Number(marginMAE) || 0);
+      const excess = Number(actualGap) - Number(expectedGap);
+      if (excess <= safeError) return 'balanced';
+      if (excess <= safeError * 2) return 'imbalanced';
+      return 'blowout';
     }
 
-    function qualityGrade(score) {
-      if (score >= 85) return 'A';
-      if (score >= 70) return 'B';
-      if (score >= 55) return 'C';
-      if (score >= 40) return 'D';
-      return 'F';
+    function createEmptyQualityTiers() {
+      return Object.fromEntries(
+        QUALITY_TIERS.map(tier => [
+          tier.key,
+          { games: 0, correct: 0, brierSum: 0, algorithmGames: 0 }
+        ])
+      );
     }
 
-    function renderQuality() {
-      const replay = getReplayResult();
-      const ratingMap = replay.ratingMap;
-      const carryMap  = replay.carryMap  || {};
-      const statsMap  = replay.statsMap  || {};
-      const PROV_THRESHOLD = 5; // must match index.html PROV_THRESHOLD
-      const analyzable = getAnalyzableGames();
+    function createEmptyQualityStats() {
+      return {
+        n: 0,
+        correct: 0,
+        brierSum: 0,
+        provisionalImbalanceSum: 0,
+        nScored: 0,
+        within5: 0,
+        blowouts8: 0,
+        blowouts10: 0,
+        excessSum: 0,
+        weightedExcessSum: 0,
+        marginErrSum: 0,
+        marginErrN: 0,
+        algorithmGames: 0,
+        algorithmTieredGames: 0,
+        algorithmBalancedGames: 0,
+        diffs: [],
+        tierSamples: [],
+        tiers: createEmptyQualityTiers()
+      };
+    }
 
-      if (analyzable.length === 0) {
-        qualityScoreEl.classList.add('hidden');
-        qualityMetricsEl.innerHTML = '';
-        qualityEmptyEl.classList.remove('hidden');
-        if (qualityChart) { qualityChart.destroy(); qualityChart = null; }
-        return;
-      }
-      qualityEmptyEl.classList.add('hidden');
+    function getQualityStatsSummary(stats) {
+      return {
+        accuracy: stats.n > 0 ? stats.correct / stats.n : null,
+        brier: stats.n > 0 ? stats.brierSum / stats.n : null,
+        avgProvisionalImbalance: stats.n > 0 ? stats.provisionalImbalanceSum / stats.n : null,
+        within5Pct: stats.nScored > 0 ? stats.within5 / stats.nScored : null,
+        blowoutRate: stats.nScored > 0 ? stats.blowouts8 / stats.nScored : null,
+        marginMAE: stats.marginErrN > 0 ? stats.marginErrSum / stats.marginErrN : null,
+      };
+    }
 
-      const marginModel = calibrateMarginModel({
-        games: loadGames(),
-        ratingMap,
-        carryScoreMap: carryMap,
-      });
+    function recordQualityPrediction(stats, {
+      game,
+      score,
+      marginModel = null,
+      statsMap = null,
+      includeProvisionalImbalance = false
+    }) {
+      const predictedWinner = score.redWinProbability >= 0.5 ? 'red' : 'blue';
+      const isCorrect = predictedWinner === game.winner;
+      const yRed = game.winner === 'red' ? 1 : 0;
+      const predictionBrier = Math.pow(score.redWinProbability - yRed, 2);
+      const isAlgorithmAssigned = game.assignmentSource === 'algorithm';
 
-      let correctCount = 0, brierSum = 0, provImbSum = 0;
-      let nScored = 0, within5 = 0, blowouts8 = 0, blowouts10 = 0;
-      let excessSum = 0, weightedExcessSum = 0, marginErrSum = 0;
-      const diffs = [];
+      stats.n += 1;
+      if (isCorrect) stats.correct += 1;
+      stats.brierSum += predictionBrier;
+      if (isAlgorithmAssigned) stats.algorithmGames += 1;
 
-      analyzable.forEach(game => {
-        const score = scoreVolleyballCandidateSplit({
-          redPlayers: game.redTeam,
-          bluePlayers: game.blueTeam,
-          ratingMap,
-          carryScoreMap: carryMap,
-        });
-
-        const predictedWinner = score.redWinProbability >= 0.5 ? 'red' : 'blue';
-        if (predictedWinner === game.winner) correctCount += 1;
-
-        const yRed = game.winner === 'red' ? 1 : 0;
-        brierSum += Math.pow(score.redWinProbability - yRed, 2);
-
+      if (includeProvisionalImbalance && statsMap) {
+        const PROV_THRESHOLD = 5; // must match index.html PROV_THRESHOLD
         const provRed  = game.redTeam.filter( p => (statsMap[String(p.id)]?.games ?? 0) < PROV_THRESHOLD).length;
         const provBlue = game.blueTeam.filter(p => (statsMap[String(p.id)]?.games ?? 0) < PROV_THRESHOLD).length;
-        provImbSum += Math.abs(provRed - provBlue);
+        stats.provisionalImbalanceSum += Math.abs(provRed - provBlue);
+      }
 
-        const hasScores =
-          typeof game.scoreRed === 'number' && typeof game.scoreBlue === 'number';
-        if (hasScores) {
-          const gap = Math.abs(game.scoreRed - game.scoreBlue);
-          if (gap <= 5)  within5   += 1;
-          if (gap > 8)   blowouts8 += 1;
-          if (gap > 10)  blowouts10 += 1;
+      const hasScores =
+        typeof game.scoreRed === 'number' && typeof game.scoreBlue === 'number';
 
-          const excess = Math.max(0, gap - 5);
-          excessSum         += excess;
-          weightedExcessSum += Math.pow(excess / 5, 1.5);
-          diffs.push(gap);
+      if (!hasScores) return;
 
-          const predictedGap = predictExpectedMargin(score.strengthDiff, marginModel);
-          marginErrSum += Math.abs(predictedGap - gap);
-          nScored += 1;
+      const gap = Math.abs(game.scoreRed - game.scoreBlue);
+
+      if (gap <= 5)  stats.within5   += 1;
+      if (gap > 8)   stats.blowouts8 += 1;
+      if (gap > 10)  stats.blowouts10 += 1;
+
+      const excess = Math.max(0, gap - 5);
+      stats.excessSum += excess;
+      stats.weightedExcessSum += Math.pow(excess / 5, 1.5);
+      stats.diffs.push(gap);
+      stats.nScored += 1;
+
+      if (marginModel?.sampleSize > 0) {
+        const predictedGap = predictExpectedMargin(score.strengthDiff, marginModel);
+        stats.marginErrSum += Math.abs(predictedGap - gap);
+        stats.marginErrN += 1;
+        stats.tierSamples.push({
+          gap,
+          expectedGap: predictedGap,
+          correct: isCorrect,
+          brier: predictionBrier,
+          assignmentSource: game.assignmentSource || ''
+        });
+      }
+    }
+
+    function assignQualityTiers(stats) {
+      const marginMAE = getQualityStatsSummary(stats).marginMAE;
+      stats.tiers = createEmptyQualityTiers();
+      stats.algorithmTieredGames = 0;
+      stats.algorithmBalancedGames = 0;
+      if (marginMAE === null) return stats;
+
+      (stats.tierSamples || []).forEach(sample => {
+        const tierKey = getQualityTierKey({
+          actualGap: sample.gap,
+          expectedGap: sample.expectedGap,
+          marginMAE
+        });
+        const tier = stats.tiers[tierKey];
+        tier.games += 1;
+        if (sample.correct) tier.correct += 1;
+        tier.brierSum += sample.brier;
+        if (sample.assignmentSource === 'algorithm') {
+          tier.algorithmGames += 1;
+          stats.algorithmTieredGames += 1;
+          if (tierKey === 'balanced') stats.algorithmBalancedGames += 1;
         }
       });
 
-      const na       = analyzable.length;
-      const accuracy = correctCount / na;
-      const within5Pct   = nScored > 0 ? within5   / nScored : null;
-      const blowoutRate  = nScored > 0 ? blowouts8 / nScored : null;
-      const marginMAE    = nScored > 0 ? marginErrSum / nScored : null;
+      return stats;
+    }
 
-      // Composite score + grade banner.
-      if (within5Pct !== null && blowoutRate !== null) {
-        const score = computeQualityScore(accuracy, within5Pct, blowoutRate);
-        const grade = qualityGrade(score);
-        qualityScoreEl.classList.remove('hidden');
-        qualityScoreEl.innerHTML = `
-          <div class="quality-score-grade grade-${grade.toLowerCase()}">${escapeHtml(grade)}</div>
-          <div class="quality-score-detail">
-            <div class="quality-score-number">${score}/100</div>
-            <div class="quality-score-label">Overall quality score</div>
-            <div class="quality-score-label">Win prediction ${Math.round(accuracy * 100)}% &middot; ${Math.round(within5Pct * 100)}% within 5 pts &middot; ${Math.round(blowoutRate * 100)}% blowouts</div>
-          </div>
-        `;
-      } else {
-        qualityScoreEl.classList.add('hidden');
+    function getQualityCacheKey(games) {
+      const compactGames = getGamesSortedOldestFirst(games).map(game => {
+        const red = (game?.redTeam || []).map(player => player?.id ?? player?.name ?? '').join(',');
+        const blue = (game?.blueTeam || []).map(player => player?.id ?? player?.name ?? '').join(',');
+        return [
+          game?.id ?? '',
+          game?.date ?? '',
+          game?.winner ?? '',
+          game?.scoreRed ?? '',
+          game?.scoreBlue ?? '',
+          game?.isLeagueGame ? 'L' : 'N',
+          game?.courtType ?? '',
+          game?.assignmentSource ?? '',
+          red,
+          blue
+        ].join(':');
+      }).join('|');
+
+      return `${QUALITY_CACHE_VERSION}|${VERSION}|${getSeasonalTaperDays()}|${compactGames}`;
+    }
+
+    function loadQualityCache(cacheKey) {
+      try {
+        const cached = JSON.parse(localStorage.getItem(QUALITY_CACHE_STORAGE_KEY) || 'null');
+        return cached?.key === cacheKey ? cached.value : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function saveQualityCache(cacheKey, value) {
+      try {
+        localStorage.setItem(QUALITY_CACHE_STORAGE_KEY, JSON.stringify({
+          key: cacheKey,
+          value
+        }));
+      } catch {
+        // Cache is an optimization only.
+      }
+    }
+
+    function isQualityGame(game) {
+      return (
+        game && !game.isLeagueGame &&
+        Array.isArray(game.redTeam) && game.redTeam.length > 0 &&
+        Array.isArray(game.blueTeam) && game.blueTeam.length > 0 &&
+        (game.winner === 'red' || game.winner === 'blue')
+      );
+    }
+
+    function computePlayForwardQuality(games) {
+      const sortedGames = getGamesSortedOldestFirst(games);
+      const priorGames = [];
+      const stats = createEmptyQualityStats();
+      let latestMarginModel = { baseMargin: 0, slope: 0, sampleSize: 0 };
+
+      sortedGames.forEach(game => {
+        if (isQualityGame(game)) {
+          const priorResult = getReplayResultForGames(priorGames);
+          const marginModel = calibrateMarginModel({
+            games: priorGames,
+            ratingMap: priorResult.ratingMap,
+            carryScoreMap: priorResult.carryMap || {},
+          });
+          latestMarginModel = marginModel;
+          const score = scoreVolleyballCandidateSplit({
+            redPlayers: game.redTeam,
+            bluePlayers: game.blueTeam,
+            ratingMap: priorResult.ratingMap,
+            carryScoreMap: priorResult.carryMap || {},
+          });
+
+          recordQualityPrediction(stats, {
+            game,
+            score,
+            marginModel,
+            statsMap: priorResult.statsMap,
+            includeProvisionalImbalance: true
+          });
+        }
+
+        priorGames.push(game);
+      });
+
+      stats.marginModel = latestMarginModel;
+      return assignQualityTiers(stats);
+    }
+
+    function computeBackPredictionQuality(games) {
+      const replay = getReplayResultForGames(games);
+      const marginModel = calibrateMarginModel({
+        games,
+        ratingMap: replay.ratingMap,
+        carryScoreMap: replay.carryMap || {},
+      });
+      const stats = createEmptyQualityStats();
+
+      getGamesSortedOldestFirst(games).forEach(game => {
+        if (!isQualityGame(game)) return;
+
+        const score = scoreVolleyballCandidateSplit({
+          redPlayers: game.redTeam,
+          bluePlayers: game.blueTeam,
+          ratingMap: replay.ratingMap,
+          carryScoreMap: replay.carryMap || {},
+        });
+
+        recordQualityPrediction(stats, {
+          game,
+          score,
+          marginModel,
+          statsMap: replay.statsMap,
+          includeProvisionalImbalance: false
+        });
+      });
+
+      stats.marginModel = marginModel;
+      return assignQualityTiers(stats);
+    }
+
+    function computeQualityOverview(games = loadGames()) {
+      const cacheKey = getQualityCacheKey(games);
+      const cached = loadQualityCache(cacheKey);
+      if (cached) return cached;
+
+      const value = {
+        playForward: computePlayForwardQuality(games),
+        backPrediction: computeBackPredictionQuality(games)
+      };
+      saveQualityCache(cacheKey, value);
+      return value;
+    }
+
+    function computeWeightedQualityScore(components) {
+      const usableComponents = components.filter(component => component.value !== null);
+
+      const totalWeight = usableComponents.reduce((sum, component) => sum + component.weight, 0);
+      if (totalWeight <= 0) return null;
+
+      const weightedPct = usableComponents.reduce(
+        (sum, component) => sum + component.value * 100 * component.weight,
+        0
+      ) / totalWeight;
+
+      return Math.round(weightedPct);
+    }
+
+    function computeQualityPanelScore({ accuracy, imbalancedAccuracy, blowoutAccuracy }) {
+      return computeWeightedQualityScore([
+        { value: blowoutAccuracy, weight: 45 },
+        { value: imbalancedAccuracy, weight: 35 },
+        { value: accuracy, weight: 20 },
+      ]);
+    }
+
+    function computePredictiveQualityScore({
+      balancedRate,
+      algorithmBalancedRate,
+      imbalancedAccuracy,
+      blowoutAccuracy
+    }) {
+      return computeWeightedQualityScore([
+        { value: algorithmBalancedRate, weight: 45 },
+        { value: balancedRate, weight: 35 },
+        { value: blowoutAccuracy, weight: 12 },
+        { value: imbalancedAccuracy, weight: 5 },
+      ]);
+    }
+
+    function formatQualityPct(value) {
+      return value === null ? 'n/a' : `${Math.round(value * 100)}%`;
+    }
+
+    function getQualityAccuracyGapFromEven(accuracy) {
+      return accuracy === null ? null : Math.abs(accuracy - 0.5);
+    }
+
+    function formatQualityPctPoints(value) {
+      return value === null ? 'n/a' : `${Math.round(value * 100)} pts`;
+    }
+
+    function formatQualityDecimal(value, digits = 2) {
+      return value === null ? 'n/a' : Number(value).toFixed(digits);
+    }
+
+    function getQualityTierAccuracy(stats, keys) {
+      const totals = keys.reduce((sum, key) => {
+        const tier = stats.tiers?.[key] || {};
+        return {
+          games: sum.games + (Number(tier.games) || 0),
+          correct: sum.correct + (Number(tier.correct) || 0)
+        };
+      }, { games: 0, correct: 0 });
+
+      return totals.games > 0 ? totals.correct / totals.games : null;
+    }
+
+    function getQualityTierTotalGames(stats) {
+      return QUALITY_TIERS.reduce(
+        (sum, tier) => sum + (Number(stats.tiers?.[tier.key]?.games) || 0),
+        0
+      );
+    }
+
+    function getQualityAlgorithmAssignedGames(stats) {
+      const explicit = Number(stats.algorithmTieredGames);
+      if (Number.isFinite(explicit) && explicit > 0) return explicit;
+      return QUALITY_TIERS.reduce(
+        (sum, tier) => sum + (Number(stats.tiers?.[tier.key]?.algorithmGames) || 0),
+        0
+      );
+    }
+
+    function getQualityBalancedRate(stats) {
+      const totalGames = getQualityTierTotalGames(stats);
+      if (totalGames <= 0) return null;
+      return (Number(stats.tiers?.balanced?.games) || 0) / totalGames;
+    }
+
+    function getQualityAlgorithmBalancedRate(stats) {
+      const algorithmGames = getQualityAlgorithmAssignedGames(stats);
+      if (algorithmGames <= 0) return null;
+      const balancedGames = Number.isFinite(Number(stats.algorithmBalancedGames))
+        ? Number(stats.algorithmBalancedGames)
+        : Number(stats.tiers?.balanced?.algorithmGames) || 0;
+      return balancedGames / algorithmGames;
+    }
+
+    function formatQualityRateWithCount(value, numerator, denominator) {
+      return denominator > 0 ? `${formatQualityPct(value)} (${numerator}/${denominator})` : 'n/a';
+    }
+
+    function formatQualityGameCount(stats) {
+      return stats.nScored > 0 ? `${stats.n} (${stats.nScored} scored)` : String(stats.n);
+    }
+
+    function formatQualityMarginError(summary) {
+      return summary.marginMAE === null ? 'n/a' : `${summary.marginMAE.toFixed(1)} pts`;
+    }
+
+    function formatQualityBaseline(stats) {
+      const model = stats.marginModel || {};
+      return model.sampleSize > 0 ? `${Math.max(0, model.baseMargin).toFixed(1)} pts` : 'n/a';
+    }
+
+    function formatQualitySlope(stats) {
+      const model = stats.marginModel || {};
+      return model.sampleSize > 0 ? model.slope.toFixed(2) : 'n/a';
+    }
+
+    function renderQualityScore(el, {
+      score,
+      label,
+      accuracy,
+      imbalancedAccuracy,
+      blowoutAccuracy,
+      detailLines = null
+    }) {
+      if (!el) return;
+
+      if (score === null) {
+        el.classList.add('hidden');
+        el.innerHTML = '';
+        return;
       }
 
-      const spct = v => nScored > 0 ? `${v} (${Math.round(v / nScored * 100)}%)` : 'n/a';
+      el.classList.remove('hidden');
+      const lines = Array.isArray(detailLines)
+        ? detailLines
+        : [
+            ['Overall', formatQualityPct(accuracy)],
+            ['Imbalanced', formatQualityPct(imbalancedAccuracy)],
+            ['Blowout', formatQualityPct(blowoutAccuracy)],
+          ];
+      el.innerHTML = `
+        <div class="quality-score-value">${score}</div>
+        <div class="quality-score-detail">
+          <div class="quality-score-label">${escapeHtml(label)}</div>
+          ${lines.map(([lineLabel, lineValue]) => `
+            <div class="quality-score-label">${escapeHtml(lineLabel)} ${escapeHtml(lineValue)}</div>
+          `).join('')}
+        </div>
+      `;
+    }
 
-      const metrics = [
-        ['Games', nScored > 0 ? `${na} (${nScored} scored)` : String(na)],
-        ['Prediction accuracy', `${Math.round(accuracy * 100)}%`],
-        ['Win-prob Brier score', `${(brierSum / na).toFixed(3)}`],
-        ['Avg provisional imbalance', `${(provImbSum / na).toFixed(2)}`],
-        ['% within 5 pts', within5Pct === null ? 'n/a' : `${Math.round(within5Pct * 100)}%`],
-        ['Blowouts (>8 pts)', spct(blowouts8)],
-        ['Severe blowouts (>10)', spct(blowouts10)],
-        ['Avg excess over 5 pts', nScored > 0 ? `${(excessSum / nScored).toFixed(1)} pts` : 'n/a'],
-        ['Weighted excess cost', nScored > 0 ? `${(weightedExcessSum / nScored).toFixed(2)}` : 'n/a'],
-        ['Mean margin error', marginMAE === null ? 'n/a' : `${marginMAE.toFixed(1)} pts`],
-        ['Baseline gap', marginModel.sampleSize > 0 ? `${marginModel.baseMargin.toFixed(1)} pts` : 'n/a'],
-        ['Pts per strength unit', marginModel.sampleSize > 0 ? marginModel.slope.toFixed(2) : 'n/a'],
-      ];
+    function renderQualityMetrics(el, metrics) {
+      if (!el) return;
 
-      qualityMetricsEl.innerHTML = metrics.map(([label, value]) => `
+      el.innerHTML = metrics.map(([label, value]) => `
         <div class="quality-metric">
           <div class="metric-value">${escapeHtml(value)}</div>
           <div class="metric-label">${escapeHtml(label)}</div>
         </div>
       `).join('');
+    }
 
-      // Rolling 5-game avg point differential chart.
+    function getQualityErrorPointValue(multiplier, marginMAE) {
+      const value = Number(marginMAE) * multiplier;
+      return Number.isFinite(value) ? Math.max(0, value) : null;
+    }
+
+    function formatQualityPointThreshold(value) {
+      return value === null ? 'n/a' : `${value.toFixed(1)} pts`;
+    }
+
+    function formatQualityTierThresholdForModel(tierKey, marginMAE) {
+      const oneError = getQualityErrorPointValue(1, marginMAE);
+      const twoErrors = getQualityErrorPointValue(2, marginMAE);
+      if (oneError === null || twoErrors === null) return 'n/a';
+
+      if (tierKey === 'balanced') {
+        return `<= expected + ${formatQualityPointThreshold(oneError)}`;
+      }
+
+      if (tierKey === 'imbalanced') {
+        return `expected + ${oneError.toFixed(1)}-${twoErrors.toFixed(1)} pts`;
+      }
+
+      return `> expected + ${formatQualityPointThreshold(twoErrors)}`;
+    }
+
+    function getQualityTierThresholdValues(tierKey, marginMAE) {
+      const oneError = getQualityErrorPointValue(1, marginMAE);
+      const twoErrors = getQualityErrorPointValue(2, marginMAE);
+      if (oneError === null || twoErrors === null) return [];
+      return tierKey === 'balanced' ? [oneError] :
+        tierKey === 'imbalanced' ? [oneError, twoErrors] :
+        [twoErrors];
+    }
+
+    function formatQualityTierThresholdFromValues(tierKey, values) {
+      if (!values.length) return 'n/a';
+
+      if (tierKey === 'balanced') {
+        return `<= expected + ${formatQualityPointThreshold(values[0])}`;
+      }
+
+      if (tierKey === 'imbalanced') {
+        return `expected + ${values[0].toFixed(1)}-${values[1].toFixed(1)} pts`;
+      }
+
+      return `> expected + ${formatQualityPointThreshold(values[0])}`;
+    }
+
+    function formatQualityTierDetail(tierKey, playSummary, backSummary) {
+      const predictiveValues = getQualityTierThresholdValues(tierKey, playSummary.marginMAE);
+      const explanatoryValues = getQualityTierThresholdValues(tierKey, backSummary.marginMAE);
+      const comparable = predictiveValues.length > 0 &&
+        predictiveValues.length === explanatoryValues.length;
+      const maxDifference = comparable
+        ? predictiveValues.reduce(
+            (max, value, index) => Math.max(max, Math.abs(value - explanatoryValues[index])),
+            0
+          )
+        : Infinity;
+
+      if (comparable && maxDifference < 1) {
+        const averageValues = predictiveValues.map((value, index) =>
+          (value + explanatoryValues[index]) / 2
+        );
+        return formatQualityTierThresholdFromValues(tierKey, averageValues);
+      }
+
+      return [
+        `Pred: ${formatQualityTierThresholdForModel(tierKey, playSummary.marginMAE)}`,
+        `Expl: ${formatQualityTierThresholdForModel(tierKey, backSummary.marginMAE)}`
+      ].join(' | ');
+    }
+
+    function renderQualityTierTable(playForward, backPrediction, playSummary, backSummary) {
+      if (!qualityTierTableEl) return;
+
+      qualityTierTableEl.classList.remove('hidden');
+      qualityTierTableEl.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Tier</th>
+              <th>Pred. games</th>
+              <th>Pred. acc.</th>
+              <th>Expl. games</th>
+              <th>Expl. acc.</th>
+              <th>Pred. Brier</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${QUALITY_TIERS.map(tier => {
+              const forwardTier = playForward.tiers?.[tier.key] || { games: 0, correct: 0, brierSum: 0 };
+              const backTier = backPrediction.tiers?.[tier.key] || { games: 0, correct: 0 };
+              const forwardAcc = forwardTier.games > 0 ? forwardTier.correct / forwardTier.games : null;
+              const backAcc = backTier.games > 0 ? backTier.correct / backTier.games : null;
+              const forwardBrier = forwardTier.games > 0 ? forwardTier.brierSum / forwardTier.games : null;
+              return `
+                <tr>
+                  <td><div class="tier-label">${escapeHtml(tier.label)}</div><div class="small">${escapeHtml(formatQualityTierDetail(tier.key, playSummary, backSummary))}</div></td>
+                  <td>${forwardTier.games}</td>
+                  <td>${escapeHtml(formatQualityPct(forwardAcc))}</td>
+                  <td>${backTier.games}</td>
+                  <td>${escapeHtml(formatQualityPct(backAcc))}</td>
+                  <td>${escapeHtml(formatQualityDecimal(forwardBrier, 3))}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderQualityChart(playForward, playSummary) {
       if (qualityChart) { qualityChart.destroy(); qualityChart = null; }
-      if (diffs.length) {
-        const windowSize = 5;
-        const labels  = diffs.map((_, i) => String(i + 1));
-        const rolling = diffs.map((_, i) => {
-          const w = diffs.slice(Math.max(0, i - windowSize + 1), i + 1);
-          return Math.round(w.reduce((s, v) => s + v, 0) / w.length * 10) / 10;
+      if (!qualityChartEl || !playForward.diffs?.length) return;
+
+      const windowSize = 5;
+      const labels = playForward.diffs.map((_, i) => String(i + 1));
+      const rolling = playForward.diffs.map((_, i) => {
+        const w = playForward.diffs.slice(Math.max(0, i - windowSize + 1), i + 1);
+        return Math.round(w.reduce((s, v) => s + v, 0) / w.length * 10) / 10;
+      });
+
+      const baselineRaw = Number(playForward.marginModel?.baseMargin);
+      const hasBaseline = Number.isFinite(baselineRaw) && (playForward.marginModel?.sampleSize || 0) > 0;
+      const baseline = hasBaseline ? Math.max(0, baselineRaw) : null;
+      const marginMAE = playSummary.marginMAE;
+      const hasBand = baseline !== null && marginMAE !== null;
+      const bandLow = hasBand ? Math.max(0, baseline - marginMAE) : null;
+      const bandHigh = hasBand ? baseline + marginMAE : null;
+
+      const datasets = [];
+      if (hasBand) {
+        datasets.push({
+          label: 'Model error zone low',
+          data: labels.map(() => bandLow),
+          borderColor: 'rgba(250, 204, 21, 0)',
+          backgroundColor: 'rgba(250, 204, 21, 0)',
+          pointRadius: 0,
+          borderWidth: 0,
+          tension: 0,
         });
-        qualityChart = new Chart(qualityChartEl, {
-          type: 'line',
-          data: {
-            labels,
-            datasets: [{
-              label: `Rolling ${windowSize}-game avg point differential`,
-              data: rolling,
-              borderColor: '#60a5fa',
-              backgroundColor: 'rgba(96, 165, 250, 0.15)',
-              tension: 0.25,
-              pointRadius: 2,
-              fill: true,
-            }],
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-              y: {
-                min: 0,
-                suggestedMax: 10,
-                title: { display: true, text: 'Point differential', color: '#94a3b8' },
-                ticks: { color: '#94a3b8' },
-                grid:  { color: 'rgba(255,255,255,0.06)' },
-              },
-              x: {
-                ticks: { color: '#94a3b8', maxTicksLimit: 12 },
-                grid:  { display: false },
-              },
-            },
-            plugins: {
-              legend: { labels: { color: '#f3f4f6' } },
-              tooltip: { callbacks: { title: (items) => `Game ${items[0].label}` } },
-            },
-          },
+        datasets.push({
+          label: 'Model error zone high',
+          data: labels.map(() => bandHigh),
+          borderColor: 'rgba(250, 204, 21, 0)',
+          backgroundColor: 'rgba(250, 204, 21, 0.14)',
+          pointRadius: 0,
+          borderWidth: 0,
+          fill: '-1',
+          tension: 0,
         });
       }
+      if (baseline !== null) {
+        datasets.push({
+          label: 'Baseline gap',
+          data: labels.map(() => baseline),
+          borderColor: '#facc15',
+          backgroundColor: 'rgba(250, 204, 21, 0)',
+          borderDash: [6, 4],
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0,
+        });
+      }
+      datasets.push({
+        label: `Rolling ${windowSize}-game avg point differential`,
+        data: rolling,
+        borderColor: '#60a5fa',
+        backgroundColor: 'rgba(96, 165, 250, 0.15)',
+        tension: 0.25,
+        pointRadius: 2,
+        fill: false,
+      });
+
+      const suggestedMax = Math.ceil(Math.max(10, ...rolling, bandHigh || 0) + 1);
+      qualityChart = new Chart(qualityChartEl, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              min: 0,
+              suggestedMax,
+              title: { display: true, text: 'Point differential', color: '#94a3b8' },
+              ticks: { color: '#94a3b8' },
+              grid:  { color: 'rgba(255,255,255,0.06)' },
+            },
+            x: {
+              ticks: { color: '#94a3b8', maxTicksLimit: 12 },
+              grid:  { display: false },
+            },
+          },
+          plugins: {
+            legend: {
+              labels: {
+                color: '#f3f4f6',
+                filter: item => !String(item.text || '').startsWith('Model error zone')
+              }
+            },
+            tooltip: {
+              filter: item => !String(item.dataset.label || '').startsWith('Model error zone'),
+              callbacks: { title: (items) => `Game ${items[0].label}` }
+            },
+          },
+        },
+      });
+    }
+
+    function renderQuality() {
+      const analyzable = getAnalyzableGames();
+
+      if (analyzable.length === 0) {
+        qualityPanelsEl?.classList.add('hidden');
+        renderQualityScore(qualityExplanatoryScoreEl, { score: null });
+        renderQualityScore(qualityPredictiveScoreEl, { score: null });
+        if (qualityExplanatoryMetricsEl) qualityExplanatoryMetricsEl.innerHTML = '';
+        if (qualityPredictiveMetricsEl) qualityPredictiveMetricsEl.innerHTML = '';
+        qualityTierTableEl?.classList.add('hidden');
+        qualityEmptyEl.classList.remove('hidden');
+        if (qualityChart) { qualityChart.destroy(); qualityChart = null; }
+        return;
+      }
+
+      qualityEmptyEl.classList.add('hidden');
+      qualityPanelsEl?.classList.remove('hidden');
+      const { playForward, backPrediction } = computeQualityOverview(loadGames());
+      const playSummary = getQualityStatsSummary(playForward);
+      const backSummary = getQualityStatsSummary(backPrediction);
+      const forwardImbalancedAcc = getQualityTierAccuracy(playForward, ['imbalanced']);
+      const backwardImbalancedAcc = getQualityTierAccuracy(backPrediction, ['imbalanced']);
+      const forwardBlowoutAcc = getQualityTierAccuracy(playForward, ['blowout']);
+      const backwardBlowoutAcc = getQualityTierAccuracy(backPrediction, ['blowout']);
+      const forwardBalancedRate = getQualityBalancedRate(playForward);
+      const forwardAlgorithmBalancedRate = getQualityAlgorithmBalancedRate(playForward);
+      const forwardTierTotalGames = getQualityTierTotalGames(playForward);
+      const forwardBalancedGames = Number(playForward.tiers?.balanced?.games) || 0;
+      const forwardAlgorithmGames = getQualityAlgorithmAssignedGames(playForward);
+      const forwardAlgorithmBalancedGames = Number.isFinite(Number(playForward.algorithmBalancedGames))
+        ? Number(playForward.algorithmBalancedGames)
+        : Number(playForward.tiers?.balanced?.algorithmGames) || 0;
+      const forwardAccuracyGap = getQualityAccuracyGapFromEven(playSummary.accuracy);
+
+      const explanatoryScore = computeQualityPanelScore({
+        accuracy: backSummary.accuracy,
+        imbalancedAccuracy: backwardImbalancedAcc,
+        blowoutAccuracy: backwardBlowoutAcc,
+      });
+      const predictiveScore = computePredictiveQualityScore({
+        balancedRate: forwardBalancedRate,
+        algorithmBalancedRate: forwardAlgorithmBalancedRate,
+        imbalancedAccuracy: forwardImbalancedAcc,
+        blowoutAccuracy: forwardBlowoutAcc,
+      });
+
+      renderQualityScore(qualityExplanatoryScoreEl, {
+        score: explanatoryScore,
+        label: 'Explanatory quality',
+        accuracy: backSummary.accuracy,
+        imbalancedAccuracy: backwardImbalancedAcc,
+        blowoutAccuracy: backwardBlowoutAcc,
+      });
+      renderQualityScore(qualityPredictiveScoreEl, {
+        score: predictiveScore,
+        label: 'Predictive quality',
+        detailLines: [
+          ['Algorithm sample', forwardAlgorithmGames > 0 ? `${forwardAlgorithmGames} games` : 'none'],
+          ['Algorithm balanced', formatQualityRateWithCount(
+            forwardAlgorithmBalancedRate,
+            forwardAlgorithmBalancedGames,
+            forwardAlgorithmGames
+          )],
+          ['All balanced', formatQualityRateWithCount(
+            forwardBalancedRate,
+            forwardBalancedGames,
+            forwardTierTotalGames
+          )],
+          ['Winner acc. gap', formatQualityPctPoints(forwardAccuracyGap)],
+        ],
+      });
+
+      renderQualityMetrics(qualityExplanatoryMetricsEl, [
+        ['Games', formatQualityGameCount(backPrediction)],
+        ['Accuracy', formatQualityPct(backSummary.accuracy)],
+        ['Imbalanced acc.', formatQualityPct(backwardImbalancedAcc)],
+        ['Blowout acc.', formatQualityPct(backwardBlowoutAcc)],
+        ['Brier score', formatQualityDecimal(backSummary.brier, 3)],
+        ['Margin error', formatQualityMarginError(backSummary)],
+        ['Baseline gap', formatQualityBaseline(backPrediction)],
+        ['Pts per strength unit', formatQualitySlope(backPrediction)],
+      ]);
+
+      renderQualityMetrics(qualityPredictiveMetricsEl, [
+        ['Games', formatQualityGameCount(playForward)],
+        ['Balanced games', formatQualityRateWithCount(forwardBalancedRate, forwardBalancedGames, forwardTierTotalGames)],
+        ['Algorithm balanced', formatQualityRateWithCount(
+          forwardAlgorithmBalancedRate,
+          forwardAlgorithmBalancedGames,
+          forwardAlgorithmGames
+        )],
+        ['Winner acc. gap', formatQualityPctPoints(forwardAccuracyGap)],
+        ['Imbalanced acc.', formatQualityPct(forwardImbalancedAcc)],
+        ['Blowout acc.', formatQualityPct(forwardBlowoutAcc)],
+        ['Brier score', formatQualityDecimal(playSummary.brier, 3)],
+        ['Margin error', formatQualityMarginError(playSummary)],
+        ['Baseline gap', formatQualityBaseline(playForward)],
+        ['Pts per strength unit', formatQualitySlope(playForward)],
+      ]);
+
+      renderQualityTierTable(playForward, backPrediction, playSummary, backSummary);
+      renderQualityChart(playForward, playSummary);
     }
 
     function renderAll() {
@@ -2804,6 +4418,8 @@
       updateServerSyncButton();
       if (activeStatsTab === 'seasonMovers') {
         renderSeasonMovers();
+      } else if (activeStatsTab === 'awards') {
+        renderAwards();
       }
     }
 
@@ -2854,6 +4470,15 @@
             scoreBlue: typeof game.scoreBlue === 'undefined' ? null : game.scoreBlue,
             winner: game.winner === 'blue' ? 'blue' : 'red',
             isLeagueGame: Boolean(game.isLeagueGame),
+            createdAt: typeof game.createdAt === 'undefined' ? undefined : game.createdAt,
+            assignmentId: typeof game.assignmentId === 'string' ? game.assignmentId : undefined,
+            assignmentSource: ['algorithm', 'modified', 'manual'].includes(game.assignmentSource)
+              ? game.assignmentSource
+              : undefined,
+            assignmentVersion: typeof game.assignmentVersion === 'string' ? game.assignmentVersion : undefined,
+            predictedAtAssignment: typeof game.predictedAtAssignment === 'number'
+              ? game.predictedAtAssignment
+              : null,
             leagueOpponent: game.isLeagueGame
               ? {
                   id: game.leagueOpponent?.id || LEAGUE_TEAM_ID,
@@ -2878,6 +4503,11 @@
           if (TEAM_COLORS.includes(game.displayLoserColor)) {
             normalized.displayLoserColor = game.displayLoserColor;
           }
+
+          if (typeof normalized.createdAt === 'undefined') delete normalized.createdAt;
+          if (typeof normalized.assignmentId === 'undefined') delete normalized.assignmentId;
+          if (typeof normalized.assignmentSource === 'undefined') delete normalized.assignmentSource;
+          if (typeof normalized.assignmentVersion === 'undefined') delete normalized.assignmentVersion;
 
           return normalized;
         });
@@ -3217,8 +4847,9 @@
       defaultDatabaseMeta = await fetchDefaultDatabase();
       const seasonDateChanged = maybeSyncSeasonStartDateFromServerMeta(defaultDatabaseMeta);
       updateServerStatsDate(defaultDatabaseMeta);
-      if (seasonDateChanged && activeStatsTab === 'seasonMovers') {
-        renderSeasonMovers();
+      if (seasonDateChanged) {
+        if (activeStatsTab === 'seasonMovers') renderSeasonMovers();
+        if (activeStatsTab === 'awards') renderAwards();
       }
       return defaultDatabaseMeta;
     }
@@ -3326,6 +4957,7 @@
 
     overallStandingsTabButtonEl.addEventListener('click', () => setStatsTab('overall'));
     seasonMoversTabButtonEl.addEventListener('click', () => setStatsTab('seasonMovers'));
+    awardsTabButtonEl.addEventListener('click', () => setStatsTab('awards'));
 
     applySeasonStartDateButtonEl.addEventListener('click', () => {
       const date = seasonStartDateInputEl.value;

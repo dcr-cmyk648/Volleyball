@@ -1310,8 +1310,10 @@
       formatDisplayedRating,
       formatPublicDisplayRating,
       getPublicRatingDisplayScale,
+      getLeagueContext,
       LEAGUE_TEAM_ID,
       LEAGUE_TEAM_NAME,
+      LEAGUE_TEAM_MEMBER_COUNT,
     } from './ratings.js';
 
     const PLAYER_STORAGE_KEY = 'gameDayPlayers';
@@ -1694,11 +1696,16 @@
       return gameConfidence * conservativeRaw;
     }
 
+    function isOverallStandingsEligible(player) {
+      return Boolean(player?.isLeagueContext) ||
+        Number(player?.games) >= OVERALL_STANDINGS_MIN_GAMES;
+    }
+
     function getSortedStandingsRows(result) {
       const cfg = SORT_CONFIGS[activeSortBy] || null;
 
       return result.standings
-        .filter(player => player.games >= OVERALL_STANDINGS_MIN_GAMES)
+        .filter(isOverallStandingsEligible)
         .map(player => ({
           ...player,
           experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player)
@@ -1795,7 +1802,7 @@
     // Ranks players by the leaderboard formula (always rating-based, ignores activeSortBy).
     function getRatingBasedRankMap(result) {
       const rows = result.standings
-        .filter(p => p.games >= OVERALL_STANDINGS_MIN_GAMES)
+        .filter(isOverallStandingsEligible)
         .map(p => ({ ...p, experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(p) }))
         .sort((a, b) => {
           if (b.experimentalLeaderboardRaw !== a.experimentalLeaderboardRaw)
@@ -3065,6 +3072,8 @@
       const attendanceRate = stat => globalPlayDates.length > 0 ? stat.distinctDates / globalPlayDates.length : null;
       const narrowWinRate = stat => stat.scoredWins > 0 ? stat.narrowWins / stat.scoredWins : null;
       const narrowLossRate = stat => stat.scoredLosses > 0 ? stat.narrowLosses / stat.scoredLosses : null;
+      const narrowWinGameRate = stat => stat.scoredGames > 0 ? stat.narrowWins / stat.scoredGames : null;
+      const narrowLossGameRate = stat => stat.scoredGames > 0 ? stat.narrowLosses / stat.scoredGames : null;
       const underdogWinRate = stat => stat.underdogGames > 0 ? stat.underdogWins / stat.underdogGames : null;
       const nearEvenWinRate = stat => stat.nearEvenGames > 0 ? stat.nearEvenWins / stat.nearEvenGames : null;
       const teammateDeltaAvg = stat => stat.teammateDeltaN > 0 ? stat.teammateDeltaSum / stat.teammateDeltaN : null;
@@ -3299,23 +3308,23 @@
         },
         {
           title: 'Houdini',
-          candidates: rankAwardPlayers(players, narrowWinRate, {
-            filter: stat => hasAwardGames(stat) && stat.scoredWins >= AWARD_MIN_GAMES && stat.narrowWins > 0,
-            statLine: stat => `highest narrow-win rate: ${formatAwardPercent(narrowWinRate(stat))}`
+          candidates: rankAwardPlayers(players, narrowWinGameRate, {
+            filter: stat => stat.scoredGames >= AWARD_MIN_GAMES && stat.narrowWins > 0,
+            statLine: stat => `highest narrow-win rate out of all games: ${formatAwardPercent(narrowWinGameRate(stat))}`
           })
         },
         {
           title: 'Heartbreaker',
-          candidates: rankAwardPlayers(players, narrowLossRate, {
-            filter: stat => hasAwardGames(stat) && stat.scoredLosses >= AWARD_MIN_GAMES && stat.narrowLosses > 0,
-            statLine: stat => `highest narrow-loss rate: ${formatAwardPercent(narrowLossRate(stat))}`
+          candidates: rankAwardPlayers(players, narrowLossGameRate, {
+            filter: stat => stat.scoredGames >= AWARD_MIN_GAMES && stat.narrowLosses > 0,
+            statLine: stat => `highest narrow-loss rate out of all games: ${formatAwardPercent(narrowLossGameRate(stat))}`
           })
         },
         {
           title: 'Missed It By...',
           candidates: rankAwardPlayers(players, closeLossRate, {
             filter: stat => hasAwardGames(stat) && stat.scoredLosses >= AWARD_MIN_GAMES && stat.closeLosses > 0,
-            statLine: stat => `highest close-loss rate: ${formatAwardPercent(closeLossRate(stat))}`
+            statLine: stat => `highest close-loss rate out of losses: ${formatAwardPercent(closeLossRate(stat))}`
           })
         },
         {
@@ -3769,12 +3778,89 @@
     }
 
     function getLeagueContextName(game, entry = null) {
-      if (entry?.leagueContext?.name) return entry.leagueContext.name;
       if (!game?.isLeagueGame) return '';
+      const context = getHistoryLeagueContext(game, entry);
+      if (context?.name) return context.name;
 
       const level = game.level === 'intermediate' ? 'Intermediate' : 'Rec';
       const court = getCourtTypeLabel(game);
       return `${level} League ${court}`;
+    }
+
+    function getHistoryLeagueContext(game, entry = null) {
+      if (entry?.leagueContext?.id) return entry.leagueContext;
+      if (!game?.isLeagueGame) return null;
+
+      return getLeagueContext({
+        isLeagueGame: true,
+        level: game.level,
+        courtType: game.courtType
+      }) || null;
+    }
+
+    function getHistoryLeagueContextId(game, entry = null) {
+      return getHistoryLeagueContext(game, entry)?.id || null;
+    }
+
+    function getLeagueContextMemberIds(contextId) {
+      if (!contextId) return [];
+      return Array.from(
+        { length: LEAGUE_TEAM_MEMBER_COUNT },
+        (_, i) => `${contextId}_${i + 1}`
+      );
+    }
+
+    function getLeagueAggregateRawOrdinal(memberRawById, contextId) {
+      const memberIds = getLeagueContextMemberIds(contextId);
+      if (!memberIds.length) return 0;
+
+      const total = memberIds.reduce((sum, id) => {
+        const raw = Number(memberRawById[id]);
+        return sum + (Number.isFinite(raw) ? raw : 0);
+      }, 0);
+
+      return total / memberIds.length;
+    }
+
+    function getHistoryLeagueRatingMap(history) {
+      const memberRawById = {};
+      const contextGameCounts = {};
+      const ratingMap = new Map();
+
+      history.forEach(entry => {
+        const game = entry.game || {};
+        if (!game.isLeagueGame) return;
+
+        const contextId = getHistoryLeagueContextId(game, entry);
+        if (!contextId) return;
+
+        const setMemberRaw = player => {
+          const raw = Number(player?.rating);
+          if (player?.id && Number.isFinite(raw)) {
+            memberRawById[String(player.id)] = raw;
+          }
+        };
+
+        (entry.before.blue || []).forEach(setMemberRaw);
+
+        const beforeGames = contextGameCounts[contextId] || 0;
+        const beforeRaw = getLeagueAggregateRawOrdinal(memberRawById, contextId);
+
+        (entry.after.blue || []).forEach(setMemberRaw);
+
+        const afterGames = beforeGames + 1;
+        const afterRaw = getLeagueAggregateRawOrdinal(memberRawById, contextId);
+
+        ratingMap.set(entry, {
+          beforeRaw,
+          afterRaw,
+          beforeGames,
+          afterGames
+        });
+        contextGameCounts[contextId] = afterGames;
+      });
+
+      return ratingMap;
     }
 
     function getDisplayColorForSide(game, side) {
@@ -3859,7 +3945,13 @@
 
         (entry.before.red || []).forEach(registerPlayer);
 
-        if (!game.isLeagueGame) {
+        if (game.isLeagueGame) {
+          const contextId = getHistoryLeagueContextId(game, entry);
+          if (contextId) {
+            const before = counts[contextId] || 0;
+            gameCounts.set(contextId, { before, after: before + 1 });
+          }
+        } else {
           (entry.before.blue || []).forEach(registerPlayer);
         }
 
@@ -3983,7 +4075,7 @@
 
       const ratingRaw = getExperimentalLeaderboardRaw(player);
       const ratingText = formatPublicRating(ratingRaw);
-      const eligibilityText = player.games >= OVERALL_STANDINGS_MIN_GAMES
+      const eligibilityText = isOverallStandingsEligible(player)
         ? 'Shown in Overall Standings.'
         : `Needs ${OVERALL_STANDINGS_MIN_GAMES} games to appear in Overall Standings.`;
 
@@ -4084,6 +4176,7 @@
       const historyData = [...result.history].reverse();
       const powerMap = getHistoryPowerMap(result.history);
       const gameCountMap = getHistoryGameCountMap(result.history);
+      const leagueRatingMap = getHistoryLeagueRatingMap(result.history);
 
       historyList.innerHTML = '';
 
@@ -4120,7 +4213,28 @@
         }).join(', ') || '(none)';
 
         const blueNames = game.isLeagueGame
-          ? `${leagueContextName} (${formatPublicRating(averageRawOrdinal(entry.before.blue))} → ${formatPublicRating(averageRawOrdinal(entry.after.blue))})`
+          ? (() => {
+              const leagueRatings = leagueRatingMap.get(entry);
+              const counts = getHistoryPlayerCounts(
+                gameCountMap,
+                entry,
+                getHistoryLeagueContextId(game, entry)
+              );
+              const beforeRaw = typeof leagueRatings?.beforeRaw === 'number'
+                ? leagueRatings.beforeRaw
+                : averageRawOrdinal(entry.before.blue);
+              const afterRaw = typeof leagueRatings?.afterRaw === 'number'
+                ? leagueRatings.afterRaw
+                : averageRawOrdinal(entry.after.blue);
+              const beforeGames = typeof leagueRatings?.beforeGames === 'number'
+                ? leagueRatings.beforeGames
+                : counts.before;
+              const afterGames = typeof leagueRatings?.afterGames === 'number'
+                ? leagueRatings.afterGames
+                : counts.after;
+
+              return `${leagueContextName} (${formatHistoryPlayerRating(beforeRaw, beforeGames)} → ${formatHistoryPlayerRating(afterRaw, afterGames)})`;
+            })()
           : entry.before.blue.map((p, i) => {
               const after = entry.after.blue[i];
               const name =

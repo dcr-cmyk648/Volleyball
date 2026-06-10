@@ -1041,6 +1041,7 @@
     getScoreMarginFactor,
     calibrateMarginModel,
     predictExpectedMargin,
+    getLeagueContext,
     LEAGUE_TEAM_ID,
     LEAGUE_TEAM_NAME,
     LEAGUE_TEAM_SIZE,
@@ -1063,6 +1064,8 @@
   const PROV_PENALTY   = 0.03;
   const SAME_SIZE_MATCHUP_FAIRNESS_TOLERANCE = 0.04;
   const SAME_SIZE_MATCHUP_SCORE_BONUS = 30;
+  const OVERALL_STANDINGS_CONFIDENCE_GAMES = 22;
+  const OVERALL_STANDINGS_CONFIDENCE_POWER = 1.35;
 
   const DEFAULT_SEASON_LENGTH_MONTHS = 6;
   const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
@@ -1608,6 +1611,68 @@
 
   function isLeagueGameMode() {
     return getLeagueLevel() !== '';
+  }
+
+  function getCurrentLeagueContext() {
+    if (!isLeagueGameMode()) return null;
+
+    return getLeagueContext({
+      isLeagueGame: true,
+      level: getLeagueLevel(),
+      courtType: getCourtType()
+    });
+  }
+
+  function getCurrentLeagueTeamName() {
+    return getCurrentLeagueContext()?.name || LEAGUE_TEAM_NAME;
+  }
+
+  function getCurrentLeagueTeam(ratingData) {
+    const context = getCurrentLeagueContext();
+    if (!context) return ratingData?.leagueTeam || null;
+
+    return (ratingData?.leagueTeams || []).find(team =>
+      String(team.id) === String(context.id) ||
+      String(team.leagueContext?.key || '') === String(context.key)
+    ) || ratingData?.leagueTeam || null;
+  }
+
+  function getOverallStandingsRawOrdinal(rawOrdinal, games) {
+    const raw = Number(rawOrdinal);
+    if (!Number.isFinite(raw)) return null;
+
+    const safeGames = Math.max(0, Number(games) || 0);
+    const confidence = Math.pow(
+      safeGames / (safeGames + OVERALL_STANDINGS_CONFIDENCE_GAMES),
+      OVERALL_STANDINGS_CONFIDENCE_POWER
+    );
+    return raw * confidence;
+  }
+
+  function getLeagueStandingsRawOrdinal(league) {
+    if (!league) return null;
+
+    const rawOrdinal = typeof league.rawOrdinal === 'number'
+      ? league.rawOrdinal
+      : league.rating;
+
+    return getOverallStandingsRawOrdinal(rawOrdinal, league.games);
+  }
+
+  function getRecordLeagueContext(record) {
+    if (!record?.isLeagueGame) return null;
+
+    return getLeagueContext({
+      isLeagueGame: true,
+      level: record.level,
+      courtType: record.courtType
+    });
+  }
+
+  function getRecordLeagueOpponentName(record) {
+    return record?.leagueOpponent?.name ||
+      getRecordLeagueContext(record)?.name ||
+      LEAGUE_TEAM_NAME;
   }
 
   function getTeamCount() {
@@ -2649,7 +2714,7 @@
     if (isLeagueGameMode()) {
       const redTeam = getTeamPlayers('red');
       selectedCountEl.textContent =
-        `Selected players: ${selected.length}\nRed: ${redTeam.length} | League Team`;
+        `Selected players: ${selected.length}\nRed: ${redTeam.length} | ${getCurrentLeagueTeamName()}`;
       return;
     }
 
@@ -2673,19 +2738,21 @@
       }
 
       const redAvg = getAverageRawOrdinal(redTeam, ratingData.ratingMap);
-      const league = ratingData.leagueTeam;
-      const leagueRawOrdinal =
-        typeof league.rawOrdinal === 'number'
-          ? league.rawOrdinal
-          : league.rating;
+      const league = getCurrentLeagueTeam(ratingData);
+      const leagueStandingsRawOrdinal = getLeagueStandingsRawOrdinal(league);
+      const leagueRatingText = Number.isFinite(leagueStandingsRawOrdinal)
+        ? formatPlayerPublicRating(leagueStandingsRawOrdinal)
+        : 'N/A';
+      const leagueMuText = typeof league?.mu === 'number' ? formatMu(league.mu) : 'N/A';
+      const leagueSigmaText = typeof league?.sigma === 'number' ? formatSigma(league.sigma) : 'N/A';
 
       const lines = [
         `${getLeagueLevelLabel()} league mode is on.`,
         `Court type: ${getCourtTypeLabel()}`,
         `Red average Rating: ${formatPlayerPublicRating(redAvg)}`,
-        `Blue Rating: ${formatPlayerPublicRating(leagueRawOrdinal)} (${LEAGUE_TEAM_NAME})`,
-        `Blue mu: ${formatMu(league.mu)}`,
-        `Blue sigma: ${formatSigma(league.sigma)}`
+        `Blue Rating: ${leagueRatingText} (${getCurrentLeagueTeamName()})`,
+        `Blue mu: ${leagueMuText}`,
+        `Blue sigma: ${leagueSigmaText}`
       ];
 
       balanceStatusEl.textContent = lines.join('\n');
@@ -2936,8 +3003,8 @@
       isLeagueGame,
       leagueOpponent: isLeagueGame
         ? {
-            id: LEAGUE_TEAM_ID,
-            name: LEAGUE_TEAM_NAME,
+            id: getCurrentLeagueContext()?.id || LEAGUE_TEAM_ID,
+            name: getCurrentLeagueTeamName(),
             size: LEAGUE_TEAM_SIZE
           }
         : null
@@ -2988,6 +3055,14 @@
     return `${label}: ${names}`;
   }
 
+  function formatRecordTeamForConfirmation(record, side, label, playersList) {
+    if (record?.isLeagueGame && side === 'blue') {
+      return `${label}: ${getRecordLeagueOpponentName(record)}`;
+    }
+
+    return formatTeamForConfirmation(label, playersList);
+  }
+
   function getRecordScoreLine(record) {
     const winnerSide = getRecordWinnerSide(record);
     const loserSide = getRecordLoserSide(record);
@@ -3032,10 +3107,8 @@
       `Loser: ${loserLabel}`,
       getRecordScoreLine(record),
       '',
-      formatTeamForConfirmation(winnerLabel, winnerPlayers),
-      record.isLeagueGame && loserSide === 'blue'
-        ? `${loserLabel}: ${LEAGUE_TEAM_NAME}`
-        : formatTeamForConfirmation(loserLabel, loserPlayers),
+      formatRecordTeamForConfirmation(record, winnerSide, winnerLabel, winnerPlayers),
+      formatRecordTeamForConfirmation(record, loserSide, loserLabel, loserPlayers),
       '',
       ...contextLines
     ].filter(line => line !== null && typeof line !== 'undefined').join('\n');
@@ -3251,12 +3324,13 @@
       rosterLine.className = 'summary-roster';
 
       if (isLeagueGameMode() && color === 'blue') {
-        const league = ratingData?.leagueTeam;
-        const leagueRawOrdinal = typeof league?.rawOrdinal === 'number'
-          ? league.rawOrdinal
-          : league?.rating;
-        ratingLine.textContent = `Strength rating: ${formatTeamStrengthRating(leagueRawOrdinal)}`;
-        rosterLine.textContent = `${LEAGUE_TEAM_NAME} (${LEAGUE_TEAM_SIZE} players)`;
+        const league = getCurrentLeagueTeam(ratingData);
+        const leagueStandingsRawOrdinal = getLeagueStandingsRawOrdinal(league);
+        const leagueRatingText = Number.isFinite(leagueStandingsRawOrdinal)
+          ? formatPlayerPublicRating(leagueStandingsRawOrdinal)
+          : 'N/A';
+        ratingLine.textContent = `Rating: ${leagueRatingText}`;
+        rosterLine.textContent = `${getCurrentLeagueTeamName()} (${LEAGUE_TEAM_SIZE} players)`;
         el.appendChild(ratingLine);
         el.appendChild(rosterLine);
         return;
@@ -3353,8 +3427,11 @@
     const loserPlayers = getRecordPlayersForSide(latest, loserSide);
 
     const marginFactor = getScoreMarginFactor(latest.scoreRed, latest.scoreBlue);
-    const blueLine = isLeagueGame && loserSide === 'blue'
-      ? `${loserLabel}: ${LEAGUE_TEAM_NAME}`
+    const winnerTeamLine = isLeagueGame && winnerSide === 'blue'
+      ? `${winnerLabel}: ${getRecordLeagueOpponentName(latest)}`
+      : `${winnerLabel}: ${winnerPlayers.map(player => player.name).join(', ') || '(none)'}`;
+    const loserTeamLine = isLeagueGame && loserSide === 'blue'
+      ? `${loserLabel}: ${getRecordLeagueOpponentName(latest)}`
       : `${loserLabel}: ${loserPlayers.map(player => player.name).join(', ') || '(none)'}`;
 
     const levelText = isLeagueGame
@@ -3396,8 +3473,8 @@
       isLeagueGame ? 'Game type: League game' : 'Game type: Standard game',
       levelText,
       courtText,
-      `${winnerLabel}: ${winnerPlayers.map(player => player.name).join(', ') || '(none)'}`,
-      blueLine,
+      winnerTeamLine,
+      loserTeamLine,
       getRecordScoreLine(latest),
       `Margin factor: ${marginFactor.toFixed(2)}x`
     ].join('\n');
@@ -3979,6 +4056,7 @@
     clearError();
     savePageState();
     updateBalanceStatus();
+    updateTeamSummaries();
   });
 
   openAddPlayerDialogButtonEl.addEventListener('click', () => {

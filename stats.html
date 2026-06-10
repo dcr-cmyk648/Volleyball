@@ -813,6 +813,25 @@
       gap: 12px;
     }
 
+    .awards-subsection {
+      margin-top: 18px;
+    }
+
+    .awards-subheading {
+      margin: 0 0 10px;
+      font-size: 14px;
+      font-weight: 900;
+      color: var(--text);
+    }
+
+    .group-awards-grid {
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+
+    .group-awards-grid .award-player {
+      font-size: 16px;
+    }
+
     .award-badge {
       --award-accent: #93c5fd;
       --award-accent-2: var(--award-accent);
@@ -1205,6 +1224,10 @@
       <section id="awardsPanel" class="tab-panel hidden">
         <div id="awardsSummary" class="status awards-summary">Awards will appear once games are loaded.</div>
         <div id="awardsGrid" class="awards-grid"></div>
+        <section id="groupAwardsSection" class="awards-subsection hidden" aria-labelledby="groupAwardsHeading">
+          <h3 id="groupAwardsHeading" class="awards-subheading">Pair And Team Awards</h3>
+          <div id="groupAwardsGrid" class="awards-grid group-awards-grid"></div>
+        </section>
       </section>
     </div>
 
@@ -1285,6 +1308,8 @@
       predictExpectedMargin,
       getGamesSortedOldestFirst,
       formatDisplayedRating,
+      formatPublicDisplayRating,
+      getPublicRatingDisplayScale,
       LEAGUE_TEAM_ID,
       LEAGUE_TEAM_NAME,
     } from './ratings.js';
@@ -1371,6 +1396,8 @@
     const awardsPanelEl = document.getElementById('awardsPanel');
     const awardsSummaryEl = document.getElementById('awardsSummary');
     const awardsGridEl = document.getElementById('awardsGrid');
+    const groupAwardsSectionEl = document.getElementById('groupAwardsSection');
+    const groupAwardsGridEl = document.getElementById('groupAwardsGrid');
     const seasonStartDateInputEl = document.getElementById('seasonStartDateInput');
     const applySeasonStartDateButtonEl = document.getElementById('applySeasonStartDateButton');
     const seasonMoversSummaryEl = document.getElementById('seasonMoversSummary');
@@ -1391,6 +1418,8 @@
     let defaultDatabaseDialogMode = 'prompt';
     let defaultDatabaseDialogRequestInFlight = false;
     let isLoadingDefaultDatabase = false;
+    let publicRatingScaleCacheKey = '';
+    let publicRatingScaleCache = null;
     let activeStatsTab = 'seasonMovers';
     let activeSortBy = null;
     let activeSeasonStartDate = '';
@@ -1478,6 +1507,59 @@
           seasonalTaperDays: getSeasonalTaperDays()
         }
       });
+    }
+
+    function getPublicRatingScaleCacheKey(players, games) {
+      const playerKey = players
+        .map(player => `${player.id}:${player.name}`)
+        .join('|');
+      const gameKey = games
+        .map(game => [
+          game.id,
+          game.date,
+          game.winner,
+          game.scoreRed,
+          game.scoreBlue,
+          game.isLeagueGame ? 1 : 0,
+          game.createdAt || ''
+        ].join(':'))
+        .join('|');
+
+      return [
+        VERSION,
+        getSeasonalTaperDays(),
+        isIncludeLeagueGamesMode() ? 1 : 0,
+        playerKey,
+        gameKey
+      ].join('||');
+    }
+
+    function getPublicRatingScale() {
+      const players = loadPlayers();
+      const games = loadGames();
+      const cacheKey = getPublicRatingScaleCacheKey(players, games);
+
+      if (cacheKey === publicRatingScaleCacheKey) {
+        return publicRatingScaleCache;
+      }
+
+      publicRatingScaleCacheKey = cacheKey;
+      publicRatingScaleCache = getPublicRatingDisplayScale({
+        players,
+        games,
+        seasonal: true,
+        volleyballAdjusted: false,
+        includeLeagueGames: isIncludeLeagueGamesMode(),
+        options: {
+          seasonalTaperDays: getSeasonalTaperDays()
+        }
+      });
+
+      return publicRatingScaleCache;
+    }
+
+    function formatPublicRating(rawOrdinal) {
+      return formatPublicDisplayRating(rawOrdinal, getPublicRatingScale());
     }
 
     function clamp(value, min, max) {
@@ -1643,7 +1725,7 @@
 
     function getSortedFieldDisplay(player) {
       const cfg = SORT_CONFIGS[activeSortBy];
-      if (!cfg) return formatDisplayedRating(player.experimentalLeaderboardRaw);
+      if (!cfg) return formatPublicRating(player.experimentalLeaderboardRaw);
       const val = player[cfg.field];
       if (activeSortBy === 'winrate') return `${Math.round((Number(val) || 0) * 100)}%`;
       if (activeSortBy === 'mu' || activeSortBy === 'sigma' || activeSortBy === 'rawOrdinal') {
@@ -2279,6 +2361,15 @@
         closeGames: 0,
         closeWins: 0,
         closeLosses: 0,
+        overtimeGames: 0,
+        overtimeWins: 0,
+        twoPointWins: 0,
+        smallBallGames: 0,
+        smallBallWins: 0,
+        bigSquadGames: 0,
+        bigSquadWins: 0,
+        shortTeamGames: 0,
+        shortTeamWins: 0,
         narrowWins: 0,
         narrowLosses: 0,
         blowoutGames: 0,
@@ -2295,6 +2386,11 @@
         nearEvenWins: 0,
         postLossGames: 0,
         postLossWins: 0,
+        openingGameGames: 0,
+        openingGameWins: 0,
+        lastGameOfDateGames: 0,
+        lastGameOfDateWins: 0,
+        positiveRatingGames: 0,
         streakStopperGames: 0,
         streakStopperWins: 0,
         expectedWins: 0,
@@ -2303,6 +2399,10 @@
         maxGamesInDay: 0,
         teammates: new Set(),
         winningTeammates: new Set(),
+        firstTimeTeammateWins: 0,
+        chemistryScore: 0,
+        chemistryPartnerCount: 0,
+        chemistryPairGames: 0,
         opponents: new Set(),
         teammateSlots: 0,
         teammateDeltaSum: 0,
@@ -2322,11 +2422,15 @@
         sessionRatingGames: new Map(),
         bestSessionRatingGain: 0,
         bestSessionRatingGainGames: 0,
+        debutSessionDate: '',
+        debutSessionRatingGain: 0,
+        debutSessionGames: 0,
         effectiveCarryScore: 0,
         carryGames: 0,
         standingGames: 0,
         standingWins: 0,
         distinctDates: 0,
+        encoreSessions: 0,
         longestDateStreak: 0
       };
     }
@@ -2455,7 +2559,24 @@
           ids,
           games: 0,
           wins: 0,
+          expectedWins: 0,
           winsById: { [ids[0]]: 0, [ids[1]]: 0 }
+        });
+      }
+      return map.get(key);
+    }
+
+    function getAwardTrioStat(map, idA, idB, idC) {
+      const key = [String(idA), String(idB), String(idC)]
+        .sort((a, b) => a.localeCompare(b))
+        .join('|');
+      if (!map.has(key)) {
+        const ids = key.split('|');
+        map.set(key, {
+          key,
+          ids,
+          games: 0,
+          wins: 0
         });
       }
       return map.get(key);
@@ -2480,12 +2601,43 @@
       const playerMap = new Map(players.map(player => [String(player.id), player]));
       const playerStats = new Map(players.map(player => [String(player.id), createAwardPlayerStat(player)]));
       const teammatePairs = new Map();
+      const teammateTrios = new Map();
       const rivalryPairs = new Map();
+      const fullLineupUpsets = [];
       const lastWonById = new Map();
       const awardCarryMap = {};
       const globalPlayDates = [...new Set(
         getGamesSortedOldestFirst(games).map(getGameDateValue).filter(isValidDateString)
       )].sort();
+      const firstGameOfDateByPlayer = new Map();
+      getGamesSortedOldestFirst(games).forEach(game => {
+        const date = getGameDateValue(game);
+        if (!isValidDateString(date) || (game?.winner !== 'red' && game?.winner !== 'blue')) return;
+
+        const participants = [...(game.redTeam || [])];
+        if (!game.isLeagueGame) participants.push(...(game.blueTeam || []));
+
+        participants.forEach(player => {
+          if (!player?.id) return;
+          const key = `${String(player.id)}|${date}`;
+          if (!firstGameOfDateByPlayer.has(key)) {
+            firstGameOfDateByPlayer.set(key, String(game.id));
+          }
+        });
+      });
+      const lastGameOfDateByPlayer = new Map();
+      getGamesSortedOldestFirst(games).forEach(game => {
+        const date = getGameDateValue(game);
+        if (!isValidDateString(date) || (game?.winner !== 'red' && game?.winner !== 'blue')) return;
+
+        const participants = [...(game.redTeam || [])];
+        if (!game.isLeagueGame) participants.push(...(game.blueTeam || []));
+
+        participants.forEach(player => {
+          if (!player?.id) return;
+          lastGameOfDateByPlayer.set(`${String(player.id)}|${date}`, String(game.id));
+        });
+      });
 
       result.standings.forEach(player => {
         if (!playerMap.has(String(player.id))) return;
@@ -2539,6 +2691,23 @@
             recordAwardRating(stat, player.rating);
             recordAwardRating(stat, afterEntries[index]?.rating);
             recordAwardSessionRatingDelta(stat, date, player.rating, afterEntries[index]?.rating);
+            const ratingBefore = Number(player.rating);
+            const ratingAfter = Number(afterEntries[index]?.rating);
+
+            if (
+              isValidDateString(date) &&
+              Number.isFinite(ratingBefore) &&
+              Number.isFinite(ratingAfter)
+            ) {
+              if (!stat.debutSessionDate) stat.debutSessionDate = date;
+              if (stat.debutSessionDate === date) {
+                stat.debutSessionRatingGain += ratingAfter - ratingBefore;
+                stat.debutSessionGames += 1;
+              }
+              if (ratingAfter > ratingBefore) {
+                stat.positiveRatingGames += 1;
+              }
+            }
 
             stat.games += 1;
             if (won) stat.wins += 1;
@@ -2548,6 +2717,22 @@
             if (lastWonById.get(id) === false) {
               stat.postLossGames += 1;
               if (won) stat.postLossWins += 1;
+            }
+
+            if (
+              isValidDateString(date) &&
+              firstGameOfDateByPlayer.get(`${id}|${date}`) === String(game.id)
+            ) {
+              stat.openingGameGames += 1;
+              if (won) stat.openingGameWins += 1;
+            }
+
+            if (
+              isValidDateString(date) &&
+              lastGameOfDateByPlayer.get(`${id}|${date}`) === String(game.id)
+            ) {
+              stat.lastGameOfDateGames += 1;
+              if (won) stat.lastGameOfDateWins += 1;
             }
 
             if (isValidDateString(date)) {
@@ -2574,9 +2759,53 @@
                 else stat.closeLosses += 1;
               }
 
+              if (Math.max(game.scoreRed, game.scoreBlue) >= 26) {
+                stat.overtimeGames += 1;
+                if (won) stat.overtimeWins += 1;
+              }
+
               if (margin <= AWARD_NARROW_MARGIN) {
                 if (won) stat.narrowWins += 1;
                 else stat.narrowLosses += 1;
+              }
+
+              if (won && margin === 2) {
+                stat.twoPointWins += 1;
+              }
+
+              if (
+                !game.isLeagueGame &&
+                Array.isArray(game.redTeam) &&
+                Array.isArray(game.blueTeam) &&
+                [3, 4].includes(game.redTeam.length) &&
+                [3, 4].includes(game.blueTeam.length)
+              ) {
+                stat.smallBallGames += 1;
+                if (won) stat.smallBallWins += 1;
+              }
+
+              if (
+                !game.isLeagueGame &&
+                Array.isArray(game.redTeam) &&
+                Array.isArray(game.blueTeam) &&
+                game.redTeam.length >= 5 &&
+                game.blueTeam.length >= 5
+              ) {
+                stat.bigSquadGames += 1;
+                if (won) stat.bigSquadWins += 1;
+              }
+
+              if (
+                !game.isLeagueGame &&
+                Array.isArray(game.redTeam) &&
+                Array.isArray(game.blueTeam)
+              ) {
+                const teamSize = side === 'red' ? game.redTeam.length : game.blueTeam.length;
+                const opponentSize = side === 'red' ? game.blueTeam.length : game.redTeam.length;
+                if (teamSize < opponentSize) {
+                  stat.shortTeamGames += 1;
+                  if (won) stat.shortTeamWins += 1;
+                }
               }
 
               if (margin > AWARD_BLOWOUT_MARGIN) {
@@ -2611,13 +2840,17 @@
                 if (won) stat.streakStopperWins += 1;
               }
 
+              let hadFirstTimeTeammate = false;
               beforeEntries.forEach(teammate => {
                 const teammateId = String(teammate.id);
                 if (teammateId === id) return;
+                const isFirstTimeTeammate = !stat.teammates.has(teammateId);
+                if (isFirstTimeTeammate) hadFirstTimeTeammate = true;
                 stat.teammateSlots += 1;
                 stat.teammates.add(teammateId);
                 if (won) stat.winningTeammates.add(teammateId);
               });
+              if (won && hadFirstTimeTeammate) stat.firstTimeTeammateWins += 1;
 
               opponentEntries.forEach(opponent => {
                 stat.opponents.add(String(opponent.id));
@@ -2634,11 +2867,36 @@
           });
 
           if (!game.isLeagueGame) {
+            if (won && beforeEntries.length >= LEAGUE_TEAM_SIZE && teamPower < opponentPower) {
+              fullLineupUpsets.push({
+                playerIds: beforeEntries.map(entry => String(entry.id)),
+                date,
+                teamSize: beforeEntries.length,
+                gap: opponentPower - teamPower
+              });
+            }
+
             for (let i = 0; i < beforeEntries.length; i += 1) {
               for (let j = i + 1; j < beforeEntries.length; j += 1) {
                 const pair = getAwardPairStat(teammatePairs, beforeEntries[i].id, beforeEntries[j].id);
                 pair.games += 1;
+                pair.expectedWins += teamProbability;
                 if (won) pair.wins += 1;
+              }
+            }
+
+            for (let i = 0; i < beforeEntries.length; i += 1) {
+              for (let j = i + 1; j < beforeEntries.length; j += 1) {
+                for (let k = j + 1; k < beforeEntries.length; k += 1) {
+                  const trio = getAwardTrioStat(
+                    teammateTrios,
+                    beforeEntries[i].id,
+                    beforeEntries[j].id,
+                    beforeEntries[k].id
+                  );
+                  trio.games += 1;
+                  if (won) trio.wins += 1;
+                }
               }
             }
           }
@@ -2685,6 +2943,9 @@
 
       playerStats.forEach(stat => {
         stat.distinctDates = stat.dates.size;
+        stat.encoreSessions = [...stat.gamesByDate.values()]
+          .filter(count => count > 3)
+          .length;
         const recentPath = stat.ratingPath.slice(-8);
         stat.recentRatingGain = recentPath.length >= 2
           ? recentPath[recentPath.length - 1] - recentPath[0]
@@ -2714,7 +2975,10 @@
         playerMap,
         players: [...playerStats.values()],
         teammatePairs: [...teammatePairs.values()],
+        teammateTrios: [...teammateTrios.values()],
         rivalryPairs: [...rivalryPairs.values()],
+        fullLineupUpsets,
+        globalPlayDates,
       };
     }
 
@@ -2751,7 +3015,7 @@
     }
 
     function getAwardDefinitions(data) {
-      const { players, playerMap, teammatePairs, rivalryPairs, games } = data;
+      const { players, playerMap, teammatePairs, teammateTrios, rivalryPairs, fullLineupUpsets, games, globalPlayDates } = data;
       const seasonStartDate = getSeasonStartDate();
       const seasonRows = getSeasonMoverRows(getSeasonMoverCandidateRows(seasonStartDate, games));
       const recentSessionGames = getRecentSessionGames(games);
@@ -2763,22 +3027,57 @@
       });
       const priorResult = getLeaderboardSnapshotExcludingGames(recentSessionGames, games);
       const priorRawMap = new Map(priorResult.standings.map(player => [String(player.id), Number(player.rawOrdinal)]));
+      const topRankedPlayer = (data.result.standings || [])
+        .filter(player => playerMap.has(String(player.id)) && Number(player.games) >= OVERALL_STANDINGS_MIN_GAMES)
+        .map(player => ({
+          ...player,
+          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player)
+        }))
+        .sort((a, b) => {
+          if (b.experimentalLeaderboardRaw !== a.experimentalLeaderboardRaw) {
+            return b.experimentalLeaderboardRaw - a.experimentalLeaderboardRaw;
+          }
+          const rawA = typeof a.rawOrdinal === 'number' ? a.rawOrdinal : a.rating || 0;
+          const rawB = typeof b.rawOrdinal === 'number' ? b.rawOrdinal : b.rating || 0;
+          if (rawB !== rawA) return rawB - rawA;
+          if (b.wins !== a.wins) return b.wins - a.wins;
+          if (b.games !== a.games) return b.games - a.games;
+          return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+        })[0] || null;
+      const topRankedPlayerId = topRankedPlayer ? String(topRankedPlayer.id) : '';
 
       const playerById = id => playerMap.get(String(id)) || { id, name: String(id) };
       const pairWinnerHtml = pair => joinAwardPlayerLinks(playerMap, pair.ids);
+      const CHEMISTRY_MIN_PAIR_GAMES = 3;
+      const CHEMISTRY_PAIR_WEIGHT_CAP = 8;
       const hasAwardGames = stat => stat.games >= AWARD_MIN_GAMES;
       const hasPairAwardGames = pair => pair.games >= AWARD_MIN_GAMES;
       const winRate = stat => stat.games > 0 ? stat.wins / stat.games : null;
       const closeWinRate = stat => stat.closeGames > 0 ? stat.closeWins / stat.closeGames : null;
       const closeGameRate = stat => stat.scoredGames > 0 ? stat.closeGames / stat.scoredGames : null;
       const closeLossRate = stat => stat.scoredLosses > 0 ? stat.closeLosses / stat.scoredLosses : null;
+      const overtimeWinRate = stat => stat.overtimeGames > 0 ? stat.overtimeWins / stat.overtimeGames : null;
+      const twoPointWinRate = stat => stat.scoredWins > 0 ? stat.twoPointWins / stat.scoredWins : null;
+      const smallBallWinRate = stat => stat.smallBallGames > 0 ? stat.smallBallWins / stat.smallBallGames : null;
+      const bigSquadWinRate = stat => stat.bigSquadGames > 0 ? stat.bigSquadWins / stat.bigSquadGames : null;
+      const shortTeamWinRate = stat => stat.shortTeamGames > 0 ? stat.shortTeamWins / stat.shortTeamGames : null;
       const underdogGameRate = stat => stat.games > 0 ? stat.underdogGames / stat.games : null;
+      const attendanceRate = stat => globalPlayDates.length > 0 ? stat.distinctDates / globalPlayDates.length : null;
       const narrowWinRate = stat => stat.scoredWins > 0 ? stat.narrowWins / stat.scoredWins : null;
       const narrowLossRate = stat => stat.scoredLosses > 0 ? stat.narrowLosses / stat.scoredLosses : null;
       const underdogWinRate = stat => stat.underdogGames > 0 ? stat.underdogWins / stat.underdogGames : null;
       const nearEvenWinRate = stat => stat.nearEvenGames > 0 ? stat.nearEvenWins / stat.nearEvenGames : null;
       const teammateDeltaAvg = stat => stat.teammateDeltaN > 0 ? stat.teammateDeltaSum / stat.teammateDeltaN : null;
       const postLossWinRate = stat => stat.postLossGames > 0 ? stat.postLossWins / stat.postLossGames : null;
+      const openingGameWinRate = stat => stat.openingGameGames > 0 ? stat.openingGameWins / stat.openingGameGames : null;
+      const lastGameOfDateWinRate = stat => stat.lastGameOfDateGames > 0
+        ? stat.lastGameOfDateWins / stat.lastGameOfDateGames
+        : null;
+      const positiveSessionCount = stat =>
+        [...stat.sessionRatingGains.values()].filter(gain => gain > 0).length;
+      const positiveSessionRate = stat => stat.sessionRatingGains.size > 0
+        ? positiveSessionCount(stat) / stat.sessionRatingGains.size
+        : null;
       const streakStopperWinRate = stat => stat.streakStopperGames > 0
         ? stat.streakStopperWins / stat.streakStopperGames
         : null;
@@ -2786,7 +3085,47 @@
         ? stat.opponentPointsSum / stat.opponentScoreGames
         : null;
       const teammateMixRate = stat => stat.teammateSlots > 0 ? stat.teammates.size / stat.teammateSlots : null;
+      const chemistryScore = stat => Number(stat.chemistryScore) || 0;
       const rollercoasterScore = stat => Math.min(stat.ratingUpMovement, stat.ratingDownMovement);
+      const buildChemistryScores = () => {
+        const chemistryById = new Map(players.map(stat => [String(stat.id), {
+          liftTotal: 0,
+          weightTotal: 0,
+          partnerCount: 0,
+          pairGames: 0
+        }]));
+
+        teammatePairs.forEach(pair => {
+          const gamesPlayed = Number(pair.games) || 0;
+          if (gamesPlayed < CHEMISTRY_MIN_PAIR_GAMES) return;
+
+          const wins = Number(pair.wins) || 0;
+          const expectedWins = Number.isFinite(Number(pair.expectedWins))
+            ? Number(pair.expectedWins)
+            : gamesPlayed * 0.5;
+          const lift = (wins - expectedWins) / gamesPlayed;
+          if (!Number.isFinite(lift) || lift <= 0) return;
+
+          const weight = Math.min(gamesPlayed, CHEMISTRY_PAIR_WEIGHT_CAP);
+          pair.ids.forEach(id => {
+            const entry = chemistryById.get(String(id));
+            if (!entry) return;
+            entry.liftTotal += lift * weight;
+            entry.weightTotal += weight;
+            entry.partnerCount += 1;
+            entry.pairGames += gamesPlayed;
+          });
+        });
+
+        players.forEach(stat => {
+          const entry = chemistryById.get(String(stat.id));
+          stat.chemistryScore = entry && entry.weightTotal > 0
+            ? entry.liftTotal / entry.weightTotal
+            : 0;
+          stat.chemistryPartnerCount = entry?.partnerCount || 0;
+          stat.chemistryPairGames = entry?.pairGames || 0;
+        });
+      };
       const currentRawMap = new Map(data.result.standings.map(player => [String(player.id), Number(player.rawOrdinal)]));
       const hotStreakCandidates = [...currentRawMap.entries()].map(([id, raw]) => {
         const priorRaw = priorRawMap.get(id);
@@ -2808,14 +3147,66 @@
             statLine: statLine(item.pair, item.value),
             value: item.value
           }));
+      const groupCandidates = (groups, getValue, { filter = () => true, statLine } = {}) =>
+        groups
+          .map(group => ({ group, value: getValue(group) }))
+          .filter(item => Number.isFinite(item.value) && filter(item.group, item.value))
+          .sort((a, b) => {
+            if (b.value !== a.value) return b.value - a.value;
+            if (b.group.games !== a.group.games) return b.group.games - a.group.games;
+            return a.group.key.localeCompare(b.group.key);
+          })
+          .map(item => ({
+            playerIds: item.group.ids,
+            winnerHtml: joinAwardPlayerLinks(playerMap, item.group.ids),
+            statLine: statLine(item.group, item.value),
+            value: item.value
+          }));
 
       const seasonCandidates = seasonRows
         .filter(row => (Number(row.gamesThisSeason) || 0) >= AWARD_MIN_GAMES)
         .map(row => ({
           playerIds: [String(row.id)],
-          statLine: `season movement: ${formatAwardSignedRatingDelta(row.rawMuChange)} in ${row.gamesThisSeason || 0} games`,
+          statLine: `biggest season movement: ${formatAwardSignedRatingDelta(row.rawMuChange)} in ${row.gamesThisSeason || 0} games`,
           value: Number(row.rawMuChange) || 0
         }));
+      const fullLineupUpsetCandidates = fullLineupUpsets
+        .filter(entry => Number.isFinite(entry.gap) && entry.gap > 0 && entry.playerIds.length >= LEAGUE_TEAM_SIZE)
+        .sort((a, b) => b.gap - a.gap)
+        .map(entry => ({
+          playerIds: entry.playerIds,
+          statLine: `biggest full-lineup team rating upset: ${formatAwardRatingDelta(entry.gap)} on ${entry.date || 'unknown date'}`,
+          value: entry.gap
+        }));
+      const topPlayerHeadToHeadCandidates = topRankedPlayerId
+        ? rivalryPairs
+            .filter(pair => pair.ids.includes(topRankedPlayerId))
+            .map(pair => {
+              const challengerId = pair.ids.find(id => String(id) !== topRankedPlayerId);
+              const wins = Number(pair.winsById?.[challengerId]) || 0;
+              const winRateAgainstTop = pair.games > 0 ? wins / pair.games : null;
+              return {
+                playerIds: challengerId ? [challengerId] : [],
+                statLine: `best win rate vs #1 ${topRankedPlayer.name}: ${formatAwardPercent(winRateAgainstTop)}`,
+                value: winRateAgainstTop,
+                games: pair.games
+              };
+            })
+            .filter(candidate =>
+              candidate.playerIds.length > 0 &&
+              Number.isFinite(candidate.value) &&
+              candidate.games >= AWARD_MIN_GAMES
+            )
+            .sort((a, b) => {
+              if (b.value !== a.value) return b.value - a.value;
+              if (b.games !== a.games) return b.games - a.games;
+              const nameA = playerMap.get(String(a.playerIds[0]))?.name || String(a.playerIds[0]);
+              const nameB = playerMap.get(String(b.playerIds[0]))?.name || String(b.playerIds[0]);
+              return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+            })
+        : [];
+
+      buildChemistryScores();
 
       return [
         {
@@ -2833,74 +3224,131 @@
           })
         },
         {
+          title: 'Giant-Killer Squad',
+          candidates: fullLineupUpsetCandidates
+        },
+        {
           title: 'Slumdog Millionaire',
           candidates: rankAwardPlayers(players, underdogGameRate, {
             filter: stat => stat.games >= AWARD_MIN_GAMES && stat.underdogGames > 0,
-            statLine: stat => `highest underdog-game rate: ${formatAwardPercent(underdogGameRate(stat))} (${stat.underdogGames}/${stat.games})`
+            statLine: stat => `highest underdog-game rate: ${formatAwardPercent(underdogGameRate(stat))}`
           })
         },
         {
           title: 'Against The Odds',
           candidates: rankAwardPlayers(players, underdogWinRate, {
             filter: stat => hasAwardGames(stat) && stat.underdogGames >= AWARD_MIN_GAMES,
-            statLine: stat => `best underdog win rate: ${formatAwardPercent(underdogWinRate(stat))} (${stat.underdogWins}/${stat.underdogGames})`
+            statLine: stat => `best underdog win rate: ${formatAwardPercent(underdogWinRate(stat))}`
           })
         },
         {
-          title: 'Trap Game Specialist',
+          title: 'Lucky Penny',
           candidates: rankAwardPlayers(players, nearEvenWinRate, {
             filter: stat => hasAwardGames(stat) && stat.nearEvenGames >= AWARD_MIN_RATE_GAMES,
-            statLine: stat => `best win rate in evenly matched games: ${formatAwardPercent(nearEvenWinRate(stat))} (${stat.nearEvenWins}/${stat.nearEvenGames})`
+            statLine: stat => `best win rate in evenly matched games: ${formatAwardPercent(nearEvenWinRate(stat))}`
           })
         },
         {
-          title: 'Clutch Closer',
+          title: 'The Closer',
           candidates: rankAwardPlayers(players, closeWinRate, {
             filter: stat => hasAwardGames(stat) && stat.closeGames >= AWARD_MIN_GAMES,
-            statLine: stat => `best close-game record: ${formatAwardPercent(closeWinRate(stat))} (${stat.closeWins}/${stat.closeGames})`
+            statLine: stat => `best close-game record: ${formatAwardPercent(closeWinRate(stat))}`
           })
         },
         {
-          title: 'Nailbiter Magnet',
+          title: 'Nine to Five Sorcerer',
+          candidates: rankAwardPlayers(players, overtimeWinRate, {
+            filter: stat => hasAwardGames(stat) && stat.overtimeGames >= AWARD_MIN_GAMES,
+            statLine: stat => `highest overtime win rate: ${formatAwardPercent(overtimeWinRate(stat))}`
+          })
+        },
+        {
+          title: 'Two-Point Titan',
+          candidates: rankAwardPlayers(players, twoPointWinRate, {
+            filter: stat => hasAwardGames(stat) && stat.scoredWins >= AWARD_MIN_GAMES && stat.twoPointWins > 0,
+            statLine: stat => `highest share of wins by exactly 2 points: ${formatAwardPercent(twoPointWinRate(stat))}`
+          })
+        },
+        {
+          title: 'Small Ball Specialist',
+          candidates: rankAwardPlayers(players, smallBallWinRate, {
+            filter: stat => hasAwardGames(stat) && stat.smallBallGames >= AWARD_MIN_GAMES,
+            statLine: stat => `best 3v3/4v4 win rate: ${formatAwardPercent(smallBallWinRate(stat))}`
+          })
+        },
+        {
+          title: 'Big Squad Boss',
+          candidates: rankAwardPlayers(players, bigSquadWinRate, {
+            filter: stat => hasAwardGames(stat) && stat.bigSquadGames >= AWARD_MIN_GAMES,
+            statLine: stat => `best 5v5+ win rate: ${formatAwardPercent(bigSquadWinRate(stat))}`
+          })
+        },
+        {
+          title: 'Extra Arm',
+          candidates: rankAwardPlayers(players, shortTeamWinRate, {
+            filter: stat => hasAwardGames(stat) && stat.shortTeamGames >= AWARD_MIN_GAMES,
+            statLine: stat => `best win rate on smaller teams: ${formatAwardPercent(shortTeamWinRate(stat))}`
+          })
+        },
+        {
+          title: 'Nailbiter',
           candidates: rankAwardPlayers(players, closeGameRate, {
             filter: stat => stat.scoredGames >= AWARD_MIN_GAMES && stat.closeGames > 0,
-            statLine: stat => `highest close-game rate: ${formatAwardPercent(closeGameRate(stat))} (${stat.closeGames}/${stat.scoredGames})`
+            statLine: stat => `highest close-game rate: ${formatAwardPercent(closeGameRate(stat))}`
           })
         },
         {
-          title: 'Escape Artist',
+          title: 'Houdini',
           candidates: rankAwardPlayers(players, narrowWinRate, {
             filter: stat => hasAwardGames(stat) && stat.scoredWins >= AWARD_MIN_GAMES && stat.narrowWins > 0,
-            statLine: stat => `highest rate of narrow wins: ${formatAwardPercent(narrowWinRate(stat))} (${stat.narrowWins}/${stat.scoredWins})`
+            statLine: stat => `highest narrow-win rate: ${formatAwardPercent(narrowWinRate(stat))}`
           })
         },
         {
           title: 'Heartbreaker',
           candidates: rankAwardPlayers(players, narrowLossRate, {
             filter: stat => hasAwardGames(stat) && stat.scoredLosses >= AWARD_MIN_GAMES && stat.narrowLosses > 0,
-            statLine: stat => `highest rate of narrow losses: ${formatAwardPercent(narrowLossRate(stat))} (${stat.narrowLosses}/${stat.scoredLosses})`
+            statLine: stat => `highest narrow-loss rate: ${formatAwardPercent(narrowLossRate(stat))}`
           })
         },
         {
           title: 'Missed It By...',
           candidates: rankAwardPlayers(players, closeLossRate, {
             filter: stat => hasAwardGames(stat) && stat.scoredLosses >= AWARD_MIN_GAMES && stat.closeLosses > 0,
-            statLine: stat => `most close losses out of total losses: ${formatAwardPercent(closeLossRate(stat))} (${stat.closeLosses}/${stat.scoredLosses})`
+            statLine: stat => `highest close-loss rate: ${formatAwardPercent(closeLossRate(stat))}`
           })
         },
         {
-          title: 'Bounce Back',
+          title: 'Resilient',
           candidates: rankAwardPlayers(players, postLossWinRate, {
             filter: stat => hasAwardGames(stat) && stat.postLossGames >= AWARD_MIN_GAMES,
-            statLine: stat => `best win rate after a loss: ${formatAwardPercent(postLossWinRate(stat))} (${stat.postLossWins}/${stat.postLossGames})`
+            statLine: stat => `best win rate after a loss: ${formatAwardPercent(postLossWinRate(stat))}`
+          })
+        },
+        {
+          title: 'Opening Server',
+          candidates: rankAwardPlayers(players, openingGameWinRate, {
+            filter: stat => hasAwardGames(stat) && stat.openingGameGames >= AWARD_MIN_GAMES,
+            statLine: stat => `best first-game win rate: ${formatAwardPercent(openingGameWinRate(stat))}`
+          })
+        },
+        {
+          title: 'Perfect Day',
+          candidates: rankAwardPlayers(players, lastGameOfDateWinRate, {
+            filter: stat => hasAwardGames(stat) && stat.lastGameOfDateGames >= AWARD_MIN_GAMES,
+            statLine: stat => `best last-game win rate: ${formatAwardPercent(lastGameOfDateWinRate(stat))}`
           })
         },
         {
           title: 'Final Boss',
           candidates: rankAwardPlayers(players, streakStopperWinRate, {
             filter: stat => hasAwardGames(stat) && stat.streakStopperGames >= AWARD_MIN_GAMES,
-            statLine: stat => `best win rate vs opponents coming off wins: ${formatAwardPercent(streakStopperWinRate(stat))} (${stat.streakStopperWins}/${stat.streakStopperGames})`
+            statLine: stat => `best win rate vs opponents coming off wins: ${formatAwardPercent(streakStopperWinRate(stat))}`
           })
+        },
+        {
+          title: 'How...',
+          candidates: topPlayerHeadToHeadCandidates
         },
         {
           title: 'Obsessive',
@@ -2924,14 +3372,28 @@
           })
         },
         {
-          title: 'Reliable Regular',
+          title: 'Encore',
+          candidates: rankAwardPlayers(players, stat => stat.encoreSessions, {
+            filter: stat => hasAwardGames(stat) && stat.encoreSessions > 0,
+            statLine: stat => `most sessions with more than 3 games: ${stat.encoreSessions}`
+          })
+        },
+        {
+          title: 'Ol’ Reliable',
           candidates: rankAwardPlayers(players, stat => stat.distinctDates, {
             filter: stat => hasAwardGames(stat) && stat.distinctDates > 0,
             statLine: stat => `most distinct play dates: ${stat.distinctDates}`
           })
         },
         {
-          title: 'Team Player',
+          title: 'Always Hungry',
+          candidates: rankAwardPlayers(players, attendanceRate, {
+            filter: stat => hasAwardGames(stat) && stat.distinctDates > 0,
+            statLine: stat => `highest play-date attendance: ${formatAwardPercent(attendanceRate(stat))}`
+          })
+        },
+        {
+          title: 'Strong Back',
           candidates: rankAwardPlayers(players, stat => stat.effectiveCarryScore, {
             filter: stat => stat.carryGames >= AWARD_MIN_GAMES && stat.effectiveCarryScore > 0,
             statLine: stat => `highest carry score: +${stat.effectiveCarryScore.toFixed(3)}`
@@ -2945,10 +3407,14 @@
           })
         },
         {
-          title: 'Chemistry Magnet',
-          candidates: rankAwardPlayers(players, winRate, {
-            filter: stat => stat.games >= AWARD_MIN_GAMES && stat.teammates.size >= 6,
-            statLine: stat => `best win rate with 6+ teammates: ${formatAwardPercent(winRate(stat))} (${stat.wins}/${stat.games})`
+          title: 'Chemist',
+          candidates: rankAwardPlayers(players, chemistryScore, {
+            filter: stat =>
+              hasAwardGames(stat) &&
+              stat.chemistryPartnerCount >= 2 &&
+              stat.chemistryPairGames >= AWARD_MIN_GAMES &&
+              chemistryScore(stat) > 0,
+            statLine: stat => `best teammate lift over expectation: +${formatAwardPercent(chemistryScore(stat))} across ${stat.chemistryPartnerCount} repeat partners`
           })
         },
         {
@@ -2962,14 +3428,21 @@
           title: 'Mixer',
           candidates: rankAwardPlayers(players, teammateMixRate, {
             filter: stat => hasAwardGames(stat) && stat.teammateSlots >= AWARD_MIN_GAMES && stat.teammates.size > 0,
-            statLine: stat => `highest teammate mix rate: ${formatAwardPercent(teammateMixRate(stat))} (${stat.teammates.size} distinct / ${stat.teammateSlots} teammate slots)`
+            statLine: stat => `highest teammate mix rate: ${formatAwardPercent(teammateMixRate(stat))}`
           })
         },
         {
           title: 'Plug And Play',
           candidates: rankAwardPlayers(players, stat => stat.winningTeammates.size, {
             filter: stat => hasAwardGames(stat) && stat.winningTeammates.size > 0,
-            statLine: stat => `wins with distinct teammates: ${stat.winningTeammates.size}`
+            statLine: stat => `most distinct teammates with at least one win: ${stat.winningTeammates.size}`
+          })
+        },
+        {
+          title: 'Welcome Committee',
+          candidates: rankAwardPlayers(players, stat => stat.firstTimeTeammateWins, {
+            filter: stat => hasAwardGames(stat) && stat.firstTimeTeammateWins > 0,
+            statLine: stat => `most wins with first-time teammates: ${stat.firstTimeTeammateWins}`
           })
         },
         {
@@ -2983,7 +3456,7 @@
           title: 'Rollercoaster',
           candidates: rankAwardPlayers(players, rollercoasterScore, {
             filter: stat => stat.games >= AWARD_MIN_GAMES && stat.ratingUpMovement > 0 && stat.ratingDownMovement > 0,
-            statLine: stat => `most two-way rating movement: ${formatAwardSignedRatingDelta(stat.ratingUpMovement)} up / ${formatAwardSignedRatingDelta(-stat.ratingDownMovement)} down`
+            statLine: stat => `most two-way rating movement: ${formatAwardSignedRatingDelta(stat.ratingUpMovement)} up and ${formatAwardSignedRatingDelta(-stat.ratingDownMovement)} down`
           })
         },
         {
@@ -2991,6 +3464,34 @@
           candidates: rankAwardPlayers(players, stat => stat.bestSessionRatingGain, {
             filter: stat => hasAwardGames(stat) && stat.bestSessionRatingGain > 0,
             statLine: stat => `largest rating surge in one session: ${formatAwardSignedRatingDelta(stat.bestSessionRatingGain)} over ${stat.bestSessionRatingGainGames} game${stat.bestSessionRatingGainGames === 1 ? '' : 's'}`
+          })
+        },
+        {
+          title: 'Green Arrow',
+          candidates: rankAwardPlayers(players, positiveSessionCount, {
+            filter: stat => hasAwardGames(stat) && positiveSessionCount(stat) > 0,
+            statLine: stat => `most play dates ending with positive rating change: ${positiveSessionCount(stat)}`
+          })
+        },
+        {
+          title: 'Green Arrows',
+          candidates: rankAwardPlayers(players, stat => stat.positiveRatingGames, {
+            filter: stat => hasAwardGames(stat) && stat.positiveRatingGames > 0,
+            statLine: stat => `most individual games with a positive rating change: ${stat.positiveRatingGames}`
+          })
+        },
+        {
+          title: 'Steady Climber',
+          candidates: rankAwardPlayers(players, positiveSessionRate, {
+            filter: stat => hasAwardGames(stat) && stat.sessionRatingGains.size >= AWARD_MIN_RATE_GAMES && positiveSessionCount(stat) > 0,
+            statLine: stat => `highest positive-session rate: ${formatAwardPercent(positiveSessionRate(stat))}`
+          })
+        },
+        {
+          title: 'Instant Celebrity',
+          candidates: rankAwardPlayers(players, stat => stat.debutSessionRatingGain, {
+            filter: stat => hasAwardGames(stat) && stat.debutSessionRatingGain > 0,
+            statLine: stat => `biggest debut-session rating gain: ${formatAwardSignedRatingDelta(stat.debutSessionRatingGain)} over ${stat.debutSessionGames} game${stat.debutSessionGames === 1 ? '' : 's'}`
           })
         },
         {
@@ -3004,7 +3505,7 @@
             .sort((a, b) => b.value - a.value)
             .map(item => ({
               playerIds: [item.id],
-              statLine: `latest-session rating gain: ${formatAwardSignedRatingDelta(item.value)}`,
+              statLine: `biggest latest-session rating gain: ${formatAwardSignedRatingDelta(item.value)}`,
               value: item.value
             }))
         },
@@ -3012,7 +3513,7 @@
           title: 'Finisher',
           candidates: rankAwardPlayers(players, winRate, {
             filter: stat => stat.games >= AWARD_MIN_GAMES,
-            statLine: stat => `best win rate: ${formatAwardPercent(winRate(stat))} (${stat.wins}/${stat.games})`
+            statLine: stat => `best win rate: ${formatAwardPercent(winRate(stat))}`
           })
         },
         {
@@ -3031,7 +3532,7 @@
           })
         },
         {
-          title: 'Chaos Agent',
+          title: 'Chaotic',
           candidates: rankAwardPlayers(players, stat => stat.scoredGames > 0 ? stat.marginSum / stat.scoredGames : null, {
             filter: stat => stat.scoredGames >= AWARD_MIN_GAMES,
             statLine: (stat, value) => `highest average game margin: ${value.toFixed(1)} pts`
@@ -3041,21 +3542,28 @@
           title: 'Zen',
           candidates: rankAwardPlayers(players, stat => stat.scoredGames > 0 ? stat.closeGames / stat.scoredGames : null, {
             filter: stat => stat.scoredGames >= AWARD_MIN_GAMES,
-            statLine: stat => `highest rate of close games: ${formatAwardPercent(stat.closeGames / stat.scoredGames)} (${stat.closeGames}/${stat.scoredGames})`
+            statLine: stat => `highest close-game rate: ${formatAwardPercent(stat.closeGames / stat.scoredGames)}`
           })
         },
         {
           title: 'The De-Equalizer',
           candidates: rankAwardPlayers(players, stat => stat.scoredGames > 0 ? stat.blowoutGames / stat.scoredGames : null, {
             filter: stat => stat.scoredGames >= AWARD_MIN_GAMES && stat.blowoutGames > 0,
-            statLine: stat => `highest blowout-game rate: ${formatAwardPercent(stat.blowoutGames / stat.scoredGames)} (${stat.blowoutGames}/${stat.scoredGames})`
+            statLine: stat => `highest blowout-game rate: ${formatAwardPercent(stat.blowoutGames / stat.scoredGames)}`
           })
         },
         {
           title: 'Dynamic Duo',
           candidates: pairCandidates(teammatePairs, pair => pair.games > 0 ? pair.wins / pair.games : null, {
             filter: pair => hasPairAwardGames(pair),
-            statLine: pair => `best pair win rate: ${formatAwardPercent(pair.wins / pair.games)} (${pair.wins}/${pair.games})`
+            statLine: pair => `best pair win rate: ${formatAwardPercent(pair.wins / pair.games)}`
+          })
+        },
+        {
+          title: 'Triple Threat',
+          candidates: groupCandidates(teammateTrios, trio => trio.games > 0 ? trio.wins / trio.games : null, {
+            filter: trio => trio.games >= 3,
+            statLine: trio => `best trio win rate: ${formatAwardPercent(trio.wins / trio.games)}`
           })
         },
         {
@@ -3107,8 +3615,9 @@
 
     function renderAwardBadge(award) {
       const winnerHtml = award.winnerHtml || '';
+      const playerIds = (award.playerIds || []).map(String).filter(Boolean);
       return `
-        <div class="award-badge"${getAwardBadgeStyle(award)}>
+        <div class="award-badge"${getAwardBadgeStyle(award)} data-player-ids="${escapeHtml(playerIds.join('|'))}">
           <div class="award-title">${escapeHtml(award.title)}</div>
           <div class="award-player">${winnerHtml}</div>
           <div class="award-stat">${escapeHtml(award.statLine)}</div>
@@ -3144,6 +3653,36 @@
       };
     }
 
+    function getAwardWinnerCount(award) {
+      return new Set((award.playerIds || []).map(String).filter(Boolean)).size;
+    }
+
+    function isGroupAward(award) {
+      return getAwardWinnerCount(award) > 1;
+    }
+
+    function maybePostTrendAwards(awards) {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('embed') !== 'trendAwards') return;
+      if (!window.parent || window.parent === window) return;
+
+      const playerId = params.get('playerId');
+      if (!playerId) return;
+
+      const awardsForPlayer = awards
+        .filter(award => (award.playerIds || []).map(String).includes(String(playerId)))
+        .map(award => ({
+          title: award.title,
+          stat: award.statLine || ''
+        }));
+
+      window.parent.postMessage({
+        type: 'volleyballTrendAwards',
+        playerId: String(playerId),
+        awards: awardsForPlayer
+      }, '*');
+    }
+
     function renderAwards() {
       if (!awardsSummaryEl || !awardsGridEl) return;
 
@@ -3158,6 +3697,8 @@
       });
 
       awardsGridEl.innerHTML = '';
+      if (groupAwardsGridEl) groupAwardsGridEl.innerHTML = '';
+      if (groupAwardsSectionEl) groupAwardsSectionEl.classList.add('hidden');
 
       if (!awards.length) {
         awardsSummaryEl.textContent = 'No award-eligible games yet.';
@@ -3167,14 +3708,26 @@
       const recursionAward = createRecursionAward(awards, data.playerMap);
       if (recursionAward) awards.push(recursionAward);
 
+      const individualAwards = awards.filter(award => !isGroupAward(award));
+      const groupAwards = awards.filter(isGroupAward);
+
       const uniqueWinners = new Set();
       awards.forEach(award => {
         (award.playerIds || []).forEach(id => uniqueWinners.add(String(id)));
       });
 
       awardsSummaryEl.textContent =
-        `${awards.length} awards across ${uniqueWinners.size} player${uniqueWinners.size === 1 ? '' : 's'}.`;
-      awardsGridEl.innerHTML = awards.map(renderAwardBadge).join('');
+        `${awards.length} awards across ${uniqueWinners.size} player${uniqueWinners.size === 1 ? '' : 's'} (${individualAwards.length} individual, ${groupAwards.length} pair/team).`;
+      awardsGridEl.innerHTML = individualAwards.map(renderAwardBadge).join('');
+
+      if (groupAwards.length && groupAwardsGridEl && groupAwardsSectionEl) {
+        groupAwardsSectionEl.classList.remove('hidden');
+        groupAwardsGridEl.innerHTML = groupAwards.map(renderAwardBadge).join('');
+      } else if (groupAwards.length) {
+        awardsGridEl.innerHTML += groupAwards.map(renderAwardBadge).join('');
+      }
+
+      maybePostTrendAwards(awards);
     }
 
 
@@ -3284,7 +3837,7 @@
     }
 
     function formatHistoryPlayerRating(rawOrdinal, games) {
-      return formatDisplayedRating(getExperimentalLeaderboardRaw({
+      return formatPublicRating(getExperimentalLeaderboardRaw({
         rawOrdinal,
         games
       }));
@@ -3429,7 +3982,7 @@
       div.className = 'season-mover-row';
 
       const ratingRaw = getExperimentalLeaderboardRaw(player);
-      const ratingText = formatDisplayedRating(ratingRaw);
+      const ratingText = formatPublicRating(ratingRaw);
       const eligibilityText = player.games >= OVERALL_STANDINGS_MIN_GAMES
         ? 'Shown in Overall Standings.'
         : `Needs ${OVERALL_STANDINGS_MIN_GAMES} games to appear in Overall Standings.`;
@@ -3567,7 +4120,7 @@
         }).join(', ') || '(none)';
 
         const blueNames = game.isLeagueGame
-          ? `${leagueContextName} (${formatDisplayedRating(averageRawOrdinal(entry.before.blue))} → ${formatDisplayedRating(averageRawOrdinal(entry.after.blue))})`
+          ? `${leagueContextName} (${formatPublicRating(averageRawOrdinal(entry.before.blue))} → ${formatPublicRating(averageRawOrdinal(entry.after.blue))})`
           : entry.before.blue.map((p, i) => {
               const after = entry.after.blue[i];
               const name =
@@ -5075,8 +5628,12 @@
     if (_sortByParam && SORT_CONFIGS[_sortByParam]) {
       activeSortBy = _sortByParam;
     }
+    const _tabParam = _initParams.get('tab');
+    const _urlTab = ['overall', 'seasonMovers', 'awards'].includes(_tabParam)
+      ? _tabParam
+      : '';
     const _savedTab = sessionStorage.getItem('statsActiveTab') || 'seasonMovers';
-    setStatsTab(_sortByParam ? 'overall' : _savedTab);
+    setStatsTab(_sortByParam ? 'overall' : (_urlTab || _savedTab));
 
     renderAll();
 

@@ -118,6 +118,39 @@
       line-height: 1.45;
     }
 
+    .trend-awards {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .trend-awards.hidden {
+      display: none;
+    }
+
+    .trend-award-chip {
+      max-width: 260px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(96, 165, 250, 0.34);
+      background: rgba(96, 165, 250, 0.10);
+      color: var(--text);
+    }
+
+    .trend-award-title {
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+
+    .trend-award-stat {
+      margin-top: 3px;
+      font-size: 11px;
+      line-height: 1.25;
+      color: var(--muted);
+    }
+
     h1, h2 { margin: 0 0 12px; letter-spacing: 0.01em; }
     h1 { font-size: 2rem; }
     h2 { font-size: 1.2rem; }
@@ -394,6 +427,7 @@
     <div class="page-title">
       <h1 id="pageTitle">Rating Trend</h1>
       <p>This is a Stats detail view for one player or league context.</p>
+      <div id="trendAwards" class="trend-awards hidden"></div>
     </div>
 
     <div class="card">
@@ -443,6 +477,8 @@
       getLeagueContextById,
       getLeaderboardRawOrdinal,
       replayRatings,
+      getPublicRatingDisplayScale,
+      toPublicDisplayRating,
       formatMu,
       formatSigma,
     } from './ratings.js';
@@ -476,12 +512,14 @@
     }
 
     const pageTitleEl = document.getElementById('pageTitle');
+    const trendAwardsEl = document.getElementById('trendAwards');
     const summaryGridEl = document.getElementById('summaryGrid');
     const statusMessageEl = document.getElementById('statusMessage');
     const timelineTableBodyEl = document.getElementById('timelineTableBody');
     const chartCanvas = document.getElementById('ratingChart');
 
     let chart = null;
+    let publicRatingScale = null;
 
     function loadPlayers() {
       const saved = localStorage.getItem(PLAYER_STORAGE_KEY);
@@ -559,6 +597,139 @@
         .replaceAll("'", '&#039;');
     }
 
+    function clearTrendAwards() {
+      if (!trendAwardsEl) return;
+      trendAwardsEl.innerHTML = '';
+      trendAwardsEl.classList.add('hidden');
+    }
+
+    function renderTrendAwardItems(items) {
+      if (!trendAwardsEl) return;
+
+      if (!items.length) {
+        clearTrendAwards();
+        return;
+      }
+
+      trendAwardsEl.innerHTML = items.map(item => `
+        <div class="trend-award-chip" title="${escapeHtml(item.stat)}">
+          <div class="trend-award-title">${escapeHtml(item.title)}</div>
+          <div class="trend-award-stat">${escapeHtml(item.stat)}</div>
+        </div>
+      `).join('');
+      trendAwardsEl.classList.remove('hidden');
+    }
+
+    function getAwardPlayerIdsFromBadge(badge) {
+      const dataIds = (badge.getAttribute('data-player-ids') || '')
+        .split('|')
+        .map(id => id.trim())
+        .filter(Boolean);
+
+      if (dataIds.length) return dataIds;
+
+      return [...badge.querySelectorAll('.award-player a[href*="trend.html"]')]
+        .map(link => {
+          try {
+            const url = new URL(link.getAttribute('href'), window.location.href);
+            return url.searchParams.get('id');
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean)
+        .map(String);
+    }
+
+    function getTrendAwardItemsFromDocument(doc, playerId) {
+      return [...doc.querySelectorAll('.award-badge')]
+        .filter(badge => getAwardPlayerIdsFromBadge(badge).includes(String(playerId)))
+        .map(badge => ({
+          title: badge.querySelector('.award-title')?.textContent?.trim() || 'Award',
+          stat: badge.querySelector('.award-stat')?.textContent?.trim() || ''
+        }));
+    }
+
+    function waitForAwardBadges(doc, playerId, startedAt = Date.now()) {
+      const badges = doc.querySelectorAll('.award-badge');
+      if (badges.length || Date.now() - startedAt > 3000) {
+        return Promise.resolve(getTrendAwardItemsFromDocument(doc, playerId));
+      }
+
+      return new Promise(resolve => {
+        window.setTimeout(() => {
+          resolve(waitForAwardBadges(doc, playerId, startedAt));
+        }, 100);
+      });
+    }
+
+    function loadTrendAwards(playerId, { isLeagueContext = false } = {}) {
+      clearTrendAwards();
+      if (isLeagueContext || !playerId || !trendAwardsEl) return;
+
+      const previousStatsTab = sessionStorage.getItem('statsActiveTab');
+      sessionStorage.setItem('statsActiveTab', 'awards');
+      const iframe = document.createElement('iframe');
+      iframe.title = 'Awards source';
+      iframe.setAttribute('aria-hidden', 'true');
+      iframe.tabIndex = -1;
+      iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;left:-9999px;top:-9999px;opacity:0;';
+      let finished = false;
+
+      const cleanup = () => {
+        if (previousStatsTab === null) {
+          sessionStorage.removeItem('statsActiveTab');
+        } else {
+          sessionStorage.setItem('statsActiveTab', previousStatsTab);
+        }
+        window.removeEventListener('message', handleAwardsMessage);
+        iframe.remove();
+      };
+
+      const finish = awards => {
+        if (finished) return;
+        finished = true;
+        renderTrendAwardItems(Array.isArray(awards) ? awards : []);
+        cleanup();
+      };
+
+      const handleAwardsMessage = event => {
+        const data = event.data;
+        if (!data || data.type !== 'volleyballTrendAwards') return;
+        if (String(data.playerId) !== String(playerId)) return;
+        finish(data.awards || []);
+      };
+
+      window.addEventListener('message', handleAwardsMessage);
+
+      iframe.addEventListener('load', () => {
+        window.setTimeout(async () => {
+          try {
+            const doc = iframe.contentDocument;
+            const awardsButton = doc?.getElementById('awardsTabButton');
+            awardsButton?.click();
+
+            const awards = await waitForAwardBadges(doc, playerId);
+            finish(awards);
+          } catch {
+            finish([]);
+          }
+        }, 0);
+      }, { once: true });
+
+      iframe.addEventListener('error', () => {
+        finish([]);
+      }, { once: true });
+
+      document.body.appendChild(iframe);
+      const params = new URLSearchParams({
+        tab: 'awards',
+        embed: 'trendAwards',
+        playerId: String(playerId)
+      });
+      iframe.src = `stats.html?${params.toString()}`;
+    }
+
     function clamp(value, min, max) {
       return Math.max(min, Math.min(max, value));
     }
@@ -588,7 +759,7 @@
     }
 
     function toDisplayRating(rawOrdinal) {
-      return 1500 + Number(rawOrdinal) * 50;
+      return toPublicDisplayRating(rawOrdinal, publicRatingScale);
     }
 
     function getOverallLeaderboardRaw(rawOrdinal, games) {
@@ -1041,9 +1212,20 @@
       const seasonal = true;
       const volleyballAdjusted = false;
       const includeLeagueGames = true;
+      publicRatingScale = getPublicRatingDisplayScale({
+        players,
+        games,
+        seasonal,
+        volleyballAdjusted,
+        includeLeagueGames,
+        options: {
+          seasonalTaperDays: getSeasonalTaperDays()
+        }
+      });
 
       if (!playerId || !entity) {
         pageTitleEl.textContent = 'Rating Not Found';
+        clearTrendAwards();
         statusMessageEl.textContent = 'Could not find that player or league context. Go back to Stats and choose a name from the standings.';
         renderSummary([], null);
         renderTable([], false);
@@ -1051,6 +1233,7 @@
       }
 
       pageTitleEl.textContent = `${entity.name} Rating Trend`;
+      loadTrendAwards(playerId, { isLeagueContext });
 
       // Run the full replay first to get calibrated starting ratings, then use
       // those starts for the timeline so both views are consistent.

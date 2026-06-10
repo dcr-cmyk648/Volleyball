@@ -5,8 +5,7 @@
 // - Backend model uses OpenSkill skill objects: { mu, sigma }.
 // - Raw rating / raw ordinal = mu - z * sigma. This stays on OpenSkill scale.
 // - Volleyball balancing uses raw ordinal scale, not public display scale.
-// - Public display rating is only created at UI/display boundaries:
-//     displayRating = 1500 + rawOrdinal * 50
+// - Public display rating is only created at UI/display boundaries.
 // - Leaderboard rating is display/ranking only. It is confidence-adjusted so
 //   low-game players are pulled toward baseline until they have more data.
 // - Leaderboard rating must not feed back into OpenSkill updates or team balancing.
@@ -74,6 +73,15 @@ export const LEAGUE_TEAM_MEMBER_IDS = LEAGUE_CONTEXTS.flatMap(context =>
 
 export const DISPLAY_RATING_BASE = 1500;
 export const DISPLAY_RATING_SCALE = 50;
+
+export const PUBLIC_RATING_FLOOR = 1000;
+export const PUBLIC_RATING_NEUTRAL = 1500;
+export const PUBLIC_RATING_CEILING = 2500;
+export const PUBLIC_RATING_CURVE_EXPONENT = 0.85;
+export const PUBLIC_RATING_THEORETICAL_SIGMA = 1;
+export const PUBLIC_RATING_MIN_GAMES = 5;
+export const PUBLIC_RATING_CONFIDENCE_GAMES = 22;
+export const PUBLIC_RATING_CONFIDENCE_POWER = 1.35;
 
 export const SEASONAL_FULL_WEIGHT_DAYS = 7;
 export const SEASONAL_TAPER_DAYS = 180;
@@ -147,7 +155,7 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260605-9';
+export const VERSION = 'beta-20260609-1';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Depth-emphasis weights: reduced single-star dominance so two weak players on a
@@ -245,6 +253,173 @@ export function getDisplayedRating(skill, options = {}) {
 
 export function toDisplayRating(rawOrdinal) {
   return DISPLAY_RATING_BASE + Number(rawOrdinal) * DISPLAY_RATING_SCALE;
+}
+
+export function getOverallStandingsRawOrdinal(rawOrdinal, games = 0, options = {}) {
+  const confidenceGames = Number(options.confidenceGames ?? PUBLIC_RATING_CONFIDENCE_GAMES);
+  const confidencePower = Number(options.confidencePower ?? PUBLIC_RATING_CONFIDENCE_POWER);
+
+  return getLeaderboardRawOrdinal(rawOrdinal, games, {
+    leaderboardConfidenceGames: confidenceGames,
+    leaderboardConfidencePower: confidencePower,
+  });
+}
+
+function getRawOrdinalFromMuSigma(mu, sigma, options = {}) {
+  const z = Number(options.ordinalSigmaMultiplier ?? DEFAULT_RATING_OPTIONS.ordinalSigmaMultiplier);
+  return Number(mu) - z * Number(sigma);
+}
+
+function getOverallStandingsRawFromMuSigma({ mu, sigma, games }, options = {}) {
+  return getOverallStandingsRawOrdinal(
+    getRawOrdinalFromMuSigma(mu, sigma, options),
+    games,
+    options
+  );
+}
+
+export function getPublicRatingDisplayScale({
+  players = [],
+  games = [],
+  options = {},
+  seasonal = true,
+  volleyballAdjusted = false,
+  volleyballOptions = {},
+  includeLeagueGames = true,
+  minGames = PUBLIC_RATING_MIN_GAMES,
+  confidenceGames = PUBLIC_RATING_CONFIDENCE_GAMES,
+  confidencePower = PUBLIC_RATING_CONFIDENCE_POWER,
+  theoreticalSigma = PUBLIC_RATING_THEORETICAL_SIGMA,
+  curveExponent = PUBLIC_RATING_CURVE_EXPONENT,
+} = {}) {
+  const displayOptions = {
+    confidenceGames,
+    confidencePower,
+    ordinalSigmaMultiplier:
+      Number(options.ordinalSigmaMultiplier ?? DEFAULT_RATING_OPTIONS.ordinalSigmaMultiplier),
+  };
+  const replayOptions = {
+    players,
+    seasonal,
+    volleyballAdjusted,
+    volleyballOptions,
+    includeLeagueGames,
+    options,
+  };
+  const sortedGames = getGamesSortedOldestFirst(getIncludedGames(games, includeLeagueGames));
+
+  let historyLow = null;
+  let historyHigh = null;
+  let maxSigma = -Infinity;
+
+  for (let i = 0; i <= sortedGames.length; i += 1) {
+    const prefixGames = sortedGames.slice(0, i).map((game, index) =>
+      game && game.createdAt == null
+        ? { ...game, createdAt: index }
+        : game
+    );
+    const replay = replayRatings({
+      ...replayOptions,
+      games: prefixGames,
+    });
+
+    (replay.standings || []).forEach(player => {
+      if ((Number(player.games) || 0) < minGames) return;
+
+      const mu = Number(player.mu);
+      const sigma = Number(player.sigma);
+      if (!Number.isFinite(mu) || !Number.isFinite(sigma)) return;
+
+      const gamesPlayed = Number(player.games) || 0;
+      const standingsRaw = getOverallStandingsRawFromMuSigma(
+        { mu, sigma, games: gamesPlayed },
+        displayOptions
+      );
+      const entry = {
+        id: player.id,
+        name: player.name,
+        games: gamesPlayed,
+        wins: Number(player.wins) || 0,
+        mu,
+        sigma,
+        standingsRaw,
+      };
+
+      if (!historyLow || standingsRaw < historyLow.standingsRaw) {
+        historyLow = entry;
+      }
+      if (!historyHigh || standingsRaw > historyHigh.standingsRaw) {
+        historyHigh = entry;
+      }
+      if (sigma > maxSigma) {
+        maxSigma = sigma;
+      }
+    });
+  }
+
+  if (!historyLow || !historyHigh || !Number.isFinite(maxSigma)) {
+    return null;
+  }
+
+  const lowerRaw = getOverallStandingsRawFromMuSigma(
+    { mu: historyLow.mu, sigma: maxSigma, games: historyLow.games },
+    displayOptions
+  );
+  const upperRaw = getOverallStandingsRawFromMuSigma(
+    {
+      mu: historyHigh.mu,
+      sigma: Math.max(0, Number(theoreticalSigma) || 0),
+      games: historyHigh.games,
+    },
+    displayOptions
+  );
+
+  if (!(lowerRaw < 0 && upperRaw > 0)) {
+    return null;
+  }
+
+  return {
+    lowerRaw,
+    upperRaw,
+    floor: PUBLIC_RATING_FLOOR,
+    neutral: PUBLIC_RATING_NEUTRAL,
+    ceiling: PUBLIC_RATING_CEILING,
+    curveExponent,
+    historyLow,
+    historyHigh,
+    maxSigma,
+    theoreticalSigma,
+    confidenceGames,
+    confidencePower,
+    minGames,
+  };
+}
+
+export function toPublicDisplayRating(rawOrdinal, displayScale = null) {
+  const raw = Number(rawOrdinal);
+  if (!Number.isFinite(raw)) return DISPLAY_RATING_BASE;
+  if (!displayScale) return toDisplayRating(raw);
+
+  const lowerRaw = Number(displayScale.lowerRaw);
+  const upperRaw = Number(displayScale.upperRaw);
+  if (!(lowerRaw < 0 && upperRaw > 0)) return toDisplayRating(raw);
+
+  const floor = Number(displayScale.floor ?? PUBLIC_RATING_FLOOR);
+  const neutral = Number(displayScale.neutral ?? PUBLIC_RATING_NEUTRAL);
+  const ceiling = Number(displayScale.ceiling ?? PUBLIC_RATING_CEILING);
+  const exponent = Math.max(0.1, Number(displayScale.curveExponent) || PUBLIC_RATING_CURVE_EXPONENT);
+
+  if (raw >= 0) {
+    const t = clamp(raw / upperRaw, 0, 1);
+    return neutral + (ceiling - neutral) * Math.pow(t, exponent);
+  }
+
+  const t = clamp(-raw / Math.abs(lowerRaw), 0, 1);
+  return neutral - (neutral - floor) * Math.pow(t, exponent);
+}
+
+export function formatPublicDisplayRating(rawOrdinal, displayScale = null) {
+  return `${Math.round(toPublicDisplayRating(rawOrdinal, displayScale))}`;
 }
 
 export function getDisplayRatingFromSkill(skill, options = {}) {
@@ -1334,16 +1509,15 @@ export function replayRatings({
         sigma: Number(skill.sigma),
         rawOrdinal,
 
-        // Public normal rating without leaderboard confidence correction.
+        // Legacy linear display rating without leaderboard confidence correction.
         displayRating: toDisplayRating(rawOrdinal),
 
-        // Leaderboard-only adjusted rating.
+        // Legacy linear leaderboard display rating.
         leaderboardRawOrdinal,
         leaderboardRating: toDisplayRating(leaderboardRawOrdinal),
 
-        // Backward-compatible alias used by current stats.html:
-        // stats.html calls formatDisplayedRating(player.rating),
-        // so rating must be raw ordinal on the chosen display/ranking basis.
+        // Backward-compatible alias. Keep this raw; public rating display
+        // happens at UI boundaries via the public display scale.
         rating: leaderboardRawOrdinal,
 
         wins: player.wins,
@@ -1720,8 +1894,8 @@ export function getPlayerRatingsForList(players, ratingMap, options = {}) {
     return {
       ...player,
       rawOrdinal,
-      // Backward-compatible alias. Existing index.html averages `rating`
-      // and then calls formatDisplayedRating(), so this must stay raw ordinal.
+      // Backward-compatible alias. Keep this raw; UI code decides whether
+      // it is a public rating display or a team-strength display.
       rating: rawOrdinal,
       displayRating: toDisplayRating(rawOrdinal),
       mu: Number(skill.mu),

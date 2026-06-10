@@ -1034,6 +1034,8 @@
     getVolleyballTeamStrength,
     getPlayerRatingsForList,
     formatDisplayedRating,
+    formatPublicDisplayRating,
+    getPublicRatingDisplayScale,
     formatMu,
     formatSigma,
     getScoreMarginFactor,
@@ -1151,6 +1153,8 @@
   let groupingEnabled = false;
   let groupCount = MIN_GROUP_COUNT;
   let defaultDatabaseMeta = null;
+  let publicRatingScaleCacheKey = '';
+  let publicRatingScaleCache = null;
   let pendingRecord = null;
   let currentAssignmentId = '';
   let currentAssignmentDate = '';
@@ -1310,6 +1314,57 @@
         seasonalTaperDays: getSeasonalTaperDays()
       }
     });
+  }
+
+  function getPublicRatingScaleCacheKey() {
+    const playerKey = players
+      .map(player => `${player.id}:${player.name}`)
+      .join('|');
+    const gameKey = games
+      .map(game => [
+        game.id,
+        game.date,
+        game.winner,
+        game.scoreRed,
+        game.scoreBlue,
+        game.isLeagueGame ? 1 : 0,
+        game.createdAt || ''
+      ].join(':'))
+      .join('|');
+
+    return [
+      VERSION,
+      getSeasonalTaperDays(),
+      loadIncludeLeagueGamesEnabled() ? 1 : 0,
+      playerKey,
+      gameKey
+    ].join('||');
+  }
+
+  function getPublicRatingScale() {
+    const cacheKey = getPublicRatingScaleCacheKey();
+
+    if (cacheKey === publicRatingScaleCacheKey) {
+      return publicRatingScaleCache;
+    }
+
+    publicRatingScaleCacheKey = cacheKey;
+    publicRatingScaleCache = getPublicRatingDisplayScale({
+      players,
+      games,
+      seasonal: true,
+      volleyballAdjusted: false,
+      includeLeagueGames: loadIncludeLeagueGamesEnabled(),
+      options: {
+        seasonalTaperDays: getSeasonalTaperDays()
+      }
+    });
+
+    return publicRatingScaleCache;
+  }
+
+  function formatPlayerPublicRating(rawOrdinal) {
+    return formatPublicDisplayRating(rawOrdinal, getPublicRatingScale());
   }
 
   function buildPresenceState(playerList) {
@@ -2627,8 +2682,8 @@
       const lines = [
         `${getLeagueLevelLabel()} league mode is on.`,
         `Court type: ${getCourtTypeLabel()}`,
-        `Red average Rating: ${formatDisplayedRating(redAvg)}`,
-        `Blue Rating: ${formatDisplayedRating(leagueRawOrdinal)} (${LEAGUE_TEAM_NAME})`,
+        `Red average Rating: ${formatPlayerPublicRating(redAvg)}`,
+        `Blue Rating: ${formatPlayerPublicRating(leagueRawOrdinal)} (${LEAGUE_TEAM_NAME})`,
         `Blue mu: ${formatMu(league.mu)}`,
         `Blue sigma: ${formatSigma(league.sigma)}`
       ];

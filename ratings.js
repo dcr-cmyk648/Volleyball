@@ -62,6 +62,14 @@ export const LEAGUE_CONTEXTS = [
   },
 ];
 
+const POOLED_LEAGUE_CONTEXT = {
+  id: `${LEAGUE_TEAM_ID}_pooled`,
+  key: 'pooled',
+  level: 'pooled',
+  courtType: 'pooled',
+  name: 'Pooled League Team',
+};
+
 export const LEAGUE_TEAM_MEMBER_COUNT = 12;
 
 export const LEAGUE_TEAM_MEMBER_IDS = LEAGUE_CONTEXTS.flatMap(context =>
@@ -94,22 +102,32 @@ export const DEFAULT_RATING_OPTIONS = {
 
   useScoreMargin: true,
 
+  // League games are stronger evidence than casual mixed games because they
+  // reuse a fixed external opponent context. This scales only league-game
+  // rating updates; non-league games stay at 1.0x.
+  leagueUpdateMultiplier: 2.3,
+  // Eval/modeling knobs for synthetic league opponents. The database still
+  // records exact league context metadata; this controls only rating identity
+  // and how quickly the synthetic opponent rating reacts.
+  leagueTeamRatingMode: 'context',
+  leagueOpponentUpdateMultiplier: 1.75,
+
   // Blowout bonus — uses dominance ratio (winner's share of total points) rather than raw point diff.
   // Formula: bonus = marginBonusScale × (dominanceMargin ^ marginBonusPower)
   // where dominanceMargin = winnerScore / (winnerScore + loserScore) - 0.5
   //
-  // Representative values (cap = maxMarginBonus = 0.40):
-  //   25-23 → 1.01x   25-21 → 1.04x   25-20 → 1.05x
-  //   25-15 → 1.18x   25-10 → 1.40x   25-5  → 1.40x (capped)
-  maxMarginBonus: 0.40,
-  marginBonusScale: 4.0,
-  marginBonusPower: 1.5,
+  // Representative values (cap = maxMarginBonus = 0.03):
+  //   25-23 → 1.00x   25-21 → 1.00x   25-20 → 1.01x
+  //   25-15 → 1.01x   25-10 → 1.02x   25-5  → 1.03x (capped)
+  maxMarginBonus: 0.03,
+  marginBonusScale: 0.60,
+  marginBonusPower: 2.20,
 
   // Close two-point dampener:
-  // A game that finishes 25-23, 26-24, 27-25, etc. is evidence that the teams
-  // were well balanced, so rating movement is reduced. The dampener bottoms out at 0.65x.
-  closeOvertimeDampenerMin: 0.65,
-  closeOvertimeDampenerStep: 0.08,
+  // Kept as a configurable hook, but disabled by default. Historical fit favored
+  // treating narrow wins as ordinary wins rather than adding a separate dampener.
+  closeOvertimeDampenerMin: 1,
+  closeOvertimeDampenerStep: 0,
 
   seasonalTaperDays: 180,
 
@@ -158,23 +176,22 @@ export const DEFAULT_RATING_OPTIONS = {
 export const VERSION = 'beta-20260609-1';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
-  // Depth-emphasis weights: reduced single-star dominance so two weak players on a
-  // small team drag the team down more (better reflects close-game reality).
+  // Depth-emphasis weights: weak-link aware without fully discarding team-average signal.
   topPlayerWeight: 0.30,
   secondPlayerWeight: 0.24,
-  averageWeight: 0.28,
+  averageWeight: 0.01,
   depthWeight: 0.10,
   // worstPlayerWeight is scaled by match closeness at runtime — full weight only in even matchups
-  worstPlayerWeight: 0.08,
+  worstPlayerWeight: 0.35,
   // Carry score: bonus raw ordinal added to top player's effective rating
   // when they have a history of winning above their team's modeled probability
-  carryScale: 8,
-  carryConfidenceGames: 15,
-  sizeBonusPerExtraPlayer: 0.7,
-  probabilityScale: 4.4,
+  carryScale: 0,
+  carryConfidenceGames: 10,
+  sizeBonusPerExtraPlayer: 2.3,
+  probabilityScale: 4.2,
   // Post-hoc probability calibration. This sharpens displayed/model win
   // probabilities without changing team-strength construction.
-  probabilityTemperature: 0.75,
+  probabilityTemperature: 1.5,
   minWinProbability: 0.05,
   maxWinProbability: 0.95,
   minUpdateMultiplier: 0.35,
@@ -506,8 +523,14 @@ function getLeagueTeamMemberIdsForContext(context, count = LEAGUE_TEAM_SIZE) {
   );
 }
 
-function getLeagueTeamPlayersForGame(game) {
-  const context = getLeagueContext(game);
+function getLeagueRatingContext(game, options = {}) {
+  return options?.leagueTeamRatingMode === 'pooled'
+    ? POOLED_LEAGUE_CONTEXT
+    : getLeagueContext(game);
+}
+
+function getLeagueTeamPlayersForGame(game, options = {}) {
+  const context = getLeagueRatingContext(game, options);
   const redCount = Array.isArray(game?.redTeam) && game.redTeam.length > 0
     ? game.redTeam.length
     : LEAGUE_TEAM_SIZE;
@@ -518,9 +541,9 @@ function getLeagueTeamPlayersForGame(game) {
   }));
 }
 
-function getBluePlayersForVolleyballModel(game) {
+function getBluePlayersForVolleyballModel(game, options = {}) {
   if (game?.isLeagueGame) {
-    return getLeagueTeamPlayersForGame(game);
+    return getLeagueTeamPlayersForGame(game, options);
   }
 
   return Array.isArray(game?.blueTeam) ? game.blueTeam : [];
@@ -645,8 +668,12 @@ export function getScoreMarginDetails(scoreRed, scoreBlue, options = {}) {
 
   if (isCloseOvertime) {
     const overtimePoints = Math.max(1, winnerScore - 25);
-    const dampenerStep = Number(cfg.closeOvertimeDampenerStep) || DEFAULT_RATING_OPTIONS.closeOvertimeDampenerStep;
-    const dampenerMin = Number(cfg.closeOvertimeDampenerMin) || DEFAULT_RATING_OPTIONS.closeOvertimeDampenerMin;
+    const dampenerStep = Number.isFinite(Number(cfg.closeOvertimeDampenerStep))
+      ? Number(cfg.closeOvertimeDampenerStep)
+      : DEFAULT_RATING_OPTIONS.closeOvertimeDampenerStep;
+    const dampenerMin = Number.isFinite(Number(cfg.closeOvertimeDampenerMin))
+      ? Number(cfg.closeOvertimeDampenerMin)
+      : DEFAULT_RATING_OPTIONS.closeOvertimeDampenerMin;
 
     closeOvertimeDampener = clamp(
       1 - overtimePoints * dampenerStep,
@@ -684,7 +711,7 @@ export function ensureRatingsForGame(ratingMap, game, options = {}) {
   redTeam.forEach(player => ensureRatingEntry(ratingMap, player.id, options));
 
   if (game?.isLeagueGame) {
-    getBlueTeamIds(game).forEach(id => ensureRatingEntry(ratingMap, id, options));
+    getBlueTeamIds(game, options).forEach(id => ensureRatingEntry(ratingMap, id, options));
   } else {
     blueTeam.forEach(player => ensureRatingEntry(ratingMap, player.id, options));
   }
@@ -694,9 +721,9 @@ function getRedTeamIds(game) {
   return (Array.isArray(game?.redTeam) ? game.redTeam : []).map(player => player.id);
 }
 
-function getBlueTeamIds(game) {
+function getBlueTeamIds(game, options = {}) {
   if (game?.isLeagueGame) {
-    const context = getLeagueContext(game);
+    const context = getLeagueRatingContext(game, options);
     const redCount = Array.isArray(game?.redTeam) && game.redTeam.length > 0
       ? game.redTeam.length
       : LEAGUE_TEAM_SIZE;
@@ -849,7 +876,10 @@ export function getVolleyballTeamStrength({
     const confidenceGames = Math.max(1, Number(volleyballCfg.carryConfidenceGames) || 15);
     const confidence = carryStats.games / (carryStats.games + confidenceGames);
     // Only positive carry: boost proven stars, don't further penalise underperformers
-    const carryBonus = carryStats.score * (Number(volleyballCfg.carryScale) || 8) * confidence;
+    const carryScale = Number.isFinite(Number(volleyballCfg.carryScale))
+      ? Number(volleyballCfg.carryScale)
+      : 8;
+    const carryBonus = carryStats.score * carryScale * confidence;
     adjustedBestRating = bestRating + carryBonus;
   }
 
@@ -1059,7 +1089,7 @@ function getOpenSkillWinnerProbability(redTeam, blueTeam, winner) {
 
 function getVolleyballWinnerProbability(game, ratingMap, options = {}, volleyballOptions = {}) {
   const redPlayers = Array.isArray(game?.redTeam) ? game.redTeam : [];
-  const bluePlayers = getBluePlayersForVolleyballModel(game);
+  const bluePlayers = getBluePlayersForVolleyballModel(game, options);
 
   const score = scoreVolleyballCandidateSplit({
     redPlayers,
@@ -1161,7 +1191,7 @@ export function rateSingleGame(game, ratingMap, options = {}) {
   ensureRatingsForGame(ratingMap, game, cfg);
 
   const redIds = getRedTeamIds(game);
-  const blueIds = getBlueTeamIds(game);
+  const blueIds = getBlueTeamIds(game, cfg);
 
   const redBefore = redIds.map(id => ({
     id,
@@ -1223,14 +1253,22 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     vbCfg.finalUpdateMultiplierMin,
     Math.min(vbCfg.finalUpdateMultiplierMax, marginSensitiveMax)
   );
-  const baseUpdateMultiplier = cappedVolatility * seasonalWeight;
+  const leagueUpdateMultiplier = game?.isLeagueGame
+    ? Math.max(0, Number(cfg.leagueUpdateMultiplier) || 1)
+    : 1;
+  const baseUpdateMultiplier = cappedVolatility * seasonalWeight * leagueUpdateMultiplier;
 
   // Per-team size damping: players on teams larger than 6 have less individual impact
   // per game (more rotations, fewer touches). Damper = 6 / teamSize for teams > 6.
   const redSizeDamper = LEAGUE_TEAM_SIZE / Math.max(LEAGUE_TEAM_SIZE, redIds.length);
   const blueSizeDamper = LEAGUE_TEAM_SIZE / Math.max(LEAGUE_TEAM_SIZE, blueIds.length);
   const redFinalMultiplier = baseUpdateMultiplier * redSizeDamper;
-  const blueFinalMultiplier = baseUpdateMultiplier * blueSizeDamper;
+  const leagueOpponentUpdateMultiplier = game?.isLeagueGame
+    ? Math.max(0, Number.isFinite(Number(cfg.leagueOpponentUpdateMultiplier))
+      ? Number(cfg.leagueOpponentUpdateMultiplier)
+      : 1)
+    : 1;
+  const blueFinalMultiplier = baseUpdateMultiplier * blueSizeDamper * leagueOpponentUpdateMultiplier;
   // Keep finalUpdateMultiplier as the base (pre-size-damping) for display purposes
   const finalUpdateMultiplier = baseUpdateMultiplier;
 
@@ -1441,7 +1479,7 @@ export function replayRatings({
     // in pass 1 and are now being corrected for opponents' benefit only).
     if (_calibratedStarts !== null) {
       const calibrationGamesLimit = Number(cfg.calibrationGames) || 0;
-      [...getRedTeamIds(game), ...getBlueTeamIds(game)].forEach(id => {
+      [...getRedTeamIds(game), ...getBlueTeamIds(game, cfg)].forEach(id => {
         const cal = _calibratedStarts[id];
         if (cal && (statsMap[id]?.games ?? 0) < calibrationGamesLimit) {
           const calibratedSkill = rating({ mu: Number(cal.mu), sigma: Number(cal.sigma) });
@@ -1754,7 +1792,7 @@ export function getPlayerRatingTimeline({
     // Calibration freeze: match replayRatings — restore seeded rating within calibration window.
     if (_calibratedStarts !== null) {
       const calibrationGamesLimit = Number(cfg.calibrationGames) || 0;
-      [...getRedTeamIds(game), ...getBlueTeamIds(game)].forEach(id => {
+      [...getRedTeamIds(game), ...getBlueTeamIds(game, cfg)].forEach(id => {
         const cal = _calibratedStarts[id];
         if (cal && (statsMap[id]?.games ?? 0) < calibrationGamesLimit) {
           const calibratedSkill = rating({ mu: Number(cal.mu), sigma: Number(cal.sigma) });

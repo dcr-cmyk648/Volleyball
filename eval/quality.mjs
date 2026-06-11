@@ -8,6 +8,8 @@
 // Those outcome metrics only move when teams are formed differently (forward-looking).
 
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import {
   replayRatings,
   calibrateMarginModel,
@@ -16,7 +18,8 @@ import {
   getGamesSortedOldestFirst,
 } from '../ratings.js';
 
-const DB_PATH = process.env.VBALL_DB || 'C:/Users/rowla/Documents/Volleyball/default_database';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DB_PATH = process.env.VBALL_DB || resolve(__dirname, '../default_database');
 const db = JSON.parse(readFileSync(DB_PATH, 'utf8'));
 const players = db.players || [];
 const games = db.games || [];

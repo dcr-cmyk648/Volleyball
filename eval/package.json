@@ -3,6 +3,19 @@
   "private": true,
   "type": "module",
   "version": "1.0.0",
+  "scripts": {
+    "quality": "node --no-deprecation --import ./register.mjs quality.mjs",
+    "margin": "node --no-deprecation --import ./register.mjs margin_sweep.mjs",
+    "margin:grid": "node --no-deprecation --import ./register.mjs margin_grid.mjs",
+    "league": "node --no-deprecation --import ./register.mjs league_sweep.mjs",
+    "balance": "node --no-deprecation --import ./register.mjs balancing_quality.mjs",
+    "balancer:grid": "node --no-deprecation --import ./register.mjs balancer_grid.mjs",
+    "probscale": "node --no-deprecation --import ./register.mjs probability_scale_sweep.mjs",
+    "carry": "node --no-deprecation --import ./register.mjs carry_sweep.mjs",
+    "probtemp": "node --no-deprecation --import ./register.mjs probability_temperature_sweep.mjs",
+    "league:team": "node --no-deprecation --import ./register.mjs league_team_sweep.mjs",
+    "closewin": "node --no-deprecation --import ./register.mjs close_win_sweep.mjs"
+  },
   "dependencies": {
     "openskill": "4.1.1"
   }

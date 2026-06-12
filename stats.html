@@ -364,6 +364,30 @@
       white-space: nowrap;
     }
 
+    .scoreboard-mode-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .scoreboard-mode-button {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .scoreboard-mode-button.active {
+      color: var(--text);
+      border-color: rgba(96, 165, 250, 0.55);
+      background: rgba(96, 165, 250, 0.16);
+    }
+
     .trend-up    { color: #4ade80; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .trend-down  { color: #f87171; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .trend-stable { color: var(--muted); }
@@ -1168,6 +1192,14 @@
 
         <div class="small hidden" id="modelHelpText"></div>
 
+        <div class="scoreboard-mode-row" role="tablist" aria-label="Overall scoreboard type">
+          <button id="overallCompositeModeButton" class="scoreboard-mode-button active" type="button">Composite</button>
+          <button id="overallLeagueModeButton" class="scoreboard-mode-button" type="button">League</button>
+          <button id="overallBigTeamModeButton" class="scoreboard-mode-button" type="button">Big Team</button>
+          <button id="overallSmallTeamModeButton" class="scoreboard-mode-button" type="button">Small Team</button>
+        </div>
+        <div id="overallScoreboardModeDescription" class="small" style="margin-top: 8px;"></div>
+
         <div id="sortIndicator" class="small hidden" style="margin-top: 12px;"></div>
         <div class="table-wrap standings-wrap" style="margin-top: 8px;">
           <table class="standings-table">
@@ -1333,6 +1365,7 @@
     const SEASON_START_DATE_STORAGE_KEY = 'gameDaySeasonStartDate';
     const SEASON_PLAYER_LOOKUP_STORAGE_KEY = 'gameDaySeasonPlayerLookup';
     const OVERALL_PLAYER_LOOKUP_STORAGE_KEY = 'gameDayOverallPlayerLookup';
+    const OVERALL_SCOREBOARD_MODE_STORAGE_KEY = 'gameDayOverallScoreboardMode';
     const QUALITY_CACHE_STORAGE_KEY = 'gameDayQualityOverviewCache';
 
     const LEADERBOARD_LOW_SIGMA = 6.4;
@@ -1349,6 +1382,24 @@
     const OVERALL_STANDINGS_MIN_GAMES = 5;
     const OVERALL_STANDINGS_CONFIDENCE_GAMES = 22;
     const OVERALL_STANDINGS_CONFIDENCE_POWER = 1.35;
+    const OVERALL_SCOREBOARD_MODES = {
+      composite: {
+        label: 'Composite',
+        description: 'All games, including league games and league teams.'
+      },
+      league: {
+        label: 'League',
+        description: 'Only league games, including league team context ratings.'
+      },
+      bigTeam: {
+        label: 'Big Team',
+        description: 'Only non-league games where both teams had 5 or 6 players.'
+      },
+      smallTeam: {
+        label: 'Small Team',
+        description: 'Only non-league games where both teams had 3 or 4 players.'
+      }
+    };
 
     const TEAM_COLORS = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'cyan', 'pink'];
     const TEAM_LABELS = {
@@ -1366,6 +1417,13 @@
     const overallPlayerLookupInputEl = document.getElementById('overallPlayerLookupInput');
     const clearOverallPlayerLookupButtonEl = document.getElementById('clearOverallPlayerLookupButton');
     const overallPlayerLookupResultEl = document.getElementById('overallPlayerLookupResult');
+    const overallScoreboardModeDescriptionEl = document.getElementById('overallScoreboardModeDescription');
+    const overallScoreboardModeButtons = {
+      composite: document.getElementById('overallCompositeModeButton'),
+      league: document.getElementById('overallLeagueModeButton'),
+      bigTeam: document.getElementById('overallBigTeamModeButton'),
+      smallTeam: document.getElementById('overallSmallTeamModeButton')
+    };
     const historyList = document.getElementById('historyList');
     const algorithmQualityCardEl = document.getElementById('algorithmQualityCard');
     const qualityPanelsEl = document.getElementById('qualityPanels');
@@ -1424,6 +1482,7 @@
     let publicRatingScaleCache = null;
     let activeStatsTab = 'seasonMovers';
     let activeSortBy = null;
+    let activeOverallScoreboardMode = 'composite';
     let activeSeasonStartDate = '';
 
     const SORT_CONFIGS = {
@@ -1495,6 +1554,76 @@
       return true;
     }
 
+    function isLargeTeamSize(size) {
+      return size === 5 || size === 6;
+    }
+
+    function isSmallTeamSize(size) {
+      return size === 3 || size === 4;
+    }
+
+    function getTeamSize(game, side) {
+      const team = side === 'red' ? game?.redTeam : game?.blueTeam;
+      return Array.isArray(team) ? team.length : 0;
+    }
+
+    function isBalancedTeamSizeGame(game, sizeMatcher) {
+      if (!game || game.isLeagueGame) return false;
+      return sizeMatcher(getTeamSize(game, 'red')) && sizeMatcher(getTeamSize(game, 'blue'));
+    }
+
+    function getOverallScoreboardMode() {
+      return OVERALL_SCOREBOARD_MODES[activeOverallScoreboardMode]
+        ? activeOverallScoreboardMode
+        : 'composite';
+    }
+
+    function getOverallScoreboardGames(games = loadGames(), mode = getOverallScoreboardMode()) {
+      const safeGames = Array.isArray(games) ? games : [];
+
+      if (mode === 'league') {
+        return safeGames.filter(game => game?.isLeagueGame);
+      }
+
+      if (mode === 'bigTeam') {
+        return safeGames.filter(game => isBalancedTeamSizeGame(game, isLargeTeamSize));
+      }
+
+      if (mode === 'smallTeam') {
+        return safeGames.filter(game => isBalancedTeamSizeGame(game, isSmallTeamSize));
+      }
+
+      return safeGames;
+    }
+
+    function getOverallScoreboardModeLabel(mode = getOverallScoreboardMode()) {
+      return OVERALL_SCOREBOARD_MODES[mode]?.label || OVERALL_SCOREBOARD_MODES.composite.label;
+    }
+
+    function updateOverallScoreboardModeControls() {
+      const mode = getOverallScoreboardMode();
+      Object.entries(overallScoreboardModeButtons).forEach(([key, button]) => {
+        if (!button) return;
+        const active = key === mode;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+
+      if (overallScoreboardModeDescriptionEl) {
+        overallScoreboardModeDescriptionEl.textContent =
+          OVERALL_SCOREBOARD_MODES[mode]?.description || '';
+      }
+    }
+
+    function setOverallScoreboardMode(mode, { persist = true } = {}) {
+      activeOverallScoreboardMode = OVERALL_SCOREBOARD_MODES[mode] ? mode : 'composite';
+      if (persist) {
+        localStorage.setItem(OVERALL_SCOREBOARD_MODE_STORAGE_KEY, activeOverallScoreboardMode);
+      }
+      updateOverallScoreboardModeControls();
+      renderStats();
+    }
+
     function getReplayResult() {
       const players = loadPlayers();
       const games = loadGames();
@@ -1511,7 +1640,7 @@
       });
     }
 
-    function getPublicRatingScaleCacheKey(players, games) {
+    function getPublicRatingScaleCacheKey(players, games, cacheScope = 'default') {
       const playerKey = players
         .map(player => `${player.id}:${player.name}`)
         .join('|');
@@ -1529,6 +1658,7 @@
 
       return [
         VERSION,
+        cacheScope,
         getSeasonalTaperDays(),
         isIncludeLeagueGamesMode() ? 1 : 0,
         playerKey,
@@ -1536,10 +1666,9 @@
       ].join('||');
     }
 
-    function getPublicRatingScale() {
+    function getPublicRatingScale(games = loadGames(), cacheScope = 'default') {
       const players = loadPlayers();
-      const games = loadGames();
-      const cacheKey = getPublicRatingScaleCacheKey(players, games);
+      const cacheKey = getPublicRatingScaleCacheKey(players, games, cacheScope);
 
       if (cacheKey === publicRatingScaleCacheKey) {
         return publicRatingScaleCache;
@@ -1560,8 +1689,8 @@
       return publicRatingScaleCache;
     }
 
-    function formatPublicRating(rawOrdinal) {
-      return formatPublicDisplayRating(rawOrdinal, getPublicRatingScale());
+    function formatPublicRating(rawOrdinal, games = loadGames(), cacheScope = 'default') {
+      return formatPublicDisplayRating(rawOrdinal, getPublicRatingScale(games, cacheScope));
     }
 
     function clamp(value, min, max) {
@@ -1669,7 +1798,9 @@
       seasonMoversPanelEl.classList.toggle('hidden', activeStatsTab !== 'seasonMovers');
       awardsPanelEl.classList.toggle('hidden', activeStatsTab !== 'awards');
 
-      if (activeStatsTab === 'seasonMovers') {
+      if (activeStatsTab === 'overall') {
+        renderStats();
+      } else if (activeStatsTab === 'seasonMovers') {
         renderSeasonMovers();
       } else if (activeStatsTab === 'awards') {
         renderAwards();
@@ -1730,9 +1861,9 @@
         });
     }
 
-    function getSortedFieldDisplay(player) {
+    function getSortedFieldDisplay(player, ratingGames = loadGames(), ratingScope = 'default') {
       const cfg = SORT_CONFIGS[activeSortBy];
-      if (!cfg) return formatPublicRating(player.experimentalLeaderboardRaw);
+      if (!cfg) return formatPublicRating(player.experimentalLeaderboardRaw, ratingGames, ratingScope);
       const val = player[cfg.field];
       if (activeSortBy === 'winrate') return `${Math.round((Number(val) || 0) * 100)}%`;
       if (activeSortBy === 'mu' || activeSortBy === 'sigma' || activeSortBy === 'rawOrdinal') {
@@ -1743,6 +1874,15 @@
         return `${n >= 0 ? '+' : ''}${n.toFixed(3)}`;
       }
       return String(val ?? '—');
+    }
+
+    function getOverallReplayResult({ games = loadGames(), mode = getOverallScoreboardMode() } = {}) {
+      const scoreboardGames = getOverallScoreboardGames(games, mode);
+      return {
+        mode,
+        games: scoreboardGames,
+        result: getReplayResultForGames(scoreboardGames)
+      };
     }
 
 
@@ -4069,15 +4209,15 @@
       );
     }
 
-    function createOverallLookupResult(player) {
+    function createOverallLookupResult(player, ratingGames = loadGames(), ratingScope = 'default') {
       const div = document.createElement('div');
       div.className = 'season-mover-row';
 
       const ratingRaw = getExperimentalLeaderboardRaw(player);
-      const ratingText = formatPublicRating(ratingRaw);
+      const ratingText = formatPublicRating(ratingRaw, ratingGames, ratingScope);
       const eligibilityText = isOverallStandingsEligible(player)
-        ? 'Shown in Overall Standings.'
-        : `Needs ${OVERALL_STANDINGS_MIN_GAMES} games to appear in Overall Standings.`;
+        ? `Shown in ${getOverallScoreboardModeLabel()} standings.`
+        : `Needs ${OVERALL_STANDINGS_MIN_GAMES} games in this scoreboard to appear in standings.`;
 
       div.innerHTML = `
         <div class="season-mover-header">
@@ -4091,7 +4231,7 @@
       return div;
     }
 
-    function renderOverallPlayerLookup(result) {
+    function renderOverallPlayerLookup(result, ratingGames = loadGames(), ratingScope = 'default') {
       if (!overallPlayerLookupResultEl) return;
 
       const query = getOverallPlayerLookupQuery();
@@ -4115,13 +4255,18 @@
         return;
       }
 
-      overallPlayerLookupResultEl.appendChild(createOverallLookupResult(match));
+      overallPlayerLookupResultEl.appendChild(createOverallLookupResult(match, ratingGames, ratingScope));
     }
 
     function renderStats() {
-      const result = getReplayResult();
+      updateOverallScoreboardModeControls();
+      const mode = getOverallScoreboardMode();
+      const replay = getOverallReplayResult({ mode });
+      const result = replay.result;
+      const scoreboardGames = replay.games;
+      const ratingScope = `overall:${mode}`;
       const rows = getSortedStandingsRows(result);
-      renderOverallPlayerLookup(result);
+      renderOverallPlayerLookup(result, scoreboardGames, ratingScope);
 
       // Update column header and sort indicator
       const sortHeader = document.getElementById('statsSortHeader');
@@ -4143,14 +4288,14 @@
         const tr = document.createElement('tr');
         const td = document.createElement('td');
         td.colSpan = 5;
-        td.innerHTML = '<div class="empty-state">No players have at least 5 games in the current model.</div>';
+        td.innerHTML = `<div class="empty-state">No players have at least ${OVERALL_STANDINGS_MIN_GAMES} games in ${escapeHtml(getOverallScoreboardModeLabel(mode))} standings.</div>`;
         tr.appendChild(td);
         statsTableBody.appendChild(tr);
         return;
       }
 
       // Snapshot rank maps for Trend around the latest session.
-      const allGames = loadGames();
+      const allGames = scoreboardGames;
       const recentSessionGames = getRecentSessionGames(allGames);
       const currentMap = getRatingBasedRankMap(result);
       const priorSessionMap = getRatingBasedRankMap(
@@ -4164,7 +4309,7 @@
           <td>${renderTrendCell(trend)}</td>
           <td>${index + 1}</td>
           <td class="player-cell">${formatPlayerNameCell(player)}</td>
-          <td>${getSortedFieldDisplay(player)}</td>
+          <td>${getSortedFieldDisplay(player, scoreboardGames, ratingScope)}</td>
           <td>${player.games}</td>
         `;
         statsTableBody.appendChild(tr);
@@ -5626,6 +5771,10 @@
     seasonMoversTabButtonEl.addEventListener('click', () => setStatsTab('seasonMovers'));
     awardsTabButtonEl.addEventListener('click', () => setStatsTab('awards'));
 
+    Object.entries(overallScoreboardModeButtons).forEach(([mode, button]) => {
+      button?.addEventListener('click', () => setOverallScoreboardMode(mode));
+    });
+
     applySeasonStartDateButtonEl.addEventListener('click', () => {
       const date = seasonStartDateInputEl.value;
 
@@ -5735,6 +5884,12 @@
 
     setSeasonStartDateValue(loadSeasonStartDate());
     updateSeasonStartDateStatus();
+    activeOverallScoreboardMode = OVERALL_SCOREBOARD_MODES[
+      localStorage.getItem(OVERALL_SCOREBOARD_MODE_STORAGE_KEY)
+    ]
+      ? localStorage.getItem(OVERALL_SCOREBOARD_MODE_STORAGE_KEY)
+      : 'composite';
+    updateOverallScoreboardModeControls();
 
     // Read URL params — sortBy forces the overall tab and sets the sort field
     const _initParams = new URLSearchParams(window.location.search);

@@ -195,6 +195,237 @@
   ],
   "games": [
     {
+      "id": 1781220678190,
+      "date": "2026-06-11",
+      "redTeam": [
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1776129685139,
+          "name": "JoshR"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        }
+      ],
+      "blueTeam": [],
+      "scoreRed": 16,
+      "scoreBlue": 14,
+      "winner": "red",
+      "isLeagueGame": true,
+      "leagueOpponent": {
+        "id": "league_team_intermediate_sand",
+        "name": "Intermediate League Sand",
+        "size": 6
+      },
+      "createdAt": 1781220678190,
+      "assignmentId": "1781214960232-s7twd9",
+      "assignmentSource": "manual",
+      "assignmentVersion": "beta-20260611-1",
+      "predictedAtAssignment": null,
+      "courtType": "sand",
+      "level": "intermediate"
+    },
+    {
+      "id": 1781219789029,
+      "date": "2026-06-11",
+      "redTeam": [
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1776129685139,
+          "name": "JoshR"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        }
+      ],
+      "blueTeam": [],
+      "scoreRed": 19,
+      "scoreBlue": 25,
+      "winner": "blue",
+      "isLeagueGame": true,
+      "leagueOpponent": {
+        "id": "league_team_intermediate_sand",
+        "name": "Intermediate League Sand",
+        "size": 6
+      },
+      "createdAt": 1781219789029,
+      "assignmentId": "1781214960232-s7twd9",
+      "assignmentSource": "manual",
+      "assignmentVersion": "beta-20260611-1",
+      "predictedAtAssignment": null,
+      "courtType": "sand",
+      "level": "intermediate"
+    },
+    {
+      "id": 1781218570619,
+      "date": "2026-06-11",
+      "redTeam": [
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1776129685139,
+          "name": "JoshR"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        }
+      ],
+      "blueTeam": [],
+      "scoreRed": 20,
+      "scoreBlue": 25,
+      "winner": "blue",
+      "isLeagueGame": true,
+      "leagueOpponent": {
+        "id": "league_team_intermediate_sand",
+        "name": "Intermediate League Sand",
+        "size": 6
+      },
+      "createdAt": 1781218570619,
+      "assignmentId": "1781214960232-s7twd9",
+      "assignmentSource": "manual",
+      "assignmentVersion": "beta-20260611-1",
+      "predictedAtAssignment": null,
+      "courtType": "sand",
+      "level": "intermediate"
+    },
+    {
+      "id": 1781214915388,
+      "date": "2026-06-11",
+      "redTeam": [
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1776129685139,
+          "name": "JoshR"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        }
+      ],
+      "scoreRed": 23,
+      "scoreBlue": 25,
+      "winner": "blue",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "createdAt": 1781214915388,
+      "assignmentId": "1781213636093-r6wjn3",
+      "assignmentSource": "algorithm",
+      "assignmentVersion": "beta-20260611-1",
+      "predictedAtAssignment": 6.12098479922319,
+      "courtType": "sand"
+    },
+    {
+      "id": 1781213350469,
+      "date": "2026-06-11",
+      "redTeam": [
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1776129685139,
+          "name": "JoshR"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 18,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "createdAt": 1781213350469,
+      "assignmentId": "1781212099705-zjkunh",
+      "assignmentSource": "algorithm",
+      "assignmentVersion": "beta-20260611-1",
+      "predictedAtAssignment": 4.359436535906298,
+      "courtType": "sand"
+    },
+    {
       "id": 1781141740401,
       "date": "2026-06-10",
       "redTeam": [

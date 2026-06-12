@@ -105,7 +105,7 @@ export const DEFAULT_RATING_OPTIONS = {
   // League games are stronger evidence than casual mixed games because they
   // reuse a fixed external opponent context. This scales only league-game
   // rating updates; non-league games stay at 1.0x.
-  leagueUpdateMultiplier: 2.3,
+  leagueUpdateMultiplier: 1.4,
   // Eval/modeling knobs for synthetic league opponents. The database still
   // records exact league context metadata; this controls only rating identity
   // and how quickly the synthetic opponent rating reacts.

@@ -475,18 +475,37 @@
     <div class="section">
       <div class="section-header">
         <div class="section-number">5</div>
-        <h2>What are the checkboxes/sliders/other inteactive elements?</h2>
+        <h2>What does the current model use?</h2>
       </div>
 
-      <p>
-        These are mathematical adjustments for applying team skill logic more specifically to volleyball and seasonal play. 
-      </p>
-      <p>
-        I added the seasonal mode to support future mini-leagues where players can be ranked based primarily on their performance within a specific window, rather than relying heavily on historical performance.
-        Older games are not deleted, but their effect is tapered down. Very recent games count most (near-100% effect if within "season"). Games outside of the season window have a rapidly scaling penalty applied to their positive (or negative) impact.
-      </p>
-      <p>The volleyball-adjustment checkbox applies the team balance logic from the MAX algorithm to how openskill adjusts rankings after matches. The MAX algorithm has been shown to more consistently produce accurate results for team-based games where average skill is variable.</p>
-    <p>League team incorporation gives more data but add a lot of noise because the performance of other teams in the league is so variable. Still fun to see.</p>
+      <p>The model has two related jobs: update player ratings after games, and estimate balanced teams before games.</p>
+
+      <p>For rating updates, it currently takes into account:</p>
+      <ul>
+        <li>OpenSkill mu and sigma for every player, including uncertainty.</li>
+        <li>Team result: who won, who lost, and which players were on each side.</li>
+        <li>Opponent strength: beating a stronger team moves ratings more than beating a weaker team.</li>
+        <li>Score margin, using a very small capped bonus for clearer wins.</li>
+        <li>Recentness: older games still count, but rating-update impact tapers over roughly a 6-month window.</li>
+        <li>New-player burn-in, so early games can move uncertain players toward their level faster.</li>
+        <li>Calibration for low-game players, which reduces distortions from everyone starting at the same default rating.</li>
+        <li>League games, including synthetic league-opponent ratings by league context.</li>
+        <li>A league-game update multiplier, because league results have tested as useful but noisier than ordinary head-to-head games.</li>
+      </ul>
+
+      <p>For team balancing, it currently takes into account:</p>
+      <ul>
+        <li>Each player's backend raw rating, not the confidence-adjusted public scoreboard number.</li>
+        <li>The top player and second-best player on each team.</li>
+        <li>Team depth and team average.</li>
+        <li>The weakest player on each team, with the weak-link effect strongest when the teams are otherwise close.</li>
+        <li>Team size, including support for uneven teams.</li>
+        <li>League-team strength when building league matchups.</li>
+        <li>Modeled win probability and expected point margin.</li>
+        <li>Historical carry score is currently disabled in balancing, because testing favored not using it.</li>
+      </ul>
+
+      <p>The public scoreboard also applies a confidence adjustment so low-game players are not over-ranked too quickly. That display adjustment does not feed back into team balancing or OpenSkill updates.</p>
     </div>
   </div>
 </body>

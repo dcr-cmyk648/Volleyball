@@ -3770,6 +3770,58 @@
     });
   }
 
+  function getServerGamesMissingLocally(meta) {
+    if (!meta || !Array.isArray(meta.games)) return [];
+
+    const localGameIds = new Set(
+      loadGames()
+        .map(getGameIdentity)
+        .filter(Boolean)
+    );
+
+    return meta.games.filter(game => {
+      const identity = getGameIdentity(game);
+      return identity && !localGameIds.has(identity);
+    });
+  }
+
+  function stableStringify(value) {
+    if (Array.isArray(value)) {
+      return `[${value.map(stableStringify).join(',')}]`;
+    }
+
+    if (value && typeof value === 'object') {
+      return `{${Object.keys(value)
+        .sort()
+        .map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+        .join(',')}}`;
+    }
+
+    return JSON.stringify(value);
+  }
+
+  function getCanonicalGameJson(game) {
+    return stableStringify(game || {});
+  }
+
+  function getServerGamesChangedLocally(meta) {
+    if (!meta || !Array.isArray(meta.games)) return [];
+
+    const localGamesByIdentity = new Map(
+      loadGames()
+        .map(game => [getGameIdentity(game), game])
+        .filter(([identity]) => Boolean(identity))
+    );
+
+    return meta.games.filter(serverGame => {
+      const identity = getGameIdentity(serverGame);
+      const localGame = localGamesByIdentity.get(identity);
+      return identity &&
+        localGame &&
+        getCanonicalGameJson(localGame) !== getCanonicalGameJson(serverGame);
+    });
+  }
+
   function isValidSeasonStartDate(value) {
     return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
   }
@@ -3843,10 +3895,6 @@
   }
 
   async function fetchDefaultDatabase() {
-    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-      const local = await fetchBundledDefaultDatabase();
-      return normalizeServerDatabase(local, { sourceLabel: 'local default_database', usedFallback: false, serverConnectionError: '' });
-    }
     try {
       const parsed = await fetchGoogleDriveStats();
       return normalizeServerDatabase(parsed, {
@@ -3860,7 +3908,9 @@
       const fallback = await fetchBundledDefaultDatabase();
 
       return normalizeServerDatabase(fallback, {
-        sourceLabel: 'bundled fallback default_database',
+        sourceLabel: (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+          ? 'local default_database'
+          : 'bundled fallback default_database',
         usedFallback: true,
         serverConnectionError: String(googleError && googleError.message ? googleError.message : googleError)
       });
@@ -3878,6 +3928,8 @@
 
   function setDefaultDatabaseDialogState(meta) {
     const localGamesMissingFromServer = getLocalGamesMissingFromServer(meta);
+    const missingServerGames = getServerGamesMissingLocally(meta);
+    const changedServerGames = getServerGamesChangedLocally(meta);
     const wouldDeleteLocalGames = localGamesMissingFromServer.length > 0;
     const shouldUseDangerButton = Boolean(meta.usedFallback) || wouldDeleteLocalGames;
 
@@ -3910,8 +3962,16 @@
     defaultDatabaseTextEl.textContent =
       `The newest cloud stats file includes games through ${meta.latestGameDate}${sourceText}.`;
 
-    defaultDatabaseStatusEl.textContent =
-      `Google Drive stats file has ${meta.players.length} players and ${meta.games.length} games.`;
+    defaultDatabaseStatusEl.textContent = [
+      `Google Drive stats file has ${meta.players.length} players and ${meta.games.length} games.`,
+      `Syncing replaces local players and games with the server copy, including corrections to existing game records.`,
+      missingServerGames.length
+        ? `${missingServerGames.length} server game${missingServerGames.length === 1 ? '' : 's'} not found locally.`
+        : '',
+      changedServerGames.length
+        ? `${changedServerGames.length} existing local game${changedServerGames.length === 1 ? '' : 's'} differ from the server copy and will be corrected.`
+        : ''
+    ].filter(Boolean).join('\n');
 
     confirmLoadDefaultDatabaseButtonEl.textContent = wouldDeleteLocalGames
       ? 'Overwrite Local Games'

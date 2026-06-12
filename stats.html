@@ -551,26 +551,6 @@
     .quality-score-detail { display: flex; flex-direction: column; gap: 2px; }
     .quality-score-label { font-size: 12px; color: var(--muted); }
 
-    .quality-tier-table {
-      margin-top: 12px;
-    }
-
-    .quality-tier-table table {
-      min-width: 0;
-      table-layout: fixed;
-    }
-
-    .quality-tier-table th,
-    .quality-tier-table td {
-      padding: 9px 8px;
-      font-size: 13px;
-    }
-
-    .quality-tier-table .tier-label {
-      font-weight: 800;
-      color: var(--text);
-    }
-
     .team-box.red-team { border-left: 5px solid var(--red); }
     .team-box.blue-team { border-left: 5px solid var(--blue); }
     .team-box.green-team { border-left: 5px solid var(--green); }
@@ -1266,7 +1246,7 @@
     <details class="card" id="algorithmQualityCard">
       <summary class="quality-summary"><h2>Quality Overview</h2></summary>
       <div class="small">
-        Predictive validation uses only ratings available before each non-league game.
+        Predictive validation uses only ratings available before each game.
         Explanatory validation is a fit check using today's full data and model.
       </div>
       <div id="qualityPanels" class="quality-split hidden">
@@ -1283,11 +1263,10 @@
           <div id="qualityPredictiveMetrics" class="quality-grid"></div>
         </section>
       </div>
-      <div id="qualityTierTable" class="table-wrap quality-tier-table hidden"></div>
       <div class="quality-chart-wrap">
         <canvas id="qualityChart" height="220"></canvas>
       </div>
-      <div id="qualityEmpty" class="small hidden">Not enough non-league games to analyze yet.</div>
+      <div id="qualityEmpty" class="small hidden">Not enough games to analyze yet.</div>
     </details>
 
     <div class="card">
@@ -1336,7 +1315,6 @@
       VERSION,
       replayRatings,
       scoreVolleyballCandidateSplit,
-      calibrateMarginModel,
       predictExpectedMargin,
       getGamesSortedOldestFirst,
       formatDisplayedRating,
@@ -1393,11 +1371,11 @@
       },
       bigTeam: {
         label: 'Big Team',
-        description: 'Only non-league games where both teams had 5 or 6 players.'
+        description: 'Counts each player only in games where their own team had 5 or 6 players.'
       },
       smallTeam: {
         label: 'Small Team',
-        description: 'Only non-league games where both teams had 3 or 4 players.'
+        description: 'Counts each player only in games where their own team had 3 or 4 players.'
       }
     };
 
@@ -1433,7 +1411,6 @@
     const qualityPredictiveMetricsEl = document.getElementById('qualityPredictiveMetrics');
     const qualityEmptyEl = document.getElementById('qualityEmpty');
     const qualityChartEl = document.getElementById('qualityChart');
-    const qualityTierTableEl = document.getElementById('qualityTierTable');
     let qualityChart = null;
     const databaseStatus = document.getElementById('databaseStatus');
     const seasonStartDateStatusEl = document.getElementById('seasonStartDateStatus');
@@ -1567,9 +1544,19 @@
       return Array.isArray(team) ? team.length : 0;
     }
 
-    function isBalancedTeamSizeGame(game, sizeMatcher) {
-      if (!game || game.isLeagueGame) return false;
-      return sizeMatcher(getTeamSize(game, 'red')) && sizeMatcher(getTeamSize(game, 'blue'));
+    function getScoreboardTeamSize(game, side) {
+      let size = getTeamSize(game, side);
+      if (game?.isLeagueGame && side === 'red') {
+        const leagueSize = Number(game?.leagueOpponent?.size);
+        if (Number.isFinite(leagueSize) && leagueSize > 0) size = leagueSize;
+      }
+      return size > 6 ? 6 : size;
+    }
+
+    function isAnyTeamSizeGame(game, sizeMatcher) {
+      if (!game) return false;
+      return sizeMatcher(getScoreboardTeamSize(game, 'red')) ||
+        sizeMatcher(getScoreboardTeamSize(game, 'blue'));
     }
 
     function getOverallScoreboardMode() {
@@ -1586,14 +1573,62 @@
       }
 
       if (mode === 'bigTeam') {
-        return safeGames.filter(game => isBalancedTeamSizeGame(game, isLargeTeamSize));
+        return safeGames.filter(game => isAnyTeamSizeGame(game, isLargeTeamSize));
       }
 
       if (mode === 'smallTeam') {
-        return safeGames.filter(game => isBalancedTeamSizeGame(game, isSmallTeamSize));
+        return safeGames.filter(game => isAnyTeamSizeGame(game, isSmallTeamSize));
       }
 
       return safeGames;
+    }
+
+    function getOverallScoreboardSideMatcher(mode = getOverallScoreboardMode()) {
+      if (mode === 'bigTeam') return isLargeTeamSize;
+      if (mode === 'smallTeam') return isSmallTeamSize;
+      return null;
+    }
+
+    function createPlayerCountOverrideMap(games, mode = getOverallScoreboardMode()) {
+      const sideMatcher = getOverallScoreboardSideMatcher(mode);
+      if (!sideMatcher) return null;
+
+      const map = new Map();
+      const ensure = player => {
+        if (!player?.id) return null;
+        const key = String(player.id);
+        if (!map.has(key)) {
+          map.set(key, { games: 0, wins: 0 });
+        }
+        return map.get(key);
+      };
+
+      games.forEach(game => {
+        if (!game) return;
+
+        const redQualifies = sideMatcher(getScoreboardTeamSize(game, 'red'));
+        const blueQualifies = !game.isLeagueGame && sideMatcher(getScoreboardTeamSize(game, 'blue'));
+
+        if (redQualifies) {
+          (Array.isArray(game.redTeam) ? game.redTeam : []).forEach(player => {
+            const entry = ensure(player);
+            if (!entry) return;
+            entry.games += 1;
+            if (game.winner === 'red') entry.wins += 1;
+          });
+        }
+
+        if (blueQualifies) {
+          (Array.isArray(game.blueTeam) ? game.blueTeam : []).forEach(player => {
+            const entry = ensure(player);
+            if (!entry) return;
+            entry.games += 1;
+            if (game.winner === 'blue') entry.wins += 1;
+          });
+        }
+      });
+
+      return map;
     }
 
     function getOverallScoreboardModeLabel(mode = getOverallScoreboardMode()) {
@@ -1827,16 +1862,16 @@
       return gameConfidence * conservativeRaw;
     }
 
-    function isOverallStandingsEligible(player) {
-      return Boolean(player?.isLeagueContext) ||
+    function isOverallStandingsEligible(player, mode = getOverallScoreboardMode()) {
+      return (Boolean(player?.isLeagueContext) && !['bigTeam', 'smallTeam'].includes(mode)) ||
         Number(player?.games) >= OVERALL_STANDINGS_MIN_GAMES;
     }
 
-    function getSortedStandingsRows(result) {
+    function getSortedStandingsRows(result, mode = getOverallScoreboardMode()) {
       const cfg = SORT_CONFIGS[activeSortBy] || null;
 
       return result.standings
-        .filter(isOverallStandingsEligible)
+        .filter(player => isOverallStandingsEligible(player, mode))
         .map(player => ({
           ...player,
           experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player)
@@ -1876,12 +1911,35 @@
       return String(val ?? '—');
     }
 
+    function applyOverallScoreboardPlayerCounts(result, games, mode = getOverallScoreboardMode()) {
+      const countMap = createPlayerCountOverrideMap(games, mode);
+      if (!countMap) return result;
+
+      return {
+        ...result,
+        standings: (result?.standings || []).map(player => {
+          const counts = countMap.get(String(player.id)) || { games: 0, wins: 0 };
+          const gamesPlayed = Number(counts.games) || 0;
+          const wins = Number(counts.wins) || 0;
+
+          return {
+            ...player,
+            games: gamesPlayed,
+            wins,
+            losses: Math.max(0, gamesPlayed - wins),
+            winrate: gamesPlayed > 0 ? wins / gamesPlayed : 0
+          };
+        })
+      };
+    }
+
     function getOverallReplayResult({ games = loadGames(), mode = getOverallScoreboardMode() } = {}) {
       const scoreboardGames = getOverallScoreboardGames(games, mode);
+      const replay = getReplayResultForGames(scoreboardGames);
       return {
         mode,
         games: scoreboardGames,
-        result: getReplayResultForGames(scoreboardGames)
+        result: applyOverallScoreboardPlayerCounts(replay, scoreboardGames, mode)
       };
     }
 
@@ -1940,9 +1998,9 @@
     }
 
     // Ranks players by the leaderboard formula (always rating-based, ignores activeSortBy).
-    function getRatingBasedRankMap(result) {
+    function getRatingBasedRankMap(result, mode = getOverallScoreboardMode()) {
       const rows = result.standings
-        .filter(isOverallStandingsEligible)
+        .filter(player => isOverallStandingsEligible(player, mode))
         .map(p => ({ ...p, experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(p) }))
         .sort((a, b) => {
           if (b.experimentalLeaderboardRaw !== a.experimentalLeaderboardRaw)
@@ -4215,7 +4273,7 @@
 
       const ratingRaw = getExperimentalLeaderboardRaw(player);
       const ratingText = formatPublicRating(ratingRaw, ratingGames, ratingScope);
-      const eligibilityText = isOverallStandingsEligible(player)
+      const eligibilityText = isOverallStandingsEligible(player, getOverallScoreboardMode())
         ? `Shown in ${getOverallScoreboardModeLabel()} standings.`
         : `Needs ${OVERALL_STANDINGS_MIN_GAMES} games in this scoreboard to appear in standings.`;
 
@@ -4265,7 +4323,7 @@
       const result = replay.result;
       const scoreboardGames = replay.games;
       const ratingScope = `overall:${mode}`;
-      const rows = getSortedStandingsRows(result);
+      const rows = getSortedStandingsRows(result, mode);
       renderOverallPlayerLookup(result, scoreboardGames, ratingScope);
 
       // Update column header and sort indicator
@@ -4297,10 +4355,16 @@
       // Snapshot rank maps for Trend around the latest session.
       const allGames = scoreboardGames;
       const recentSessionGames = getRecentSessionGames(allGames);
-      const currentMap = getRatingBasedRankMap(result);
-      const priorSessionMap = getRatingBasedRankMap(
-        getLeaderboardSnapshotExcludingGames(recentSessionGames, allGames)
+      const priorGames = allGames.filter(game =>
+        !recentSessionGames.some(recentGame => recentGame?.id === game?.id)
       );
+      const priorResult = applyOverallScoreboardPlayerCounts(
+        getReplayResultForGames(priorGames),
+        priorGames,
+        mode
+      );
+      const currentMap = getRatingBasedRankMap(result, mode);
+      const priorSessionMap = getRatingBasedRankMap(priorResult, mode);
 
       rows.forEach((player, index) => {
         const trend      = computeTrend(player.id, currentMap, priorSessionMap);
@@ -4457,17 +4521,33 @@
       });
     }
 
-    function getAnalyzableGames() {
-      // Non-league games with two real teams and a recorded winner, oldest first.
-      return getGamesSortedOldestFirst(loadGames()).filter(game =>
-        game && !game.isLeagueGame &&
-        Array.isArray(game.redTeam) && game.redTeam.length > 0 &&
-        Array.isArray(game.blueTeam) && game.blueTeam.length > 0 &&
-        (game.winner === 'red' || game.winner === 'blue')
-      );
+    function getQualityLeagueTeamPlayers(game) {
+      const context = getLeagueContext(game);
+      const redCount = Array.isArray(game?.redTeam) && game.redTeam.length > 0
+        ? game.redTeam.length
+        : LEAGUE_TEAM_SIZE;
+      const count = Math.max(1, Math.min(LEAGUE_TEAM_MEMBER_COUNT, Number(redCount) || LEAGUE_TEAM_SIZE));
+
+      return Array.from({ length: count }, (_, index) => ({
+        id: `${context.id}_${index + 1}`,
+        name: `${context.name} ${index + 1}`,
+      }));
     }
 
-    const QUALITY_CACHE_VERSION = 'model-relative-tiers-v5-assignment-metadata';
+    function getQualityGameTeams(game) {
+      const redPlayers = Array.isArray(game?.redTeam) ? game.redTeam : [];
+      const bluePlayers = game?.isLeagueGame
+        ? getQualityLeagueTeamPlayers(game)
+        : (Array.isArray(game?.blueTeam) ? game.blueTeam : []);
+
+      return { redPlayers, bluePlayers };
+    }
+
+    function getAnalyzableGames() {
+      return getGamesSortedOldestFirst(loadGames()).filter(isQualityGame);
+    }
+
+    const QUALITY_CACHE_VERSION = 'model-relative-tiers-v6-include-league';
     const QUALITY_TIERS = [
       { key: 'balanced', label: 'Balanced', detail: 'expected + 1 error' },
       { key: 'imbalanced', label: 'Imbalanced', detail: '+1-2 errors' },
@@ -4545,8 +4625,9 @@
 
       if (includeProvisionalImbalance && statsMap) {
         const PROV_THRESHOLD = 5; // must match index.html PROV_THRESHOLD
-        const provRed  = game.redTeam.filter( p => (statsMap[String(p.id)]?.games ?? 0) < PROV_THRESHOLD).length;
-        const provBlue = game.blueTeam.filter(p => (statsMap[String(p.id)]?.games ?? 0) < PROV_THRESHOLD).length;
+        const { redPlayers, bluePlayers } = getQualityGameTeams(game);
+        const provRed  = redPlayers.filter( p => (statsMap[String(p.id)]?.games ?? 0) < PROV_THRESHOLD).length;
+        const provBlue = bluePlayers.filter(p => (statsMap[String(p.id)]?.games ?? 0) < PROV_THRESHOLD).length;
         stats.provisionalImbalanceSum += Math.abs(provRed - provBlue);
       }
 
@@ -4650,12 +4731,56 @@
     }
 
     function isQualityGame(game) {
-      return (
-        game && !game.isLeagueGame &&
-        Array.isArray(game.redTeam) && game.redTeam.length > 0 &&
-        Array.isArray(game.blueTeam) && game.blueTeam.length > 0 &&
-        (game.winner === 'red' || game.winner === 'blue')
-      );
+      if (!game || (game.winner !== 'red' && game.winner !== 'blue')) return false;
+      const { redPlayers, bluePlayers } = getQualityGameTeams(game);
+      return redPlayers.length > 0 && bluePlayers.length > 0;
+    }
+
+    function calibrateQualityMarginModel({
+      games = [],
+      ratingMap = {},
+      carryScoreMap = {},
+    } = {}) {
+      const xs = [];
+      const ys = [];
+
+      getGamesSortedOldestFirst(games).forEach(game => {
+        if (!isQualityGame(game)) return;
+        if (typeof game.scoreRed !== 'number' || typeof game.scoreBlue !== 'number') return;
+
+        const { redPlayers, bluePlayers } = getQualityGameTeams(game);
+        const score = scoreVolleyballCandidateSplit({
+          redPlayers,
+          bluePlayers,
+          ratingMap,
+          carryScoreMap,
+        });
+
+        xs.push(Math.abs(score.strengthDiff));
+        ys.push(Math.abs(game.scoreRed - game.scoreBlue));
+      });
+
+      const sampleSize = xs.length;
+      if (sampleSize === 0) {
+        return { baseMargin: 0, slope: 0, sampleSize: 0 };
+      }
+
+      const meanX = xs.reduce((sum, value) => sum + value, 0) / sampleSize;
+      const meanY = ys.reduce((sum, value) => sum + value, 0) / sampleSize;
+      let sxy = 0;
+      let sxx = 0;
+
+      for (let index = 0; index < sampleSize; index += 1) {
+        sxy += (xs[index] - meanX) * (ys[index] - meanY);
+        sxx += (xs[index] - meanX) * (xs[index] - meanX);
+      }
+
+      const slope = sxx > 0 ? sxy / sxx : 0;
+      return {
+        baseMargin: meanY - slope * meanX,
+        slope,
+        sampleSize,
+      };
     }
 
     function computePlayForwardQuality(games) {
@@ -4667,15 +4792,16 @@
       sortedGames.forEach(game => {
         if (isQualityGame(game)) {
           const priorResult = getReplayResultForGames(priorGames);
-          const marginModel = calibrateMarginModel({
+          const marginModel = calibrateQualityMarginModel({
             games: priorGames,
             ratingMap: priorResult.ratingMap,
             carryScoreMap: priorResult.carryMap || {},
           });
           latestMarginModel = marginModel;
+          const { redPlayers, bluePlayers } = getQualityGameTeams(game);
           const score = scoreVolleyballCandidateSplit({
-            redPlayers: game.redTeam,
-            bluePlayers: game.blueTeam,
+            redPlayers,
+            bluePlayers,
             ratingMap: priorResult.ratingMap,
             carryScoreMap: priorResult.carryMap || {},
           });
@@ -4698,7 +4824,7 @@
 
     function computeBackPredictionQuality(games) {
       const replay = getReplayResultForGames(games);
-      const marginModel = calibrateMarginModel({
+      const marginModel = calibrateQualityMarginModel({
         games,
         ratingMap: replay.ratingMap,
         carryScoreMap: replay.carryMap || {},
@@ -4708,9 +4834,10 @@
       getGamesSortedOldestFirst(games).forEach(game => {
         if (!isQualityGame(game)) return;
 
+        const { redPlayers, bluePlayers } = getQualityGameTeams(game);
         const score = scoreVolleyballCandidateSplit({
-          redPlayers: game.redTeam,
-          bluePlayers: game.blueTeam,
+          redPlayers,
+          bluePlayers,
           ratingMap: replay.ratingMap,
           carryScoreMap: replay.carryMap || {},
         });
@@ -4741,68 +4868,12 @@
       return value;
     }
 
-    function computeWeightedQualityScore(components) {
-      const usableComponents = components.filter(component => component.value !== null);
-
-      const totalWeight = usableComponents.reduce((sum, component) => sum + component.weight, 0);
-      if (totalWeight <= 0) return null;
-
-      const weightedPct = usableComponents.reduce(
-        (sum, component) => sum + component.value * 100 * component.weight,
-        0
-      ) / totalWeight;
-
-      return Math.round(weightedPct);
-    }
-
-    function computeQualityPanelScore({ accuracy, imbalancedAccuracy, blowoutAccuracy }) {
-      return computeWeightedQualityScore([
-        { value: blowoutAccuracy, weight: 45 },
-        { value: imbalancedAccuracy, weight: 35 },
-        { value: accuracy, weight: 20 },
-      ]);
-    }
-
-    function computePredictiveQualityScore({
-      balancedRate,
-      algorithmBalancedRate,
-      imbalancedAccuracy,
-      blowoutAccuracy
-    }) {
-      return computeWeightedQualityScore([
-        { value: algorithmBalancedRate, weight: 45 },
-        { value: balancedRate, weight: 35 },
-        { value: blowoutAccuracy, weight: 12 },
-        { value: imbalancedAccuracy, weight: 5 },
-      ]);
-    }
-
     function formatQualityPct(value) {
       return value === null ? 'n/a' : `${Math.round(value * 100)}%`;
     }
 
-    function getQualityAccuracyGapFromEven(accuracy) {
-      return accuracy === null ? null : Math.abs(accuracy - 0.5);
-    }
-
-    function formatQualityPctPoints(value) {
-      return value === null ? 'n/a' : `${Math.round(value * 100)} pts`;
-    }
-
     function formatQualityDecimal(value, digits = 2) {
       return value === null ? 'n/a' : Number(value).toFixed(digits);
-    }
-
-    function getQualityTierAccuracy(stats, keys) {
-      const totals = keys.reduce((sum, key) => {
-        const tier = stats.tiers?.[key] || {};
-        return {
-          games: sum.games + (Number(tier.games) || 0),
-          correct: sum.correct + (Number(tier.correct) || 0)
-        };
-      }, { games: 0, correct: 0 });
-
-      return totals.games > 0 ? totals.correct / totals.games : null;
     }
 
     function getQualityTierTotalGames(stats) {
@@ -4858,12 +4929,66 @@
       return model.sampleSize > 0 ? model.slope.toFixed(2) : 'n/a';
     }
 
+    function clampQualityScore(value) {
+      if (!Number.isFinite(Number(value))) return null;
+      return Math.max(0, Math.min(100, Number(value)));
+    }
+
+    function getMarginQualityComponent(summary) {
+      if (summary.marginMAE === null) return null;
+      return clampQualityScore(100 - (Number(summary.marginMAE) * 5));
+    }
+
+    function getBrierQualityComponent(summary) {
+      if (summary.brier === null) return null;
+      return clampQualityScore((1 - Number(summary.brier)) * 100);
+    }
+
+    function getPctQualityComponent(value) {
+      if (value === null) return null;
+      return clampQualityScore(Number(value) * 100);
+    }
+
+    function computeVisibleQualityScore(components) {
+      const usable = components.filter(component =>
+        component.value !== null && Number.isFinite(Number(component.value)) && component.weight > 0
+      );
+      const totalWeight = usable.reduce((sum, component) => sum + component.weight, 0);
+      if (totalWeight <= 0) return null;
+
+      const weighted = usable.reduce(
+        (sum, component) => sum + (Number(component.value) * component.weight),
+        0
+      ) / totalWeight;
+
+      return Math.round(clampQualityScore(weighted));
+    }
+
+    function computeExplanatoryQualityScore(summary) {
+      return computeVisibleQualityScore([
+        { value: getMarginQualityComponent(summary), weight: 50 },
+        { value: getBrierQualityComponent(summary), weight: 30 },
+        { value: getPctQualityComponent(summary.accuracy), weight: 20 },
+      ]);
+    }
+
+    function computePredictiveQualityScore(summary, algorithmBalancedRate, balancedRate) {
+      return computeVisibleQualityScore([
+        { value: getMarginQualityComponent(summary), weight: 45 },
+        { value: getBrierQualityComponent(summary), weight: 25 },
+        {
+          value: getPctQualityComponent(
+            algorithmBalancedRate === null ? balancedRate : algorithmBalancedRate
+          ),
+          weight: 20
+        },
+        { value: getPctQualityComponent(summary.accuracy), weight: 10 },
+      ]);
+    }
+
     function renderQualityScore(el, {
       score,
       label,
-      accuracy,
-      imbalancedAccuracy,
-      blowoutAccuracy,
       detailLines = null
     }) {
       if (!el) return;
@@ -4875,15 +5000,10 @@
       }
 
       el.classList.remove('hidden');
-      const lines = Array.isArray(detailLines)
-        ? detailLines
-        : [
-            ['Overall', formatQualityPct(accuracy)],
-            ['Imbalanced', formatQualityPct(imbalancedAccuracy)],
-            ['Blowout', formatQualityPct(blowoutAccuracy)],
-          ];
+      const scoreText = String(score);
+      const lines = Array.isArray(detailLines) ? detailLines : [];
       el.innerHTML = `
-        <div class="quality-score-value">${score}</div>
+        <div class="quality-score-value">${escapeHtml(scoreText)}</div>
         <div class="quality-score-detail">
           <div class="quality-score-label">${escapeHtml(label)}</div>
           ${lines.map(([lineLabel, lineValue]) => `
@@ -4902,118 +5022,6 @@
           <div class="metric-label">${escapeHtml(label)}</div>
         </div>
       `).join('');
-    }
-
-    function getQualityErrorPointValue(multiplier, marginMAE) {
-      const value = Number(marginMAE) * multiplier;
-      return Number.isFinite(value) ? Math.max(0, value) : null;
-    }
-
-    function formatQualityPointThreshold(value) {
-      return value === null ? 'n/a' : `${value.toFixed(1)} pts`;
-    }
-
-    function formatQualityTierThresholdForModel(tierKey, marginMAE) {
-      const oneError = getQualityErrorPointValue(1, marginMAE);
-      const twoErrors = getQualityErrorPointValue(2, marginMAE);
-      if (oneError === null || twoErrors === null) return 'n/a';
-
-      if (tierKey === 'balanced') {
-        return `<= expected + ${formatQualityPointThreshold(oneError)}`;
-      }
-
-      if (tierKey === 'imbalanced') {
-        return `expected + ${oneError.toFixed(1)}-${twoErrors.toFixed(1)} pts`;
-      }
-
-      return `> expected + ${formatQualityPointThreshold(twoErrors)}`;
-    }
-
-    function getQualityTierThresholdValues(tierKey, marginMAE) {
-      const oneError = getQualityErrorPointValue(1, marginMAE);
-      const twoErrors = getQualityErrorPointValue(2, marginMAE);
-      if (oneError === null || twoErrors === null) return [];
-      return tierKey === 'balanced' ? [oneError] :
-        tierKey === 'imbalanced' ? [oneError, twoErrors] :
-        [twoErrors];
-    }
-
-    function formatQualityTierThresholdFromValues(tierKey, values) {
-      if (!values.length) return 'n/a';
-
-      if (tierKey === 'balanced') {
-        return `<= expected + ${formatQualityPointThreshold(values[0])}`;
-      }
-
-      if (tierKey === 'imbalanced') {
-        return `expected + ${values[0].toFixed(1)}-${values[1].toFixed(1)} pts`;
-      }
-
-      return `> expected + ${formatQualityPointThreshold(values[0])}`;
-    }
-
-    function formatQualityTierDetail(tierKey, playSummary, backSummary) {
-      const predictiveValues = getQualityTierThresholdValues(tierKey, playSummary.marginMAE);
-      const explanatoryValues = getQualityTierThresholdValues(tierKey, backSummary.marginMAE);
-      const comparable = predictiveValues.length > 0 &&
-        predictiveValues.length === explanatoryValues.length;
-      const maxDifference = comparable
-        ? predictiveValues.reduce(
-            (max, value, index) => Math.max(max, Math.abs(value - explanatoryValues[index])),
-            0
-          )
-        : Infinity;
-
-      if (comparable && maxDifference < 1) {
-        const averageValues = predictiveValues.map((value, index) =>
-          (value + explanatoryValues[index]) / 2
-        );
-        return formatQualityTierThresholdFromValues(tierKey, averageValues);
-      }
-
-      return [
-        `Pred: ${formatQualityTierThresholdForModel(tierKey, playSummary.marginMAE)}`,
-        `Expl: ${formatQualityTierThresholdForModel(tierKey, backSummary.marginMAE)}`
-      ].join(' | ');
-    }
-
-    function renderQualityTierTable(playForward, backPrediction, playSummary, backSummary) {
-      if (!qualityTierTableEl) return;
-
-      qualityTierTableEl.classList.remove('hidden');
-      qualityTierTableEl.innerHTML = `
-        <table>
-          <thead>
-            <tr>
-              <th>Tier</th>
-              <th>Pred. games</th>
-              <th>Pred. acc.</th>
-              <th>Expl. games</th>
-              <th>Expl. acc.</th>
-              <th>Pred. Brier</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${QUALITY_TIERS.map(tier => {
-              const forwardTier = playForward.tiers?.[tier.key] || { games: 0, correct: 0, brierSum: 0 };
-              const backTier = backPrediction.tiers?.[tier.key] || { games: 0, correct: 0 };
-              const forwardAcc = forwardTier.games > 0 ? forwardTier.correct / forwardTier.games : null;
-              const backAcc = backTier.games > 0 ? backTier.correct / backTier.games : null;
-              const forwardBrier = forwardTier.games > 0 ? forwardTier.brierSum / forwardTier.games : null;
-              return `
-                <tr>
-                  <td><div class="tier-label">${escapeHtml(tier.label)}</div><div class="small">${escapeHtml(formatQualityTierDetail(tier.key, playSummary, backSummary))}</div></td>
-                  <td>${forwardTier.games}</td>
-                  <td>${escapeHtml(formatQualityPct(forwardAcc))}</td>
-                  <td>${backTier.games}</td>
-                  <td>${escapeHtml(formatQualityPct(backAcc))}</td>
-                  <td>${escapeHtml(formatQualityDecimal(forwardBrier, 3))}</td>
-                </tr>
-              `;
-            }).join('')}
-          </tbody>
-        </table>
-      `;
     }
 
     function renderQualityChart(playForward, playSummary) {
@@ -5124,7 +5132,6 @@
         renderQualityScore(qualityPredictiveScoreEl, { score: null });
         if (qualityExplanatoryMetricsEl) qualityExplanatoryMetricsEl.innerHTML = '';
         if (qualityPredictiveMetricsEl) qualityPredictiveMetricsEl.innerHTML = '';
-        qualityTierTableEl?.classList.add('hidden');
         qualityEmptyEl.classList.remove('hidden');
         if (qualityChart) { qualityChart.destroy(); qualityChart = null; }
         return;
@@ -5135,10 +5142,6 @@
       const { playForward, backPrediction } = computeQualityOverview(loadGames());
       const playSummary = getQualityStatsSummary(playForward);
       const backSummary = getQualityStatsSummary(backPrediction);
-      const forwardImbalancedAcc = getQualityTierAccuracy(playForward, ['imbalanced']);
-      const backwardImbalancedAcc = getQualityTierAccuracy(backPrediction, ['imbalanced']);
-      const forwardBlowoutAcc = getQualityTierAccuracy(playForward, ['blowout']);
-      const backwardBlowoutAcc = getQualityTierAccuracy(backPrediction, ['blowout']);
       const forwardBalancedRate = getQualityBalancedRate(playForward);
       const forwardAlgorithmBalancedRate = getQualityAlgorithmBalancedRate(playForward);
       const forwardTierTotalGames = getQualityTierTotalGames(playForward);
@@ -5147,32 +5150,28 @@
       const forwardAlgorithmBalancedGames = Number.isFinite(Number(playForward.algorithmBalancedGames))
         ? Number(playForward.algorithmBalancedGames)
         : Number(playForward.tiers?.balanced?.algorithmGames) || 0;
-      const forwardAccuracyGap = getQualityAccuracyGapFromEven(playSummary.accuracy);
-
-      const explanatoryScore = computeQualityPanelScore({
-        accuracy: backSummary.accuracy,
-        imbalancedAccuracy: backwardImbalancedAcc,
-        blowoutAccuracy: backwardBlowoutAcc,
-      });
-      const predictiveScore = computePredictiveQualityScore({
-        balancedRate: forwardBalancedRate,
-        algorithmBalancedRate: forwardAlgorithmBalancedRate,
-        imbalancedAccuracy: forwardImbalancedAcc,
-        blowoutAccuracy: forwardBlowoutAcc,
-      });
+      const explanatoryScore = computeExplanatoryQualityScore(backSummary);
+      const predictiveScore = computePredictiveQualityScore(
+        playSummary,
+        forwardAlgorithmBalancedRate,
+        forwardBalancedRate
+      );
 
       renderQualityScore(qualityExplanatoryScoreEl, {
         score: explanatoryScore,
         label: 'Explanatory quality',
-        accuracy: backSummary.accuracy,
-        imbalancedAccuracy: backwardImbalancedAcc,
-        blowoutAccuracy: backwardBlowoutAcc,
+        detailLines: [
+          ['Margin error', formatQualityMarginError(backSummary)],
+          ['Brier', formatQualityDecimal(backSummary.brier, 3)],
+          ['Winner accuracy', formatQualityPct(backSummary.accuracy)],
+          ['Sample', formatQualityGameCount(backPrediction)],
+        ],
       });
       renderQualityScore(qualityPredictiveScoreEl, {
         score: predictiveScore,
         label: 'Predictive quality',
         detailLines: [
-          ['Algorithm sample', forwardAlgorithmGames > 0 ? `${forwardAlgorithmGames} games` : 'none'],
+          ['Margin error', formatQualityMarginError(playSummary)],
           ['Algorithm balanced', formatQualityRateWithCount(
             forwardAlgorithmBalancedRate,
             forwardAlgorithmBalancedGames,
@@ -5183,39 +5182,35 @@
             forwardBalancedGames,
             forwardTierTotalGames
           )],
-          ['Winner acc. gap', formatQualityPctPoints(forwardAccuracyGap)],
+          ['Brier', formatQualityDecimal(playSummary.brier, 3)],
+          ['Winner accuracy', formatQualityPct(playSummary.accuracy)],
         ],
       });
 
       renderQualityMetrics(qualityExplanatoryMetricsEl, [
         ['Games', formatQualityGameCount(backPrediction)],
-        ['Accuracy', formatQualityPct(backSummary.accuracy)],
-        ['Imbalanced acc.', formatQualityPct(backwardImbalancedAcc)],
-        ['Blowout acc.', formatQualityPct(backwardBlowoutAcc)],
-        ['Brier score', formatQualityDecimal(backSummary.brier, 3)],
         ['Margin error', formatQualityMarginError(backSummary)],
+        ['Brier score', formatQualityDecimal(backSummary.brier, 3)],
+        ['Winner accuracy', formatQualityPct(backSummary.accuracy)],
         ['Baseline gap', formatQualityBaseline(backPrediction)],
         ['Pts per strength unit', formatQualitySlope(backPrediction)],
       ]);
 
       renderQualityMetrics(qualityPredictiveMetricsEl, [
         ['Games', formatQualityGameCount(playForward)],
-        ['Balanced games', formatQualityRateWithCount(forwardBalancedRate, forwardBalancedGames, forwardTierTotalGames)],
         ['Algorithm balanced', formatQualityRateWithCount(
           forwardAlgorithmBalancedRate,
           forwardAlgorithmBalancedGames,
           forwardAlgorithmGames
         )],
-        ['Winner acc. gap', formatQualityPctPoints(forwardAccuracyGap)],
-        ['Imbalanced acc.', formatQualityPct(forwardImbalancedAcc)],
-        ['Blowout acc.', formatQualityPct(forwardBlowoutAcc)],
-        ['Brier score', formatQualityDecimal(playSummary.brier, 3)],
+        ['All balanced', formatQualityRateWithCount(forwardBalancedRate, forwardBalancedGames, forwardTierTotalGames)],
         ['Margin error', formatQualityMarginError(playSummary)],
+        ['Brier score', formatQualityDecimal(playSummary.brier, 3)],
+        ['Winner accuracy', formatQualityPct(playSummary.accuracy)],
         ['Baseline gap', formatQualityBaseline(playForward)],
         ['Pts per strength unit', formatQualitySlope(playForward)],
       ]);
 
-      renderQualityTierTable(playForward, backPrediction, playSummary, backSummary);
       renderQualityChart(playForward, playSummary);
     }
 
@@ -5454,6 +5449,43 @@
       ].join('|');
     }
 
+    function stableStringify(value) {
+      if (Array.isArray(value)) {
+        return `[${value.map(stableStringify).join(',')}]`;
+      }
+
+      if (value && typeof value === 'object') {
+        return `{${Object.keys(value)
+          .sort()
+          .map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+          .join(',')}}`;
+      }
+
+      return JSON.stringify(value);
+    }
+
+    function getCanonicalGameJson(game) {
+      return stableStringify(game || {});
+    }
+
+    function getServerGamesChangedLocally(meta) {
+      if (!meta || !Array.isArray(meta.games)) return [];
+
+      const localGamesByIdentity = new Map(
+        loadGames()
+          .map(game => [getGameIdentity(game), game])
+          .filter(([identity]) => Boolean(identity))
+      );
+
+      return meta.games.filter(serverGame => {
+        const identity = getGameIdentity(serverGame);
+        const localGame = localGamesByIdentity.get(identity);
+        return identity &&
+          localGame &&
+          getCanonicalGameJson(localGame) !== getCanonicalGameJson(serverGame);
+      });
+    }
+
     function getServerGamesMissingLocally(meta) {
       if (!meta || !Array.isArray(meta.games)) return [];
 
@@ -5521,13 +5553,17 @@
       }
 
       const missingServerGames = getServerGamesMissingLocally(meta);
+      const changedServerGames = getServerGamesChangedLocally(meta);
       const hasNewServerGames = missingServerGames.length > 0;
+      const hasChangedServerGames = changedServerGames.length > 0;
 
-      loadDefaultDatabaseButtonEl.classList.toggle('success', hasNewServerGames);
-      loadDefaultDatabaseButtonEl.classList.toggle('ghost', !hasNewServerGames);
+      loadDefaultDatabaseButtonEl.classList.toggle('success', hasNewServerGames || hasChangedServerGames);
+      loadDefaultDatabaseButtonEl.classList.toggle('ghost', !hasNewServerGames && !hasChangedServerGames);
       loadDefaultDatabaseButtonEl.classList.remove('danger');
       loadDefaultDatabaseButtonEl.textContent = hasNewServerGames
         ? NEW_SERVER_GAMES_BUTTON_TEXT
+        : hasChangedServerGames
+          ? 'server corrections available'
         : UP_TO_DATE_SERVER_DATABASE_BUTTON_TEXT;
     }
 
@@ -5555,7 +5591,8 @@
       if (!meta || !isValidDateString(meta.seasonStartDate)) return false;
 
       const missingServerGames = getServerGamesMissingLocally(meta);
-      if (missingServerGames.length > 0) return false;
+      const changedServerGames = getServerGamesChangedLocally(meta);
+      if (missingServerGames.length > 0 || changedServerGames.length > 0) return false;
 
       const savedDate = localStorage.getItem(SEASON_START_DATE_STORAGE_KEY);
       const derivedDefaultDate = getDefaultSeasonStartDate();
@@ -5607,18 +5644,15 @@
       let sourceLabel = 'Google Drive';
       let sourceFileName = '';
 
-      if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+      try {
+        parsed = await fetchJsonFromGoogleStatsEndpoint();
+        sourceFileName = parsed.source?.fileName || '';
+      } catch (googleError) {
+        console.warn('Google Drive stats failed, falling back to bundled default_database:', googleError);
         parsed = await fetchJsonFromBundledDefaultDatabase();
-        sourceLabel = 'local default_database';
-      } else {
-        try {
-          parsed = await fetchJsonFromGoogleStatsEndpoint();
-          sourceFileName = parsed.source?.fileName || '';
-        } catch (googleError) {
-          console.warn('Google Drive stats failed, falling back to bundled default_database:', googleError);
-          parsed = await fetchJsonFromBundledDefaultDatabase();
-          sourceLabel = 'bundled default_database';
-        }
+        sourceLabel = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+          ? 'local default_database'
+          : 'bundled default_database';
       }
 
       if (!parsed || typeof parsed !== 'object') {
@@ -5675,6 +5709,8 @@
     function openDefaultDatabaseDialog(meta, mode = 'prompt') {
       defaultDatabaseDialogMode = mode;
       const localGamesMissingFromServer = getLocalGamesMissingFromServer(meta);
+      const missingServerGames = getServerGamesMissingLocally(meta);
+      const changedServerGames = getServerGamesChangedLocally(meta);
       const wouldDeleteLocalGames = localGamesMissingFromServer.length > 0;
 
       defaultDatabaseTextEl.textContent =
@@ -5685,8 +5721,16 @@
         ? `Warning: syncing now would remove ${localGamesMissingFromServer.length} local game${localGamesMissingFromServer.length === 1 ? '' : 's'} that are not on the server. If you already recorded games today, export the database instead of syncing.`
         : '';
 
-      defaultDatabaseStatusEl.textContent =
-        `Server stats file has ${meta.players.length} players and ${meta.games.length} games. This replaces local players and games with the server copy.`;
+      defaultDatabaseStatusEl.textContent = [
+        `Server stats file has ${meta.players.length} players and ${meta.games.length} games.`,
+        `Syncing replaces local players and games with the server copy, including corrections to existing game records.`,
+        missingServerGames.length
+          ? `${missingServerGames.length} server game${missingServerGames.length === 1 ? '' : 's'} not found locally.`
+          : '',
+        changedServerGames.length
+          ? `${changedServerGames.length} existing local game${changedServerGames.length === 1 ? '' : 's'} differ from the server copy and will be corrected.`
+          : ''
+      ].filter(Boolean).join('\n');
 
       confirmLoadDefaultDatabaseButtonEl.disabled = false;
       confirmLoadDefaultDatabaseButtonEl.classList.toggle('danger', wouldDeleteLocalGames);

@@ -45,7 +45,7 @@ Working doc to resume balancing/algorithm work in a fresh thread. Read this firs
 
 ## 4. Versioning convention
 
-- `export const VERSION = 'beta-YYYYMMDD-N';` near top of `ratings.js` (currently `beta-20260613-14`).
+- `export const VERSION = 'beta-YYYYMMDD-N';` near top of `ratings.js` (currently `beta-20260613-15`).
 - Imported into index/stats/trend and logged: `console.log('[vball] <page> version:', VERSION)`.
 - Bump `-N` on each change so the user can confirm the browser loaded the new build.
 
@@ -93,13 +93,13 @@ Working doc to resume balancing/algorithm work in a fresh thread. Read this firs
   `leaguePhase:'bracket'`. The current pooled local trial keeps them in replay
   and folds them into the same displayed/modelled `League Team` as all other
   league games.
-- **League scoreboard display**: league-team rows use a Bayesian posterior mean
-  for display (`leagueDisplayRatingMode:'bayesian'`). Intervals are intentionally
-  not shown in UI. Callers must set `leagueDisplayEstimateEnabled:true`; repeated
-  internal replays must leave it false for performance. Stats league context rows
-  display this league rating directly instead of applying the player public-rating
-  scale, because component league teams are aggregate opponents rather than
-  player-like leaderboard entries.
+- **League scoreboard display**: league-team rows can use a Bayesian posterior
+  mean internally (`leagueDisplayRatingMode:'bayesian'`). Intervals are
+  intentionally not shown in UI. Callers must set
+  `leagueDisplayEstimateEnabled:true`; repeated internal replays must leave it
+  false for performance. Stats displays league rows through the same public
+  rating scale used for ranking so the visible `Rating` column stays in sort
+  order with player rows.
 - **Stats League scoreboard exception**: only the Stats page's League scoreboard
   uses `leagueTeamRatingMode:'context'` so league opponents are broken out into
   Rec/Intermediate/Sand/Bracket components. All other pages/modes keep pooled

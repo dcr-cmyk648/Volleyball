@@ -1879,11 +1879,6 @@
     }
 
     function formatOverallRatingDisplay(player, games = loadGames(), cacheScope = 'default', ratingOptions = {}) {
-      if (player?.isLeagueContext) {
-        const displayRating = Number(player.leaderboardRating ?? player.displayRating ?? player.rating);
-        return Number.isFinite(displayRating) ? `${Math.round(displayRating)}` : 'N/A';
-      }
-
       return formatPublicRating(getExperimentalLeaderboardRaw(player), games, cacheScope, ratingOptions);
     }
 
@@ -4751,7 +4746,7 @@
       return getGamesSortedOldestFirst(loadGames()).filter(isQualityGame);
     }
 
-    const QUALITY_CACHE_VERSION = 'model-relative-tiers-v20-league-context-direct-display';
+    const QUALITY_CACHE_VERSION = 'model-relative-tiers-v21-league-sort-display-match';
     const QUALITY_TIERS = [
       { key: 'balanced', label: 'Balanced', detail: 'expected + 1 error' },
       { key: 'imbalanced', label: 'Imbalanced', detail: '+1-2 errors' },

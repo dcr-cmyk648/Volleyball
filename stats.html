@@ -198,15 +198,29 @@
       font-size: 12px;
     }
 
-    .maintenance-footer a {
+    .maintenance-footer a,
+    .maintenance-footer button {
       color: var(--muted);
       text-decoration: none;
       border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+      background: transparent;
+      border-left: 0;
+      border-right: 0;
+      border-top: 0;
+      border-radius: 0;
+      box-shadow: none;
+      display: inline;
+      font: inherit;
+      font-weight: 400;
+      margin: 0;
+      padding: 0;
     }
 
-    .maintenance-footer a:hover {
+    .maintenance-footer a:hover,
+    .maintenance-footer button:hover {
       color: var(--link);
       border-bottom-color: var(--link);
+      transform: none;
     }
 
     .controls {
@@ -1143,7 +1157,6 @@
       <h2>Database</h2>
       <div class="controls">
         <button id="exportDatabaseButton">Export Database</button>
-        <button id="importDatabaseButton" class="secondary">Import Database</button>
         <div class="server-stats-control">
           <button id="loadDefaultDatabaseButton" class="ghost">download database from server</button>
           <div id="serverStatsDate" class="server-stats-date">Checking server date...</div>
@@ -1277,6 +1290,8 @@
 
     <div class="maintenance-footer">
       Need to remove a player? <a href="players.html">Open player maintenance</a>
+      <span aria-hidden="true"> · </span>
+      Need to restore a backup? <button id="importDatabaseLinkButton" type="button">Import database</button>
     </div>
   </div>
 
@@ -1321,6 +1336,7 @@
       formatPublicDisplayRating,
       getPublicRatingDisplayScale,
       getLeagueContext,
+      getLeagueRatingContext,
       LEAGUE_TEAM_ID,
       LEAGUE_TEAM_NAME,
       LEAGUE_TEAM_MEMBER_COUNT,
@@ -1457,6 +1473,12 @@
     let isLoadingDefaultDatabase = false;
     let publicRatingScaleCacheKey = '';
     let publicRatingScaleCache = null;
+    const publicRatingScaleCacheMap = new Map();
+    const PUBLIC_RATING_SCALE_CACHE_PREFIX = 'vballPublicRatingScale:';
+    const MAX_PUBLIC_RATING_SCALE_CACHE_ENTRIES = 24;
+    const REPLAY_RESULT_CACHE_PREFIX = 'vballReplayResult:';
+    const replayResultMemoryCache = new Map();
+    const MAX_REPLAY_RESULT_MEMORY_ENTRIES = 180;
     let activeStatsTab = 'seasonMovers';
     let activeSortBy = null;
     let activeOverallScoreboardMode = 'composite';
@@ -1529,6 +1551,98 @@
 
     function isIncludeLeagueGamesMode() {
       return true;
+    }
+
+    function hashString(value) {
+      let hash = 2166136261;
+      for (let i = 0; i < value.length; i += 1) {
+        hash ^= value.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+      }
+      return (hash >>> 0).toString(36);
+    }
+
+    function getReplayResultCacheKey({
+      players,
+      games,
+      seasonal = true,
+      volleyballAdjusted = false,
+      includeLeagueGames = true,
+      options = {},
+    }) {
+      const compactPlayers = (players || []).map(player => [player.id, player.name]);
+      const compactGames = (games || []).map(game => [
+        game?.id,
+        game?.date,
+        game?.winner,
+        game?.scoreRed,
+        game?.scoreBlue,
+        game?.isLeagueGame ? 1 : 0,
+        game?.level || '',
+        game?.courtType || '',
+        game?.leaguePhase || '',
+        game?.createdAt || '',
+        (game?.redTeam || []).map(player => player.id).join(','),
+        (game?.blueTeam || []).map(player => player.id).join(','),
+      ]);
+
+      return hashString(JSON.stringify({
+        version: VERSION,
+        seasonal,
+        volleyballAdjusted,
+        includeLeagueGames,
+        options,
+        players: compactPlayers,
+        games: compactGames,
+      }));
+    }
+
+    function rememberReplayResult(cacheKey, result) {
+      if (replayResultMemoryCache.has(cacheKey)) {
+        replayResultMemoryCache.delete(cacheKey);
+      }
+      replayResultMemoryCache.set(cacheKey, result);
+
+      while (replayResultMemoryCache.size > MAX_REPLAY_RESULT_MEMORY_ENTRIES) {
+        const oldestKey = replayResultMemoryCache.keys().next().value;
+        replayResultMemoryCache.delete(oldestKey);
+      }
+    }
+
+    function getCachedReplayRatings(args, { persist = false } = {}) {
+      const cacheKey = getReplayResultCacheKey(args);
+      if (replayResultMemoryCache.has(cacheKey)) {
+        const cached = replayResultMemoryCache.get(cacheKey);
+        replayResultMemoryCache.delete(cacheKey);
+        replayResultMemoryCache.set(cacheKey, cached);
+        return cached;
+      }
+
+      if (persist) {
+        try {
+          const saved = sessionStorage.getItem(`${REPLAY_RESULT_CACHE_PREFIX}${cacheKey}`);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            rememberReplayResult(cacheKey, parsed);
+            return parsed;
+          }
+        } catch {
+          // Ignore cache read failures.
+        }
+      }
+
+      const result = replayRatings(args);
+      rememberReplayResult(cacheKey, result);
+
+      if (persist) {
+        try {
+          sessionStorage.setItem(`${REPLAY_RESULT_CACHE_PREFIX}${cacheKey}`, JSON.stringify(result));
+        } catch {
+          // Ignore cache quota/write failures.
+        }
+      }
+
+      return result;
     }
 
     function isLargeTeamSize(size) {
@@ -1663,7 +1777,7 @@
       const players = loadPlayers();
       const games = loadGames();
 
-      return replayRatings({
+      return getCachedReplayRatings({
         players,
         games,
         seasonal: true,
@@ -1675,7 +1789,7 @@
       });
     }
 
-    function getPublicRatingScaleCacheKey(players, games, cacheScope = 'default') {
+    function getPublicRatingScaleCacheKey(players, games, cacheScope = 'default', ratingOptions = {}) {
       const playerKey = players
         .map(player => `${player.id}:${player.name}`)
         .join('|');
@@ -1696,17 +1810,40 @@
         cacheScope,
         getSeasonalTaperDays(),
         isIncludeLeagueGamesMode() ? 1 : 0,
+        JSON.stringify(ratingOptions || {}),
         playerKey,
         gameKey
       ].join('||');
     }
 
-    function getPublicRatingScale(games = loadGames(), cacheScope = 'default') {
+    function getPublicRatingScale(games = loadGames(), cacheScope = 'default', ratingOptions = {}) {
       const players = loadPlayers();
-      const cacheKey = getPublicRatingScaleCacheKey(players, games, cacheScope);
+      const cacheKey = getPublicRatingScaleCacheKey(players, games, cacheScope, ratingOptions);
 
       if (cacheKey === publicRatingScaleCacheKey) {
         return publicRatingScaleCache;
+      }
+
+      if (publicRatingScaleCacheMap.has(cacheKey)) {
+        const cached = publicRatingScaleCacheMap.get(cacheKey);
+        publicRatingScaleCacheMap.delete(cacheKey);
+        publicRatingScaleCacheMap.set(cacheKey, cached);
+        publicRatingScaleCacheKey = cacheKey;
+        publicRatingScaleCache = cached;
+        return cached;
+      }
+
+      try {
+        const saved = sessionStorage.getItem(`${PUBLIC_RATING_SCALE_CACHE_PREFIX}${hashString(cacheKey)}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          publicRatingScaleCacheMap.set(cacheKey, parsed);
+          publicRatingScaleCacheKey = cacheKey;
+          publicRatingScaleCache = parsed;
+          return parsed;
+        }
+      } catch {
+        // Ignore cache read failures.
       }
 
       publicRatingScaleCacheKey = cacheKey;
@@ -1717,15 +1854,37 @@
         volleyballAdjusted: false,
         includeLeagueGames: isIncludeLeagueGamesMode(),
         options: {
-          seasonalTaperDays: getSeasonalTaperDays()
+          seasonalTaperDays: getSeasonalTaperDays(),
+          ...ratingOptions
         }
       });
+
+      publicRatingScaleCacheMap.set(cacheKey, publicRatingScaleCache);
+      while (publicRatingScaleCacheMap.size > MAX_PUBLIC_RATING_SCALE_CACHE_ENTRIES) {
+        const oldestKey = publicRatingScaleCacheMap.keys().next().value;
+        publicRatingScaleCacheMap.delete(oldestKey);
+      }
+
+      try {
+        sessionStorage.setItem(`${PUBLIC_RATING_SCALE_CACHE_PREFIX}${hashString(cacheKey)}`, JSON.stringify(publicRatingScaleCache));
+      } catch {
+        // Ignore cache quota/write failures.
+      }
 
       return publicRatingScaleCache;
     }
 
-    function formatPublicRating(rawOrdinal, games = loadGames(), cacheScope = 'default') {
-      return formatPublicDisplayRating(rawOrdinal, getPublicRatingScale(games, cacheScope));
+    function formatPublicRating(rawOrdinal, games = loadGames(), cacheScope = 'default', ratingOptions = {}) {
+      return formatPublicDisplayRating(rawOrdinal, getPublicRatingScale(games, cacheScope, ratingOptions));
+    }
+
+    function formatOverallRatingDisplay(player, games = loadGames(), cacheScope = 'default', ratingOptions = {}) {
+      if (player?.isLeagueContext) {
+        const displayRating = Number(player.leaderboardRating ?? player.displayRating ?? player.rating);
+        return Number.isFinite(displayRating) ? `${Math.round(displayRating)}` : 'N/A';
+      }
+
+      return formatPublicRating(getExperimentalLeaderboardRaw(player), games, cacheScope, ratingOptions);
     }
 
     function clamp(value, min, max) {
@@ -1844,6 +2003,11 @@
 
 
     function getExperimentalLeaderboardRaw(player) {
+      if (player?.isLeagueContext) {
+        const raw = Number(player.leaderboardRawOrdinal ?? player.rating ?? player.rawOrdinal);
+        return Number.isFinite(raw) ? raw : 0;
+      }
+
       // rawOrdinal is already conservative (mu − 3σ). Multiply by a game-count
       // confidence factor that pulls low-game players toward the 0 baseline
       // (displayed as 1500). Approximate confidence: 5 games ≈ 10%, 10 ≈ 22%,
@@ -1896,9 +2060,9 @@
         });
     }
 
-    function getSortedFieldDisplay(player, ratingGames = loadGames(), ratingScope = 'default') {
+    function getSortedFieldDisplay(player, ratingGames = loadGames(), ratingScope = 'default', ratingOptions = {}) {
       const cfg = SORT_CONFIGS[activeSortBy];
-      if (!cfg) return formatPublicRating(player.experimentalLeaderboardRaw, ratingGames, ratingScope);
+      if (!cfg) return formatOverallRatingDisplay(player, ratingGames, ratingScope, ratingOptions);
       const val = player[cfg.field];
       if (activeSortBy === 'winrate') return `${Math.round((Number(val) || 0) * 100)}%`;
       if (activeSortBy === 'mu' || activeSortBy === 'sigma' || activeSortBy === 'rawOrdinal') {
@@ -1933,30 +2097,50 @@
       };
     }
 
+    function getLeagueScoreboardRatingOptions(mode = getOverallScoreboardMode()) {
+      return mode === 'league'
+        ? {
+            leagueTeamRatingMode: 'context',
+          }
+        : {};
+    }
+
     function getOverallReplayResult({ games = loadGames(), mode = getOverallScoreboardMode() } = {}) {
       const scoreboardGames = getOverallScoreboardGames(games, mode);
-      const replay = getReplayResultForGames(scoreboardGames);
+      const ratingOptions = getLeagueScoreboardRatingOptions(mode);
+      const replay = getReplayResultForGames(scoreboardGames, {
+        includeLeagueDisplayEstimate: true,
+        persist: true,
+        ratingOptions,
+      });
       return {
         mode,
         games: scoreboardGames,
+        ratingOptions,
         result: applyOverallScoreboardPlayerCounts(replay, scoreboardGames, mode)
       };
     }
 
 
-    function getReplayResultForGames(games) {
+    function getReplayResultForGames(games, {
+      includeLeagueDisplayEstimate = false,
+      persist = false,
+      ratingOptions = {},
+    } = {}) {
       const players = loadPlayers();
 
-      return replayRatings({
+      return getCachedReplayRatings({
         players,
         games,
         seasonal: true,
         volleyballAdjusted: false,
         includeLeagueGames: isIncludeLeagueGamesMode(),
         options: {
-          seasonalTaperDays: getSeasonalTaperDays()
+          seasonalTaperDays: getSeasonalTaperDays(),
+          leagueDisplayEstimateEnabled: includeLeagueDisplayEstimate,
+          ...ratingOptions
         }
-      });
+      }, { persist });
     }
 
     function isScoredNonLeagueGame(game) {
@@ -3989,10 +4173,11 @@
       if (entry?.leagueContext?.id) return entry.leagueContext;
       if (!game?.isLeagueGame) return null;
 
-      return getLeagueContext({
+      return getLeagueRatingContext({
         isLeagueGame: true,
         level: game.level,
-        courtType: game.courtType
+        courtType: game.courtType,
+        leaguePhase: game.leaguePhase
       }) || null;
     }
 
@@ -4170,9 +4355,9 @@
       };
     }
 
-    function buildPreGameRatingMap(entry) {
+    function buildHistoryRatingMap(entries) {
       const map = {};
-      [...(entry.before.red || []), ...(entry.before.blue || [])].forEach(player => {
+      entries.forEach(player => {
         map[player.id] = {
           mu: Number(player.mu),
           sigma: Number(player.sigma)
@@ -4181,9 +4366,16 @@
       return map;
     }
 
-    function getPreGameTeamPowers(entry, carryScoreMap = {}) {
-      const redPlayers = (entry.before.red || []).map(player => ({ id: player.id, name: player.id }));
-      const bluePlayers = (entry.before.blue || []).map(player => ({ id: player.id, name: player.id }));
+    function buildPreGameRatingMap(entry) {
+      return buildHistoryRatingMap([...(entry.before.red || []), ...(entry.before.blue || [])]);
+    }
+
+    function getHistoryTeamPowers(entry, carryScoreMap = {}, timing = 'before') {
+      const state = timing === 'after' ? (entry.after || entry.before || {}) : (entry.before || {});
+      const redEntries = state.red || [];
+      const blueEntries = state.blue || [];
+      const redPlayers = redEntries.map(player => ({ id: player.id, name: player.id }));
+      const bluePlayers = blueEntries.map(player => ({ id: player.id, name: player.id }));
 
       if (!redPlayers.length || !bluePlayers.length) {
         return { red: 0, blue: 0 };
@@ -4192,7 +4384,7 @@
       const score = scoreVolleyballCandidateSplit({
         redPlayers,
         bluePlayers,
-        ratingMap: buildPreGameRatingMap(entry),
+        ratingMap: buildHistoryRatingMap([...redEntries, ...blueEntries]),
         carryScoreMap
       });
 
@@ -4200,6 +4392,10 @@
         red: score.redStrength,
         blue: score.blueStrength
       };
+    }
+
+    function getPreGameTeamPowers(entry, carryScoreMap = {}) {
+      return getHistoryTeamPowers(entry, carryScoreMap, 'before');
     }
 
     function updateHistoryCarryScore(carryMap, id, isWinner, teamWinProbability) {
@@ -4217,7 +4413,7 @@
       const powerMap = new Map();
 
       history.forEach(entry => {
-        powerMap.set(entry, getPreGameTeamPowers(entry, carryMap));
+        const before = getHistoryTeamPowers(entry, carryMap, 'before');
 
         const game = entry.game || {};
         const winnerSide = game.winner === 'blue' ? 'blue' : 'red';
@@ -4246,6 +4442,11 @@
             );
           });
         }
+
+        powerMap.set(entry, {
+          before,
+          after: getHistoryTeamPowers(entry, carryMap, 'after')
+        });
       });
 
       return powerMap;
@@ -4267,12 +4468,11 @@
       );
     }
 
-    function createOverallLookupResult(player, ratingGames = loadGames(), ratingScope = 'default') {
+    function createOverallLookupResult(player, ratingGames = loadGames(), ratingScope = 'default', ratingOptions = {}) {
       const div = document.createElement('div');
       div.className = 'season-mover-row';
 
-      const ratingRaw = getExperimentalLeaderboardRaw(player);
-      const ratingText = formatPublicRating(ratingRaw, ratingGames, ratingScope);
+      const ratingText = formatOverallRatingDisplay(player, ratingGames, ratingScope, ratingOptions);
       const eligibilityText = isOverallStandingsEligible(player, getOverallScoreboardMode())
         ? `Shown in ${getOverallScoreboardModeLabel()} standings.`
         : `Needs ${OVERALL_STANDINGS_MIN_GAMES} games in this scoreboard to appear in standings.`;
@@ -4289,7 +4489,7 @@
       return div;
     }
 
-    function renderOverallPlayerLookup(result, ratingGames = loadGames(), ratingScope = 'default') {
+    function renderOverallPlayerLookup(result, ratingGames = loadGames(), ratingScope = 'default', ratingOptions = {}) {
       if (!overallPlayerLookupResultEl) return;
 
       const query = getOverallPlayerLookupQuery();
@@ -4313,7 +4513,7 @@
         return;
       }
 
-      overallPlayerLookupResultEl.appendChild(createOverallLookupResult(match, ratingGames, ratingScope));
+      overallPlayerLookupResultEl.appendChild(createOverallLookupResult(match, ratingGames, ratingScope, ratingOptions));
     }
 
     function renderStats() {
@@ -4322,9 +4522,10 @@
       const replay = getOverallReplayResult({ mode });
       const result = replay.result;
       const scoreboardGames = replay.games;
+      const ratingOptions = replay.ratingOptions || {};
       const ratingScope = `overall:${mode}`;
       const rows = getSortedStandingsRows(result, mode);
-      renderOverallPlayerLookup(result, scoreboardGames, ratingScope);
+      renderOverallPlayerLookup(result, scoreboardGames, ratingScope, ratingOptions);
 
       // Update column header and sort indicator
       const sortHeader = document.getElementById('statsSortHeader');
@@ -4359,7 +4560,7 @@
         !recentSessionGames.some(recentGame => recentGame?.id === game?.id)
       );
       const priorResult = applyOverallScoreboardPlayerCounts(
-        getReplayResultForGames(priorGames),
+        getReplayResultForGames(priorGames, { ratingOptions }),
         priorGames,
         mode
       );
@@ -4373,7 +4574,7 @@
           <td>${renderTrendCell(trend)}</td>
           <td>${index + 1}</td>
           <td class="player-cell">${formatPlayerNameCell(player)}</td>
-          <td>${getSortedFieldDisplay(player, scoreboardGames, ratingScope)}</td>
+          <td>${getSortedFieldDisplay(player, scoreboardGames, ratingScope, ratingOptions)}</td>
           <td>${player.games}</td>
         `;
         statsTableBody.appendChild(tr);
@@ -4409,9 +4610,12 @@
           : getDisplayLabelForSide(game, 'blue');
         const leagueContextName = getLeagueContextName(game, entry);
         const courtTypeText = `Court type: ${getCourtTypeLabel(game)}`;
-        const teamPowers = powerMap.get(entry) || getPreGameTeamPowers(entry);
-        const redPowerText = formatDisplayedRating(teamPowers.red);
-        const bluePowerText = formatDisplayedRating(teamPowers.blue);
+        const teamPowers = powerMap.get(entry) || {
+          before: getPreGameTeamPowers(entry),
+          after: getHistoryTeamPowers(entry, {}, 'after')
+        };
+        const redPowerText = `${formatDisplayedRating(teamPowers.before.red)} → ${formatDisplayedRating(teamPowers.after.red)}`;
+        const bluePowerText = `${formatDisplayedRating(teamPowers.before.blue)} → ${formatDisplayedRating(teamPowers.after.blue)}`;
 
         const redNames = entry.before.red.map((p, i) => {
           const after = entry.after.red[i];
@@ -4522,7 +4726,7 @@
     }
 
     function getQualityLeagueTeamPlayers(game) {
-      const context = getLeagueContext(game);
+      const context = getLeagueRatingContext(game);
       const redCount = Array.isArray(game?.redTeam) && game.redTeam.length > 0
         ? game.redTeam.length
         : LEAGUE_TEAM_SIZE;
@@ -4547,7 +4751,7 @@
       return getGamesSortedOldestFirst(loadGames()).filter(isQualityGame);
     }
 
-    const QUALITY_CACHE_VERSION = 'model-relative-tiers-v6-include-league';
+    const QUALITY_CACHE_VERSION = 'model-relative-tiers-v20-league-context-direct-display';
     const QUALITY_TIERS = [
       { key: 'balanced', label: 'Balanced', detail: 'expected + 1 error' },
       { key: 'imbalanced', label: 'Imbalanced', detail: '+1-2 errors' },
@@ -5217,13 +5421,14 @@
     function renderAll() {
       updateSeasonStartDateStatus();
       updateModeDescriptions();
-      renderStats();
       renderHistory();
       // Only compute the (relatively expensive) quality analysis when the
       // collapsible card is open.
       if (algorithmQualityCardEl.open) renderQuality();
       updateServerSyncButton();
-      if (activeStatsTab === 'seasonMovers') {
+      if (activeStatsTab === 'overall') {
+        renderStats();
+      } else if (activeStatsTab === 'seasonMovers') {
         renderSeasonMovers();
       } else if (activeStatsTab === 'awards') {
         renderAwards();
@@ -5277,6 +5482,7 @@
             scoreBlue: typeof game.scoreBlue === 'undefined' ? null : game.scoreBlue,
             winner: game.winner === 'blue' ? 'blue' : 'red',
             isLeagueGame: Boolean(game.isLeagueGame),
+            leaguePhase: game.leaguePhase === 'bracket' ? 'bracket' : undefined,
             createdAt: typeof game.createdAt === 'undefined' ? undefined : game.createdAt,
             assignmentId: typeof game.assignmentId === 'string' ? game.assignmentId : undefined,
             assignmentSource: ['algorithm', 'modified', 'manual'].includes(game.assignmentSource)
@@ -5312,6 +5518,7 @@
           }
 
           if (typeof normalized.createdAt === 'undefined') delete normalized.createdAt;
+          if (typeof normalized.leaguePhase === 'undefined') delete normalized.leaguePhase;
           if (typeof normalized.assignmentId === 'undefined') delete normalized.assignmentId;
           if (typeof normalized.assignmentSource === 'undefined') delete normalized.assignmentSource;
           if (typeof normalized.assignmentVersion === 'undefined') delete normalized.assignmentVersion;
@@ -5876,7 +6083,7 @@
     }
 
     document.getElementById('exportDatabaseButton')?.addEventListener('click', exportDatabase);
-    document.getElementById('importDatabaseButton')?.addEventListener('click', () => importFileInput.click());
+    document.getElementById('importDatabaseLinkButton')?.addEventListener('click', () => importFileInput.click());
     loadDefaultDatabaseButtonEl.addEventListener('click', openManualDefaultDatabaseDialog);
 
     importFileInput.addEventListener('change', (event) => {

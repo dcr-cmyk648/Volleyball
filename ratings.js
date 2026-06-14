@@ -30,8 +30,9 @@ export const LEAGUE_LEVEL_REC = 'rec';
 export const LEAGUE_LEVEL_INTERMEDIATE = 'intermediate';
 export const COURT_TYPE_INDOOR = 'indoor';
 export const COURT_TYPE_SAND = 'sand';
+export const LEAGUE_PHASE_BRACKET = 'bracket';
 
-export const LEAGUE_CONTEXTS = [
+const BASE_LEAGUE_CONTEXTS = [
   {
     id: `${LEAGUE_TEAM_ID}_rec_indoor`,
     key: 'rec_indoor',
@@ -62,17 +63,34 @@ export const LEAGUE_CONTEXTS = [
   },
 ];
 
+function getLeagueBracketContextName(context) {
+  return context.key === 'rec_indoor'
+    ? 'Rec League Bracket'
+    : `${context.name} Bracket`;
+}
+
+export const LEAGUE_CONTEXTS = BASE_LEAGUE_CONTEXTS.flatMap(context => [
+  context,
+  {
+    ...context,
+    id: `${context.id}_${LEAGUE_PHASE_BRACKET}`,
+    key: `${context.key}_${LEAGUE_PHASE_BRACKET}`,
+    phase: LEAGUE_PHASE_BRACKET,
+    name: getLeagueBracketContextName(context),
+  },
+]);
+
 const POOLED_LEAGUE_CONTEXT = {
   id: `${LEAGUE_TEAM_ID}_pooled`,
   key: 'pooled',
   level: 'pooled',
   courtType: 'pooled',
-  name: 'Pooled League Team',
+  name: LEAGUE_TEAM_NAME,
 };
 
 export const LEAGUE_TEAM_MEMBER_COUNT = 12;
 
-export const LEAGUE_TEAM_MEMBER_IDS = LEAGUE_CONTEXTS.flatMap(context =>
+export const LEAGUE_TEAM_MEMBER_IDS = [...LEAGUE_CONTEXTS, POOLED_LEAGUE_CONTEXT].flatMap(context =>
   Array.from(
     { length: LEAGUE_TEAM_MEMBER_COUNT },
     (_, i) => `${context.id}_${i + 1}`
@@ -109,8 +127,16 @@ export const DEFAULT_RATING_OPTIONS = {
   // Eval/modeling knobs for synthetic league opponents. The database still
   // records exact league context metadata; this controls only rating identity
   // and how quickly the synthetic opponent rating reacts.
-  leagueTeamRatingMode: 'context',
-  leagueOpponentUpdateMultiplier: 1.75,
+  leagueTeamRatingMode: 'pooled',
+  leagueOpponentUpdateMultiplier: 4,
+  leagueOpponentBurnInGames: 4,
+  leagueOpponentBurnInMultiplier: 2.25,
+  includeLeagueBracketGames: true,
+  leagueDisplayRatingMode: 'bayesian',
+  leagueDisplayShuffleIterations: 60,
+  leagueDisplayEstimateEnabled: false,
+  leagueBayesianPriorSd: 4,
+  leagueBayesianGridStep: 0.1,
 
   // Blowout bonus — uses dominance ratio (winner's share of total points) rather than raw point diff.
   // Formula: bonus = marginBonusScale × (dominanceMargin ^ marginBonusPower)
@@ -173,7 +199,7 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260611-1';
+export const VERSION = 'beta-20260613-14';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Depth-emphasis weights: weak-link aware without fully discarding team-average signal.
@@ -323,7 +349,7 @@ export function getPublicRatingDisplayScale({
     includeLeagueGames,
     options,
   };
-  const sortedGames = getGamesSortedOldestFirst(getIncludedGames(games, includeLeagueGames));
+  const sortedGames = getGamesSortedOldestFirst(getIncludedGames(games, includeLeagueGames, options));
 
   let historyLow = null;
   let historyHigh = null;
@@ -495,11 +521,20 @@ export function getCourtType(game) {
     : COURT_TYPE_INDOOR;
 }
 
+export function getLeaguePhase(game) {
+  return game?.leaguePhase === LEAGUE_PHASE_BRACKET
+    ? LEAGUE_PHASE_BRACKET
+    : '';
+}
+
 export function getLeagueContextKey(game) {
   const level = getLeagueLevel(game);
   if (!level) return null;
   const courtType = getCourtType(game);
-  return `${level}_${courtType}`;
+  const baseKey = `${level}_${courtType}`;
+  return getLeaguePhase(game) === LEAGUE_PHASE_BRACKET
+    ? `${baseKey}_${LEAGUE_PHASE_BRACKET}`
+    : baseKey;
 }
 
 export function getLeagueContext(game) {
@@ -508,11 +543,16 @@ export function getLeagueContext(game) {
 }
 
 export function getLeagueContextById(id) {
+  if (String(id) === String(POOLED_LEAGUE_CONTEXT.id)) return POOLED_LEAGUE_CONTEXT;
   return LEAGUE_CONTEXTS.find(context => String(context.id) === String(id)) || null;
 }
 
 export function isLeagueContextId(id) {
   return Boolean(getLeagueContextById(id));
+}
+
+function isSyntheticLeagueMemberId(id) {
+  return String(id || '').startsWith(`${LEAGUE_TEAM_ID}_`) && /_\d+$/.test(String(id || ''));
 }
 
 function getLeagueTeamMemberIdsForContext(context, count = LEAGUE_TEAM_SIZE) {
@@ -523,10 +563,24 @@ function getLeagueTeamMemberIdsForContext(context, count = LEAGUE_TEAM_SIZE) {
   );
 }
 
-function getLeagueRatingContext(game, options = {}) {
-  return options?.leagueTeamRatingMode === 'pooled'
+export function getLeagueRatingContext(game, options = {}) {
+  const cfg = mergeRatingOptions(options);
+  return cfg.leagueTeamRatingMode === 'pooled'
     ? POOLED_LEAGUE_CONTEXT
     : getLeagueContext(game);
+}
+
+function getLeagueTeamContextsForMode(options = {}) {
+  const cfg = mergeRatingOptions(options);
+  return cfg.leagueTeamRatingMode === 'pooled'
+    ? [POOLED_LEAGUE_CONTEXT]
+    : LEAGUE_CONTEXTS;
+}
+
+function gameMatchesLeagueContext(game, context) {
+  if (!game?.isLeagueGame || !context) return false;
+  if (context.key === POOLED_LEAGUE_CONTEXT.key) return true;
+  return getLeagueContextKey(game) === context.key;
 }
 
 function getLeagueTeamPlayersForGame(game, options = {}) {
@@ -549,14 +603,22 @@ function getBluePlayersForVolleyballModel(game, options = {}) {
   return Array.isArray(game?.blueTeam) ? game.blueTeam : [];
 }
 
-function getIncludedGames(games, includeLeagueGames = true) {
-  const safeGames = Array.isArray(games) ? games : [];
+function isLeagueBracketGame(game) {
+  return Boolean(game?.isLeagueGame && game?.leaguePhase === 'bracket');
+}
 
-  if (includeLeagueGames) {
+function getIncludedGames(games, includeLeagueGames = true, options = {}) {
+  const safeGames = Array.isArray(games) ? games : [];
+  const includeLeagueBracketGames = options?.includeLeagueBracketGames === true;
+
+  if (includeLeagueGames && includeLeagueBracketGames) {
     return safeGames;
   }
 
-  return safeGames.filter(game => !game?.isLeagueGame);
+  return safeGames.filter(game => {
+    if (!includeLeagueGames && game?.isLeagueGame) return false;
+    return includeLeagueBracketGames || !isLeagueBracketGame(game);
+  });
 }
 
 export function getMostRecentGameDate(gamesList) {
@@ -1334,7 +1396,7 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     finalUpdateMultiplier,
     openSkillWinnerProbability: adjustment.openSkillWinnerProbability,
     volleyballWinnerProbability: adjustment.volleyballWinnerProbability,
-    leagueContext: game?.isLeagueGame ? cloneSimple(getLeagueContext(game)) : null,
+    leagueContext: game?.isLeagueGame ? cloneSimple(getLeagueRatingContext(game, cfg)) : null,
     before: {
       red: redBefore,
       blue: blueBefore,
@@ -1377,7 +1439,7 @@ function buildLeagueTeamFromContext(context, ratingMap, cfg, includedGames) {
   };
 
   includedGames.forEach(game => {
-    if (game?.isLeagueGame && getLeagueContextKey(game) === context.key) {
+    if (gameMatchesLeagueContext(game, context)) {
       leagueTeam.games += 1;
       if (game.winner === 'blue') leagueTeam.wins += 1;
     }
@@ -1389,6 +1451,331 @@ function buildLeagueTeamFromContext(context, ratingMap, cfg, includedGames) {
   leagueTeam.rating = leagueTeam.leaderboardRawOrdinal;
 
   return leagueTeam;
+}
+
+function hashLeagueDisplayGames(gamesList) {
+  return (Array.isArray(gamesList) ? gamesList : []).reduce((hash, game, index) => {
+    const id = Number(game?.id ?? game?.createdAt ?? index) || index;
+    return (Math.imul(hash ^ id, 16777619) >>> 0);
+  }, 2166136261);
+}
+
+function seededRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state += 0x6D2B79F5;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffledCopy(values, random) {
+  const out = [...values];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+function getLeagueSlotShuffleSchedule(sortedGames, seed) {
+  const leagueSlots = sortedGames
+    .map((game, index) => ({ game, index }))
+    .filter(entry => entry.game?.isLeagueGame);
+
+  if (leagueSlots.length <= 1) return sortedGames;
+
+  const shuffledLeagueGames = shuffledCopy(
+    leagueSlots.map(entry => entry.game),
+    seededRandom(seed)
+  );
+
+  const scheduled = sortedGames.map((game, index) => ({ ...game, createdAt: index }));
+  leagueSlots.forEach((slot, index) => {
+    scheduled[slot.index] = {
+      ...shuffledLeagueGames[index],
+      date: slot.game.date,
+      createdAt: slot.index,
+    };
+  });
+
+  return scheduled;
+}
+
+function replayRatingMapForLeagueDisplay({
+  players = [],
+  sortedGames = [],
+  cfg,
+  seasonal = false,
+  volleyballAdjusted = false,
+  volleyballOptions = {},
+}) {
+  const ratingMap = {};
+  const statsMap = {};
+  const leagueOpponentStatsMap = {};
+  const referenceDate = seasonal ? getMostRecentGameDate(sortedGames) : null;
+  const seasonalTaperDays =
+    typeof cfg.seasonalTaperDays === 'number'
+      ? cfg.seasonalTaperDays
+      : SEASONAL_TAPER_DAYS;
+
+  players.forEach(player => {
+    ratingMap[player.id] = makeInitialRating(cfg);
+    statsMap[player.id] = { games: 0 };
+  });
+
+  sortedGames.forEach(game => {
+    const seasonalWeight = seasonal
+      ? getSeasonalWeight(game?.date, referenceDate, seasonalTaperDays)
+      : 1;
+
+    const historyEntry = rateSingleGame(game, ratingMap, {
+      ...cfg,
+      seasonalWeight,
+      volleyballAdjusted,
+      volleyballOptions,
+    });
+
+    const burnInGames = Number(cfg.burnInGames) || 0;
+    const burnInMult = Number(cfg.burnInMultiplier) || 1;
+    const leagueBurnInGames = Number(cfg.leagueOpponentBurnInGames) || 0;
+    const leagueBurnInMult = Number(cfg.leagueOpponentBurnInMultiplier) || 1;
+
+    if ((burnInGames > 0 && burnInMult > 1) || (leagueBurnInGames > 0 && leagueBurnInMult > 1)) {
+      [...historyEntry.before.red, ...historyEntry.before.blue].forEach((before, index) => {
+        const after = [...historyEntry.after.red, ...historyEntry.after.blue][index];
+        if (!after) return;
+
+        const id = String(before.id);
+        const isLeagueOpponent = isSyntheticLeagueMemberId(id);
+        const gamesLimit = isLeagueOpponent ? leagueBurnInGames : burnInGames;
+        const multiplier = isLeagueOpponent ? leagueBurnInMult : burnInMult;
+        const gamesPlayed = isLeagueOpponent
+          ? leagueOpponentStatsMap[id]?.games ?? 0
+          : statsMap[id]?.games ?? 0;
+
+        if (gamesLimit > 0 && multiplier > 1 && gamesPlayed < gamesLimit) {
+          ratingMap[before.id] = rating({
+            mu: before.mu + (after.mu - before.mu) * multiplier,
+            sigma: clamp(before.sigma + (after.sigma - before.sigma) * multiplier, 1, cfg.sigma),
+          });
+        }
+      });
+    }
+
+    (Array.isArray(game.redTeam) ? game.redTeam : []).forEach(player => {
+      if (!statsMap[player.id]) statsMap[player.id] = { games: 0 };
+      statsMap[player.id].games += 1;
+    });
+
+    if (!game.isLeagueGame) {
+      (Array.isArray(game.blueTeam) ? game.blueTeam : []).forEach(player => {
+        if (!statsMap[player.id]) statsMap[player.id] = { games: 0 };
+        statsMap[player.id].games += 1;
+      });
+    } else {
+      getBlueTeamIds(game, cfg).forEach(id => {
+        if (!leagueOpponentStatsMap[id]) leagueOpponentStatsMap[id] = { games: 0 };
+        leagueOpponentStatsMap[id].games += 1;
+      });
+    }
+  });
+
+  return ratingMap;
+}
+
+function getLeagueSkillFromRatingMap(context, ratingMap, cfg) {
+  const memberIds = getLeagueTeamMemberIdsForContext(context, LEAGUE_TEAM_MEMBER_COUNT);
+  const members = memberIds.map(id => ratingMap[id] ?? makeInitialRating(cfg));
+  return {
+    mu: members.reduce((sum, skill) => sum + Number(skill.mu), 0) / members.length,
+    sigma: members.reduce((sum, skill) => sum + Number(skill.sigma), 0) / members.length,
+  };
+}
+
+function applyShuffledPooledLeagueDisplay({
+  leagueTeam,
+  context,
+  players,
+  includedGames,
+  cfg,
+  seasonal,
+  volleyballAdjusted,
+  volleyballOptions,
+}) {
+  if (
+    !leagueTeam ||
+    context?.key !== POOLED_LEAGUE_CONTEXT.key ||
+    cfg.leagueDisplayEstimateEnabled !== true ||
+    cfg.leagueDisplayRatingMode !== 'shuffledPooled'
+  ) {
+    return leagueTeam;
+  }
+
+  const sortedGames = getGamesSortedOldestFirst(includedGames);
+  const leagueGameCount = sortedGames.filter(game => game?.isLeagueGame).length;
+  const iterations = Math.max(1, Math.min(250, Math.round(Number(cfg.leagueDisplayShuffleIterations) || 1)));
+
+  if (leagueGameCount <= 1 || iterations <= 1) return leagueTeam;
+
+  const baseSeed = hashLeagueDisplayGames(sortedGames);
+  let totalMu = 0;
+  let totalSigma = 0;
+  let samples = 0;
+
+  for (let i = 0; i < iterations; i += 1) {
+    const schedule = getLeagueSlotShuffleSchedule(sortedGames, baseSeed + i * 2654435761);
+    const shuffledRatingMap = replayRatingMapForLeagueDisplay({
+      players,
+      sortedGames: schedule,
+      cfg,
+      seasonal,
+      volleyballAdjusted,
+      volleyballOptions,
+    });
+    const skill = getLeagueSkillFromRatingMap(context, shuffledRatingMap, cfg);
+    totalMu += Number(skill.mu);
+    totalSigma += Number(skill.sigma);
+    samples += 1;
+  }
+
+  if (!samples) return leagueTeam;
+
+  const displaySkill = {
+    mu: totalMu / samples,
+    sigma: totalSigma / samples,
+  };
+  const rawOrdinal = getRawOrdinal(displaySkill, cfg);
+  const leaderboardRawOrdinal = getLeaderboardRawOrdinal(rawOrdinal, leagueTeam.games, cfg);
+
+  return {
+    ...leagueTeam,
+    rawOrdinal,
+    displayRating: toDisplayRating(rawOrdinal),
+    leaderboardRawOrdinal,
+    leaderboardRating: toDisplayRating(leaderboardRawOrdinal),
+    rating: leaderboardRawOrdinal,
+    mu: Number(displaySkill.mu),
+    sigma: Number(displaySkill.sigma),
+    displayEstimateMode: 'shuffledPooled',
+    displayEstimateIterations: samples,
+  };
+}
+
+function getLeagueDisplaySyntheticPlayers(raw, count = LEAGUE_TEAM_SIZE) {
+  const safeCount = Math.max(1, Number(count) || LEAGUE_TEAM_SIZE);
+  return Array.from({ length: safeCount }, (_, index) => ({
+    id: `__league_display_${index + 1}`,
+    name: `League Display ${index + 1}`,
+    raw,
+  }));
+}
+
+function getHistoryRedWinProbabilityForLeagueRaw(entry, raw, cfg) {
+  const game = entry?.game || {};
+  const redPlayers = Array.isArray(game.redTeam) ? game.redTeam : [];
+  const redBefore = Array.isArray(entry?.before?.red) ? entry.before.red : [];
+  const leaguePlayers = getLeagueDisplaySyntheticPlayers(
+    raw,
+    redPlayers.length || game?.leagueOpponent?.size || LEAGUE_TEAM_SIZE
+  );
+  const ratingMap = {};
+
+  redBefore.forEach(player => {
+    ratingMap[player.id] = {
+      mu: Number(player.mu),
+      sigma: Number(player.sigma),
+    };
+  });
+
+  leaguePlayers.forEach(player => {
+    ratingMap[player.id] = {
+      mu: Number(raw) + cfg.ordinalSigmaMultiplier,
+      sigma: 1,
+    };
+  });
+
+  const score = scoreVolleyballCandidateSplit({
+    redPlayers,
+    bluePlayers: leaguePlayers,
+    ratingMap,
+    options: cfg,
+    ignoreSizeAdjustment: true,
+  });
+
+  return score.redWinProbability;
+}
+
+function getLogSumExp(values) {
+  const max = Math.max(...values);
+  if (!Number.isFinite(max)) return max;
+  return max + Math.log(values.reduce((sum, value) => sum + Math.exp(value - max), 0));
+}
+
+function getBayesianLeagueRawFromHistory({ context, history, cfg }) {
+  const observations = (Array.isArray(history) ? history : [])
+    .filter(entry => gameMatchesLeagueContext(entry?.game, context));
+
+  if (!observations.length) return null;
+
+  const priorSd = Math.max(0.1, Number(cfg.leagueBayesianPriorSd) || 4);
+  const step = Math.max(0.02, Math.min(1, Number(cfg.leagueBayesianGridStep) || 0.1));
+  const grid = [];
+
+  for (let raw = -12; raw <= 12.0001; raw += step) {
+    grid.push(Number(raw.toFixed(4)));
+  }
+
+  const logPosterior = grid.map(raw => {
+    let logp = -0.5 * (raw / priorSd) ** 2;
+
+    observations.forEach(entry => {
+      const pRed = clamp(
+        getHistoryRedWinProbabilityForLeagueRaw(entry, raw, cfg),
+        0.001,
+        0.999
+      );
+      const yRed = entry?.game?.winner === 'red' ? 1 : 0;
+      logp += yRed ? Math.log(pRed) : Math.log(1 - pRed);
+    });
+
+    return logp;
+  });
+
+  const normalizer = getLogSumExp(logPosterior);
+  if (!Number.isFinite(normalizer)) return null;
+
+  return grid.reduce((sum, raw, index) =>
+    sum + raw * Math.exp(logPosterior[index] - normalizer),
+    0
+  );
+}
+
+function applyBayesianLeagueDisplay({ leagueTeam, context, history, cfg }) {
+  if (
+    !leagueTeam ||
+    cfg.leagueDisplayEstimateEnabled !== true ||
+    cfg.leagueDisplayRatingMode !== 'bayesian'
+  ) {
+    return leagueTeam;
+  }
+
+  const rawOrdinal = getBayesianLeagueRawFromHistory({ context, history, cfg });
+  if (!Number.isFinite(rawOrdinal)) return leagueTeam;
+
+  const leaderboardRawOrdinal = getLeaderboardRawOrdinal(rawOrdinal, leagueTeam.games, cfg);
+
+  return {
+    ...leagueTeam,
+    rawOrdinal,
+    displayRating: toDisplayRating(rawOrdinal),
+    leaderboardRawOrdinal,
+    leaderboardRating: toDisplayRating(leaderboardRawOrdinal),
+    rating: leaderboardRawOrdinal,
+    displayEstimateMode: 'bayesian',
+  };
 }
 
 export function replayRatings({
@@ -1406,7 +1793,7 @@ export function replayRatings({
   const statsMap = {};
   const history = [];
   const carryMap = {};
-  const includedGames = getIncludedGames(games, includeLeagueGames);
+  const includedGames = getIncludedGames(games, includeLeagueGames, cfg);
   const seasonalTaperDays =
     typeof cfg.seasonalTaperDays === 'number'
       ? cfg.seasonalTaperDays
@@ -1427,6 +1814,7 @@ export function replayRatings({
 
   const sortedGames = getGamesSortedOldestFirst(includedGames);
   const referenceDate = seasonal ? getMostRecentGameDate(sortedGames) : null;
+  const leagueOpponentStatsMap = {};
 
   sortedGames.forEach(game => {
     const seasonalWeight = seasonal
@@ -1446,15 +1834,27 @@ export function replayRatings({
     // reach their true rating faster. statsMap.games is the pre-game count here.
     const burnInGames = Number(cfg.burnInGames) || 0;
     const burnInMult = Number(cfg.burnInMultiplier) || 1;
-    if (burnInGames > 0 && burnInMult > 1 && _calibratedStarts === null) {
+    const leagueBurnInGames = Number(cfg.leagueOpponentBurnInGames) || 0;
+    const leagueBurnInMult = Number(cfg.leagueOpponentBurnInMultiplier) || 1;
+    if (
+      _calibratedStarts === null &&
+      ((burnInGames > 0 && burnInMult > 1) || (leagueBurnInGames > 0 && leagueBurnInMult > 1))
+    ) {
       const applyBurnIn = (beforeEntries, afterEntries) => {
         beforeEntries.forEach((before, i) => {
-          const gamesPlayed = statsMap[before.id]?.games ?? 0;
-          if (gamesPlayed < burnInGames) {
+          const id = String(before.id);
+          const isLeagueOpponent = isSyntheticLeagueMemberId(id);
+          const gamesLimit = isLeagueOpponent ? leagueBurnInGames : burnInGames;
+          const multiplier = isLeagueOpponent ? leagueBurnInMult : burnInMult;
+          const gamesPlayed = isLeagueOpponent
+            ? leagueOpponentStatsMap[id]?.games ?? 0
+            : statsMap[id]?.games ?? 0;
+
+          if (gamesLimit > 0 && multiplier > 1 && gamesPlayed < gamesLimit) {
             const after = afterEntries[i];
-            const newMu = before.mu + (after.mu - before.mu) * burnInMult;
+            const newMu = before.mu + (after.mu - before.mu) * multiplier;
             const newSigma = clamp(
-              before.sigma + (after.sigma - before.sigma) * burnInMult,
+              before.sigma + (after.sigma - before.sigma) * multiplier,
               1,
               cfg.sigma
             );
@@ -1508,6 +1908,13 @@ export function replayRatings({
         }
         statsMap[player.id].games += 1;
         if (game.winner === 'blue') statsMap[player.id].wins += 1;
+      });
+    } else {
+      getBlueTeamIds(game, cfg).forEach(id => {
+        if (!leagueOpponentStatsMap[id]) {
+          leagueOpponentStatsMap[id] = { games: 0 };
+        }
+        leagueOpponentStatsMap[id].games += 1;
       });
     }
 
@@ -1588,8 +1995,22 @@ export function replayRatings({
       };
     });
 
-  const leagueTeams = LEAGUE_CONTEXTS.map(context =>
-    buildLeagueTeamFromContext(context, ratingMap, cfg, includedGames)
+  const leagueTeams = getLeagueTeamContextsForMode(cfg).map(context =>
+    applyBayesianLeagueDisplay({
+      leagueTeam: applyShuffledPooledLeagueDisplay({
+        leagueTeam: buildLeagueTeamFromContext(context, ratingMap, cfg, includedGames),
+        context,
+        players,
+        includedGames,
+        cfg,
+        seasonal,
+        volleyballAdjusted,
+        volleyballOptions,
+      }),
+      context,
+      history,
+      cfg,
+    })
   );
 
   if (includeLeagueGames) {
@@ -1732,7 +2153,7 @@ export function getPlayerRatingTimeline({
   const ratingMap = {};
   const statsMap = {};
   const timeline = [];
-  const includedGames = getIncludedGames(games, includeLeagueGames);
+  const includedGames = getIncludedGames(games, includeLeagueGames, cfg);
   const seasonalTaperDays =
     typeof cfg.seasonalTaperDays === 'number'
       ? cfg.seasonalTaperDays
@@ -1750,6 +2171,7 @@ export function getPlayerRatingTimeline({
 
   const sortedGames = getGamesSortedOldestFirst(includedGames);
   const referenceDate = seasonal ? getMostRecentGameDate(sortedGames) : null;
+  const leagueOpponentStatsMap = {};
 
   sortedGames.forEach((game, chronologicalIndex) => {
     const seasonalWeight = seasonal
@@ -1766,15 +2188,27 @@ export function getPlayerRatingTimeline({
     // Burn-in: match replayRatings — amplify updates for players in their first N games.
     const burnInGames = Number(cfg.burnInGames) || 0;
     const burnInMult = Number(cfg.burnInMultiplier) || 1;
-    if (burnInGames > 0 && burnInMult > 1 && _calibratedStarts === null) {
+    const leagueBurnInGames = Number(cfg.leagueOpponentBurnInGames) || 0;
+    const leagueBurnInMult = Number(cfg.leagueOpponentBurnInMultiplier) || 1;
+    if (
+      _calibratedStarts === null &&
+      ((burnInGames > 0 && burnInMult > 1) || (leagueBurnInGames > 0 && leagueBurnInMult > 1))
+    ) {
       const applyBurnIn = (beforeEntries, afterEntries) => {
         beforeEntries.forEach((before, i) => {
-          const gamesPlayed = statsMap[before.id]?.games ?? 0;
-          if (gamesPlayed < burnInGames) {
+          const id = String(before.id);
+          const isLeagueOpponent = isSyntheticLeagueMemberId(id);
+          const gamesLimit = isLeagueOpponent ? leagueBurnInGames : burnInGames;
+          const multiplier = isLeagueOpponent ? leagueBurnInMult : burnInMult;
+          const gamesPlayed = isLeagueOpponent
+            ? leagueOpponentStatsMap[id]?.games ?? 0
+            : statsMap[id]?.games ?? 0;
+
+          if (gamesLimit > 0 && multiplier > 1 && gamesPlayed < gamesLimit) {
             const after = afterEntries[i];
-            const newMu = before.mu + (after.mu - before.mu) * burnInMult;
+            const newMu = before.mu + (after.mu - before.mu) * multiplier;
             const newSigma = clamp(
-              before.sigma + (after.sigma - before.sigma) * burnInMult,
+              before.sigma + (after.sigma - before.sigma) * multiplier,
               1,
               cfg.sigma
             );
@@ -1815,12 +2249,19 @@ export function getPlayerRatingTimeline({
         if (!statsMap[player.id]) statsMap[player.id] = { id: player.id, name: player.name, games: 0 };
         statsMap[player.id].games += 1;
       });
+    } else {
+      getBlueTeamIds(game, cfg).forEach(id => {
+        if (!leagueOpponentStatsMap[id]) {
+          leagueOpponentStatsMap[id] = { games: 0 };
+        }
+        leagueOpponentStatsMap[id].games += 1;
+      });
     }
 
     const isRequestedLeagueContext =
       leagueContext &&
       game?.isLeagueGame &&
-      getLeagueContextKey(game) === leagueContext.key;
+      gameMatchesLeagueContext(game, leagueContext);
 
     if (isRequestedLeagueContext) {
       const leagueEntry = getLeagueContextTimelineEntry({
@@ -1857,7 +2298,7 @@ export function getPlayerRatingTimeline({
       side: playerResult.side,
       won: playerResult.won,
       isLeagueGame: Boolean(game.isLeagueGame),
-      leagueContext: game?.isLeagueGame ? cloneSimple(getLeagueContext(game)) : null,
+      leagueContext: game?.isLeagueGame ? cloneSimple(getLeagueRatingContext(game, cfg)) : null,
       courtType: getCourtType(game),
       displayWinnerColor: game.displayWinnerColor || null,
       displayLoserColor: game.displayLoserColor || null,

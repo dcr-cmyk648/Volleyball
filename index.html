@@ -354,6 +354,28 @@
       accent-color: #93c5fd;
     }
 
+    .force-change-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 0 0 12px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.03);
+    }
+
+    .force-change-controls strong {
+      font-size: 14px;
+    }
+
+    .force-change-count {
+      min-width: 34px;
+      text-align: center;
+      font-weight: 800;
+    }
+
     .group-controls {
       display: flex;
       align-items: center;
@@ -889,13 +911,21 @@
       <div class="checkbox-row">
         <label for="forceTwoChangesCheckbox">
           <input type="checkbox" id="forceTwoChangesCheckbox" />
-          Force at least two player changes
+          Force player changes
         </label>
 
         <label for="groupingCheckbox">
           <input type="checkbox" id="groupingCheckbox" />
           Allow grouping
         </label>
+      </div>
+
+      <div id="forceChangeControls" class="force-change-controls hidden">
+        <strong>Player changes</strong>
+        <button id="decreaseForceChangeCountButton" class="ghost" type="button">−</button>
+        <span id="forceChangeCountValue" class="force-change-count">1</span>
+        <button id="increaseForceChangeCountButton" class="ghost" type="button">+</button>
+        <span class="small" style="margin-top: 0;">Minimum changed players per new team.</span>
       </div>
 
       <div id="groupControls" class="group-controls hidden">
@@ -1042,6 +1072,7 @@
     calibrateMarginModel,
     predictExpectedMargin,
     getLeagueContext,
+    getLeagueRatingContext,
     LEAGUE_TEAM_ID,
     LEAGUE_TEAM_NAME,
     LEAGUE_TEAM_SIZE,
@@ -1102,6 +1133,10 @@
   const teamCountValueEl = document.getElementById('teamCountValue');
   const recordButtonsEl = document.getElementById('recordButtons');
   const forceTwoChangesCheckboxEl = document.getElementById('forceTwoChangesCheckbox');
+  const forceChangeControlsEl = document.getElementById('forceChangeControls');
+  const forceChangeCountValueEl = document.getElementById('forceChangeCountValue');
+  const decreaseForceChangeCountButtonEl = document.getElementById('decreaseForceChangeCountButton');
+  const increaseForceChangeCountButtonEl = document.getElementById('increaseForceChangeCountButton');
   const groupingCheckboxEl = document.getElementById('groupingCheckbox');
   const groupControlsEl = document.getElementById('groupControls');
   const groupCountValueEl = document.getElementById('groupCountValue');
@@ -1155,9 +1190,14 @@
   let playerSearchQuery = '';
   let groupingEnabled = false;
   let groupCount = MIN_GROUP_COUNT;
+  let forceChangeCount = 1;
+  let forceChangeCountManual = false;
   let defaultDatabaseMeta = null;
   let publicRatingScaleCacheKey = '';
   let publicRatingScaleCache = null;
+  const REPLAY_RESULT_CACHE_PREFIX = 'vballReplayResult:';
+  const replayResultMemoryCache = new Map();
+  const MAX_REPLAY_RESULT_MEMORY_ENTRIES = 20;
   let pendingRecord = null;
   let currentAssignmentId = '';
   let currentAssignmentDate = '';
@@ -1306,17 +1346,110 @@
     return true;
   }
 
+  function hashString(value) {
+    let hash = 2166136261;
+    for (let i = 0; i < value.length; i += 1) {
+      hash ^= value.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  }
+
+  function getReplayResultCacheKey({
+    players,
+    games,
+    seasonal = true,
+    volleyballAdjusted = false,
+    includeLeagueGames = true,
+    options = {},
+  }) {
+    const compactPlayers = (players || []).map(player => [player.id, player.name]);
+    const compactGames = (games || []).map(game => [
+      game?.id,
+      game?.date,
+      game?.winner,
+      game?.scoreRed,
+      game?.scoreBlue,
+      game?.isLeagueGame ? 1 : 0,
+      game?.level || '',
+      game?.courtType || '',
+      game?.leaguePhase || '',
+      game?.createdAt || '',
+      (game?.redTeam || []).map(player => player.id).join(','),
+      (game?.blueTeam || []).map(player => player.id).join(','),
+    ]);
+
+    return hashString(JSON.stringify({
+      version: VERSION,
+      seasonal,
+      volleyballAdjusted,
+      includeLeagueGames,
+      options,
+      players: compactPlayers,
+      games: compactGames,
+    }));
+  }
+
+  function rememberReplayResult(cacheKey, result) {
+    if (replayResultMemoryCache.has(cacheKey)) {
+      replayResultMemoryCache.delete(cacheKey);
+    }
+    replayResultMemoryCache.set(cacheKey, result);
+
+    while (replayResultMemoryCache.size > MAX_REPLAY_RESULT_MEMORY_ENTRIES) {
+      const oldestKey = replayResultMemoryCache.keys().next().value;
+      replayResultMemoryCache.delete(oldestKey);
+    }
+  }
+
+  function getCachedReplayRatings(args, { persist = false } = {}) {
+    const cacheKey = getReplayResultCacheKey(args);
+    if (replayResultMemoryCache.has(cacheKey)) {
+      const cached = replayResultMemoryCache.get(cacheKey);
+      replayResultMemoryCache.delete(cacheKey);
+      replayResultMemoryCache.set(cacheKey, cached);
+      return cached;
+    }
+
+    if (persist) {
+      try {
+        const saved = sessionStorage.getItem(`${REPLAY_RESULT_CACHE_PREFIX}${cacheKey}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          rememberReplayResult(cacheKey, parsed);
+          return parsed;
+        }
+      } catch {
+        // Ignore cache read failures.
+      }
+    }
+
+    const result = replayRatings(args);
+    rememberReplayResult(cacheKey, result);
+
+    if (persist) {
+      try {
+        sessionStorage.setItem(`${REPLAY_RESULT_CACHE_PREFIX}${cacheKey}`, JSON.stringify(result));
+      } catch {
+        // Ignore cache quota/write failures.
+      }
+    }
+
+    return result;
+  }
+
   function getRatingData() {
-    return replayRatings({
+    return getCachedReplayRatings({
       players,
       games,
       seasonal: true,
       volleyballAdjusted: false,
       includeLeagueGames: loadIncludeLeagueGamesEnabled(),
       options: {
-        seasonalTaperDays: getSeasonalTaperDays()
+        seasonalTaperDays: getSeasonalTaperDays(),
+        leagueDisplayEstimateEnabled: true
       }
-    });
+    }, { persist: true });
   }
 
   function getPublicRatingScaleCacheKey() {
@@ -1396,6 +1529,8 @@
   }
 
   function savePageState() {
+    syncAutoForceChangeCount();
+
     const payload = {
       presenceState,
       redScore: redScoreEl.value,
@@ -1404,6 +1539,8 @@
       balanceAttempts: Number(balanceSliderEl.value),
       teamCount: getTeamCount(),
       forceTwoChanges: forceTwoChangesCheckboxEl.checked,
+      forceChangeCount,
+      forceChangeCountManual,
       groupingEnabled,
       groupCount,
       playerSearchQuery,
@@ -1442,6 +1579,16 @@
       forceTwoChangesCheckboxEl.checked = saved.forceTwoChanges;
     } else {
       forceTwoChangesCheckboxEl.checked = false;
+    }
+
+    forceChangeCountManual = typeof saved.forceChangeCountManual === 'boolean'
+      ? saved.forceChangeCountManual
+      : false;
+
+    if (Number.isFinite(Number(saved.forceChangeCount))) {
+      forceChangeCount = clampForceChangeCount(saved.forceChangeCount);
+    } else {
+      forceChangeCount = getDefaultForceChangeCount();
     }
 
     groupingEnabled = Boolean(saved.groupingEnabled);
@@ -1616,7 +1763,7 @@
   function getCurrentLeagueContext() {
     if (!isLeagueGameMode()) return null;
 
-    return getLeagueContext({
+    return getLeagueRatingContext({
       isLeagueGame: true,
       level: getLeagueLevel(),
       courtType: getCourtType()
@@ -1652,20 +1799,23 @@
   function getLeagueStandingsRawOrdinal(league) {
     if (!league) return null;
 
-    const rawOrdinal = typeof league.rawOrdinal === 'number'
-      ? league.rawOrdinal
-      : league.rating;
+    const rawOrdinal = typeof league.leaderboardRawOrdinal === 'number'
+      ? league.leaderboardRawOrdinal
+      : typeof league.rating === 'number'
+        ? league.rating
+        : league.rawOrdinal;
 
-    return getOverallStandingsRawOrdinal(rawOrdinal, league.games);
+    return Number.isFinite(Number(rawOrdinal)) ? Number(rawOrdinal) : null;
   }
 
   function getRecordLeagueContext(record) {
     if (!record?.isLeagueGame) return null;
 
-    return getLeagueContext({
+    return getLeagueRatingContext({
       isLeagueGame: true,
       level: record.level,
-      courtType: record.courtType
+      courtType: record.courtType,
+      leaguePhase: record.leaguePhase
     });
   }
 
@@ -1679,6 +1829,54 @@
     const raw = Number(teamCountSliderEl.value);
     if (!Number.isFinite(raw)) return MIN_TEAM_COUNT;
     return Math.min(MAX_TEAM_COUNT, Math.max(MIN_TEAM_COUNT, Math.round(raw)));
+  }
+
+  function getLargestTargetTeamSize(playerCount = getPresentPlayers().length, colors = getActiveTeamColors()) {
+    if (!colors.length) return 1;
+    const targetSizes = getTeamTargetSizes(Math.max(0, playerCount), colors);
+    return Math.max(1, ...colors.map(color => targetSizes[color] || 0));
+  }
+
+  function getDefaultForceChangeCount(playerCount = getPresentPlayers().length, colors = getActiveTeamColors()) {
+    return Math.max(1, Math.ceil(getLargestTargetTeamSize(playerCount, colors) / 3));
+  }
+
+  function getMaxForceChangeCount(playerCount = getPresentPlayers().length, colors = getActiveTeamColors()) {
+    return getLargestTargetTeamSize(playerCount, colors);
+  }
+
+  function clampForceChangeCount(value) {
+    const parsed = Number(value);
+    const fallback = getDefaultForceChangeCount();
+    const count = Number.isFinite(parsed) ? Math.round(parsed) : fallback;
+    return Math.min(getMaxForceChangeCount(), Math.max(1, count));
+  }
+
+  function setForceChangeCount(value, { manual = true } = {}) {
+    forceChangeCount = clampForceChangeCount(value);
+    forceChangeCountManual = Boolean(manual);
+    updateForceChangeControls();
+    savePageState();
+  }
+
+  function syncAutoForceChangeCount() {
+    if (forceChangeCountManual) {
+      forceChangeCount = clampForceChangeCount(forceChangeCount);
+      return;
+    }
+
+    forceChangeCount = getDefaultForceChangeCount();
+  }
+
+  function updateForceChangeControls() {
+    syncAutoForceChangeCount();
+    const enabled = shouldForceTwoChanges();
+    const maxCount = getMaxForceChangeCount();
+
+    forceChangeControlsEl.classList.toggle('hidden', !enabled);
+    forceChangeCountValueEl.textContent = String(forceChangeCount);
+    decreaseForceChangeCountButtonEl.disabled = !enabled || forceChangeCount <= 1;
+    increaseForceChangeCountButtonEl.disabled = !enabled || forceChangeCount >= maxCount;
   }
 
   // True when the assignment produces more than two teams, which switches the
@@ -1926,23 +2124,51 @@
     return new Set(teamPlayers.map(player => String(player.id)));
   }
 
-  function countDifferentPlayers(teamA, teamB) {
-    const idsA = getPlayerIdSet(teamA);
-    const idsB = getPlayerIdSet(teamB);
-    let different = 0;
+  function countNewPlayersOnTeam(newTeam, previousTeam) {
+    const previousIds = getPlayerIdSet(previousTeam);
+    return newTeam.reduce((count, player) =>
+      previousIds.has(String(player.id)) ? count : count + 1
+    , 0);
+  }
 
-    idsA.forEach(id => {
-      if (!idsB.has(id)) different += 1;
+  function getLatestStandardGameAssignmentForSimilarityConstraint() {
+    const latestStandardGame = games.find(game =>
+      game &&
+      game.date === getLocalDateString() &&
+      !game.isLeagueGame &&
+      !game.displayWinnerColor &&
+      !game.displayLoserColor &&
+      Array.isArray(game.redTeam) &&
+      game.redTeam.length > 0 &&
+      Array.isArray(game.blueTeam) &&
+      game.blueTeam.length > 0
+    );
+
+    if (!latestStandardGame) return null;
+
+    return {
+      redTeam: latestStandardGame.redTeam,
+      blueTeam: latestStandardGame.blueTeam
+    };
+  }
+
+  function getCurrentScreenTeamMapForSimilarityConstraint(colors) {
+    if (!currentAssignmentId || currentAssignmentDate !== getLocalDateString()) return null;
+
+    const teamMap = {};
+    colors.forEach(color => {
+      const playersForColor = getTeamPlayers(color);
+      if (playersForColor.length === 0) return;
+      teamMap[color] = playersForColor.map(player => String(player.id));
     });
 
-    idsB.forEach(id => {
-      if (!idsA.has(id)) different += 1;
-    });
-
-    return different;
+    return Object.keys(teamMap).length === colors.length ? teamMap : null;
   }
 
   function getCurrentTwoTeamAssignmentForSimilarityConstraint() {
+    const latestGameAssignment = getLatestStandardGameAssignmentForSimilarityConstraint();
+    if (latestGameAssignment) return latestGameAssignment;
+
     if (!currentAssignmentId || currentAssignmentDate !== getLocalDateString()) return null;
 
     const previousRed = getTeamPlayers('red');
@@ -1956,14 +2182,25 @@
     };
   }
 
+  function getForcedPlayerChangeCount() {
+    return clampForceChangeCount(forceChangeCount);
+  }
+
+  function getRequiredPlayerChangeCount(teamSize) {
+    return Math.min(getForcedPlayerChangeCount(), Math.max(1, teamSize));
+  }
+
   function candidateHasEnoughPlayerChanges(candidate, previousTeams) {
     if (!previousTeams) return true;
 
+    const requiredRedChanges = getRequiredPlayerChangeCount(candidate.redTeam.length);
+    const requiredBlueChanges = getRequiredPlayerChangeCount(candidate.blueTeam.length);
+
     return (
-      countDifferentPlayers(candidate.redTeam, previousTeams.redTeam) >= 2 &&
-      countDifferentPlayers(candidate.redTeam, previousTeams.blueTeam) >= 2 &&
-      countDifferentPlayers(candidate.blueTeam, previousTeams.redTeam) >= 2 &&
-      countDifferentPlayers(candidate.blueTeam, previousTeams.blueTeam) >= 2
+      countNewPlayersOnTeam(candidate.redTeam, previousTeams.redTeam) >= requiredRedChanges &&
+      countNewPlayersOnTeam(candidate.redTeam, previousTeams.blueTeam) >= requiredRedChanges &&
+      countNewPlayersOnTeam(candidate.blueTeam, previousTeams.redTeam) >= requiredBlueChanges &&
+      countNewPlayersOnTeam(candidate.blueTeam, previousTeams.blueTeam) >= requiredBlueChanges
     );
   }
 
@@ -2423,20 +2660,49 @@
   }
 
   function getCurrentMultiTeamAssignmentForSimilarityConstraint(colors) {
-    if (!currentAssignmentId || currentAssignmentDate !== getLocalDateString()) return null;
+    const savedRound = getLatestMultiTeamRoundAssignmentForSimilarityConstraint(colors);
+    if (savedRound) return savedRound;
 
-    const teamMap = {};
-    colors.forEach(color => {
-      const playersForColor = getTeamPlayers(color);
-      if (playersForColor.length === 0) return;
-      teamMap[color] = playersForColor.map(player => String(player.id));
-    });
+    return getCurrentScreenTeamMapForSimilarityConstraint(colors);
+  }
 
-    return Object.keys(teamMap).length === colors.length ? teamMap : null;
+  function getLatestMultiTeamRoundAssignmentForSimilarityConstraint(colors) {
+    if (!Array.isArray(colors) || colors.length <= 2) return null;
+
+    const activeColors = new Set(colors);
+    const roundTeamMap = {};
+    const requiredGames = getScheduledPairColors(colors).length;
+    let acceptedGames = 0;
+
+    for (const game of games) {
+      if (acceptedGames >= requiredGames) break;
+
+      if (
+        !game ||
+        game.date !== getLocalDateString() ||
+        game.isLeagueGame ||
+        !activeColors.has(game.displayWinnerColor) ||
+        !activeColors.has(game.displayLoserColor) ||
+        !Array.isArray(game.redTeam) ||
+        !Array.isArray(game.blueTeam)
+      ) {
+        continue;
+      }
+
+      if (roundTeamMap[game.displayWinnerColor] || roundTeamMap[game.displayLoserColor]) {
+        continue;
+      }
+
+      roundTeamMap[game.displayWinnerColor] = game.redTeam.map(player => String(player.id));
+      roundTeamMap[game.displayLoserColor] = game.blueTeam.map(player => String(player.id));
+      acceptedGames += 1;
+    }
+
+    return acceptedGames === requiredGames ? roundTeamMap : null;
   }
 
   // For each new team, finds the previous team with the most player overlap,
-  // then checks for 2 changed players, or 1 when a team only has 1 player.
+  // then checks for the configured number of changed players.
   function multiTeamCandidateHasEnoughChanges(teamsByColor, colors, prevAssignment) {
     if (!prevAssignment) return true;
 
@@ -2455,12 +2721,13 @@
           bestPreviousTeam = prevIds.map(id => ({ id }));
         }
       });
-      return countDifferentPlayers(newTeam, bestPreviousTeam) >= Math.min(2, newIds.size);
+      return countNewPlayersOnTeam(newTeam, bestPreviousTeam) >= getRequiredPlayerChangeCount(newIds.size);
     });
   }
 
   function getForceTwoChangesFailureMessage() {
-    return 'Unable to force two player changes with the current roster. Uncheck "Force at least two player changes" or change who is present.';
+    const count = getForcedPlayerChangeCount();
+    return `Unable to force ${count} player change${count === 1 ? '' : 's'} with the current roster. Turn off "Force player changes", lower the change count, or change who is present.`;
   }
 
   function preflightForceTwoChanges(presentPlayers, colors, twoTeamPrevious, multiTeamPrevious) {
@@ -2784,7 +3051,7 @@
         'No team assignment yet.',
         `Teams: ${teamCount}`,
         `Court type: ${getCourtTypeLabel()}`,
-        `Similarity rule: ${forceTwoChangesCheckboxEl.checked ? 'on' : 'off'}`
+        `Similarity rule: ${shouldForceTwoChanges() ? `on (${getForcedPlayerChangeCount()} changes)` : 'off'}`
       ];
 
       maybePushGroupSummary(lines);
@@ -3362,6 +3629,7 @@
       : `Assign ${getTeamCount()} Teams`;
 
     forceTwoChangesCheckboxEl.disabled = isLeagueGameMode();
+    updateForceChangeControls();
     teamCountSliderEl.disabled = isLeagueGameMode();
     groupingCheckboxEl.disabled = isLeagueGameMode();
     teamCountValueEl.textContent = String(getTeamCount());
@@ -3544,6 +3812,7 @@
             state.team = 'red';
           }
 
+          updateForceChangeControls();
           savePageState();
           renderPlayers();
           updateBalanceStatus();
@@ -3684,6 +3953,7 @@
         winner: game.winner === 'blue' ? 'blue' : 'red',
         isLeagueGame: Boolean(game.isLeagueGame),
         level: game.level === 'intermediate' ? 'intermediate' : undefined,
+        leaguePhase: game.leaguePhase === 'bracket' ? 'bracket' : undefined,
         createdAt: typeof game.createdAt === 'undefined' ? undefined : game.createdAt,
         assignmentId: typeof game.assignmentId === 'string' ? game.assignmentId : undefined,
         assignmentSource: ['algorithm', 'modified', 'manual'].includes(game.assignmentSource)
@@ -3706,6 +3976,7 @@
       }))
       .map(game => {
         if (typeof game.level === 'undefined') delete game.level;
+        if (typeof game.leaguePhase === 'undefined') delete game.leaguePhase;
         if (typeof game.createdAt === 'undefined') delete game.createdAt;
         if (typeof game.assignmentId === 'undefined') delete game.assignmentId;
         if (typeof game.assignmentSource === 'undefined') delete game.assignmentSource;
@@ -4038,6 +4309,8 @@
     balanceSliderEl.value = String(DEFAULT_BALANCE_ATTEMPTS);
     teamCountSliderEl.value = String(MIN_TEAM_COUNT);
     forceTwoChangesCheckboxEl.checked = false;
+    forceChangeCountManual = false;
+    forceChangeCount = getDefaultForceChangeCount();
     leagueLevelSelectEl.value = '';
     courtTypeSelectEl.value = getMostRecentLoggedCourtType(games);
 
@@ -4062,6 +4335,7 @@
   teamCountSliderEl.addEventListener('input', () => {
     clearError();
     teamCountValueEl.textContent = String(getTeamCount());
+    updateForceChangeControls();
     savePageState();
     renderPlayers();
     updateBalanceStatus();
@@ -4069,7 +4343,22 @@
 
   forceTwoChangesCheckboxEl.addEventListener('change', () => {
     clearError();
+    forceChangeCountManual = false;
+    forceChangeCount = getDefaultForceChangeCount();
+    updateForceChangeControls();
     savePageState();
+    updateBalanceStatus();
+  });
+
+  decreaseForceChangeCountButtonEl.addEventListener('click', () => {
+    clearError();
+    setForceChangeCount(forceChangeCount - 1);
+    updateBalanceStatus();
+  });
+
+  increaseForceChangeCountButtonEl.addEventListener('click', () => {
+    clearError();
+    setForceChangeCount(forceChangeCount + 1);
     updateBalanceStatus();
   });
 
@@ -4177,6 +4466,8 @@
 
   teamCountSliderEl.value = String(MIN_TEAM_COUNT);
   forceTwoChangesCheckboxEl.checked = false;
+  forceChangeCountManual = false;
+  forceChangeCount = getDefaultForceChangeCount();
   groupingCheckboxEl.checked = false;
 
   restorePageState();

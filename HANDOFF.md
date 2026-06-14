@@ -45,7 +45,7 @@ Working doc to resume balancing/algorithm work in a fresh thread. Read this firs
 
 ## 4. Versioning convention
 
-- `export const VERSION = 'beta-YYYYMMDD-N';` near top of `ratings.js` (currently `beta-20260603-13`).
+- `export const VERSION = 'beta-YYYYMMDD-N';` near top of `ratings.js` (currently `beta-20260613-14`).
 - Imported into index/stats/trend and logged: `console.log('[vball] <page> version:', VERSION)`.
 - Bump `-N` on each change so the user can confirm the browser loaded the new build.
 
@@ -84,6 +84,31 @@ Working doc to resume balancing/algorithm work in a fresh thread. Read this firs
 - **Burn-in / calibration**: `replayRatings` and `getPlayerRatingTimeline` both
   apply burn-in (amplify early-career updates) and a two-pass calibration freeze.
   These are now consistent between the two functions.
+- **League opponent model**: current local trial pools all league games into one
+  synthetic `League Team` (`leagueTeamRatingMode:'pooled'`). Current default uses
+  `leagueOpponentUpdateMultiplier:4`, `leagueOpponentBurnInGames:4`,
+  `leagueOpponentBurnInMultiplier:2.25`, chosen from the league-team sweep by the
+  internal weighted quality metric below.
+- **League bracket games**: bracket/championship league games can be tagged with
+  `leaguePhase:'bracket'`. The current pooled local trial keeps them in replay
+  and folds them into the same displayed/modelled `League Team` as all other
+  league games.
+- **League scoreboard display**: league-team rows use a Bayesian posterior mean
+  for display (`leagueDisplayRatingMode:'bayesian'`). Intervals are intentionally
+  not shown in UI. Callers must set `leagueDisplayEstimateEnabled:true`; repeated
+  internal replays must leave it false for performance. Stats league context rows
+  display this league rating directly instead of applying the player public-rating
+  scale, because component league teams are aggregate opponents rather than
+  player-like leaderboard entries.
+- **Stats League scoreboard exception**: only the Stats page's League scoreboard
+  uses `leagueTeamRatingMode:'context'` so league opponents are broken out into
+  Rec/Intermediate/Sand/Bracket components. All other pages/modes keep pooled
+  `League Team`.
+- **Replay caching**: Play and Stats use a shared `sessionStorage` replay-result
+  cache keyed by `VERSION`, players, games, season length, league inclusion, and
+  replay options. Any new/imported/deleted game changes the key and recalculates.
+  Stats also keeps multi-entry public rating scale cache entries and avoids
+  rendering hidden standings tab content during `renderAll()`.
 
 ## 8. Eval harness (`eval/`)
 
@@ -97,6 +122,12 @@ All run as `node --import ./register.mjs <file>` from `eval/`.
 - `blowout_features.mjs` — absolute features vs blowout occurrence.
 - `blowout_imbalance.mjs` — between-team imbalance features vs blowout occurrence.
 - `loader.mjs` / `register.mjs` — CDN→local OpenSkill redirect.
+- `league_team_sweep.mjs` — league opponent identity/update/burn-in sweep. Use
+  `intQ` as the primary internal comparison metric when judging close candidates:
+  predictive score = margin quality 45 + Brier 25 + balanced-rate 20 + winner
+  accuracy 10; back/explanatory score = margin quality 50 + Brier 30 + winner
+  accuracy 20; `intQ` = predictive 60 + back/explanatory 40. Keep the old
+  `score` column as a secondary tie-breaker, not the main decision rule.
 
 ## 9. Key analytical findings (the important part)
 
@@ -124,6 +155,12 @@ All run as `node --import ./register.mjs <file>` from `eval/`.
 - Depth-emphasis weights (above). Keep.
 - Volatility cap [0.5, 1.75]. Keep.
 - Intercept gap margin model. Keep.
+- League opponent update/burn-in default: context opponent x4.0 with first 4
+  synthetic-opponent games amplified 2.25x. Chosen because the narrow sweep had
+  the best internal weighted quality score (`intQ 81.84` vs current/default
+  pre-change `81.68`).
+- League bracket games are included in default analysis/replay and currently
+  pooled with all other league games for the local display/model trial.
 - **Reframed goals:** primary = avoid blowouts; secondary = even games within
   statistical limits. But data says balancing has little blowout leverage.
 - Do NOT build: fragility/shape balancing penalties, a full blowout-risk predictor,

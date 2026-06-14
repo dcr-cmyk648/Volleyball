@@ -4167,6 +4167,7 @@
       "scoreBlue": 15,
       "winner": "blue",
       "isLeagueGame": true,
+      "leaguePhase": "bracket",
       "leagueOpponent": {
         "id": "league_team",
         "name": "League Team",
@@ -4211,6 +4212,7 @@
       "scoreBlue": 25,
       "winner": "blue",
       "isLeagueGame": true,
+      "leaguePhase": "bracket",
       "leagueOpponent": {
         "id": "league_team",
         "name": "League Team",
@@ -4255,6 +4257,7 @@
       "scoreBlue": 20,
       "winner": "red",
       "isLeagueGame": true,
+      "leaguePhase": "bracket",
       "leagueOpponent": {
         "id": "league_team",
         "name": "League Team",
@@ -4299,6 +4302,7 @@
       "scoreBlue": 15,
       "winner": "blue",
       "isLeagueGame": true,
+      "leaguePhase": "bracket",
       "leagueOpponent": {
         "id": "league_team",
         "name": "League Team",
@@ -4343,6 +4347,7 @@
       "scoreBlue": 27,
       "winner": "blue",
       "isLeagueGame": true,
+      "leaguePhase": "bracket",
       "leagueOpponent": {
         "id": "league_team",
         "name": "League Team",
@@ -4387,6 +4392,7 @@
       "scoreBlue": 18,
       "winner": "red",
       "isLeagueGame": true,
+      "leaguePhase": "bracket",
       "leagueOpponent": {
         "id": "league_team",
         "name": "League Team",

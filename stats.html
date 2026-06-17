@@ -446,6 +446,7 @@
       display: grid;
       gap: 12px;
       padding-right: 4px;
+      min-width: 0;
     }
 
     .game-card {
@@ -453,6 +454,8 @@
       border-radius: 16px;
       padding: 14px;
       background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)), var(--card-2);
+      min-width: 0;
+      overflow: hidden;
     }
 
     .game-header {
@@ -473,7 +476,7 @@
 
     .teams-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       gap: 12px;
       margin-bottom: 10px;
     }
@@ -483,6 +486,7 @@
       border-radius: 12px;
       padding: 12px;
       background: rgba(255,255,255,0.03);
+      min-width: 0;
     }
 
     .team-power {
@@ -520,6 +524,7 @@
       color: var(--text);
       font-weight: 700;
       white-space: nowrap;
+      min-width: 0;
     }
 
     .quality-summary {
@@ -1162,6 +1167,32 @@
 
       .game-header {
         align-items: flex-start;
+      }
+
+      .teams-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .history-team-title {
+        display: grid;
+        gap: 4px;
+      }
+
+      .team-power {
+        margin-left: 0;
+        white-space: normal;
+      }
+
+      .history-detail-line {
+        display: grid;
+        gap: 4px;
+      }
+
+      .history-detail-main,
+      .history-evidence {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        text-overflow: clip;
       }
 
       .quality-chart-wrap {

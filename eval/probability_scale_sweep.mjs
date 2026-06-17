@@ -6,9 +6,7 @@
 // Or target values:
 //   PROBABILITY_SCALES=3.2,3.4,3.6 npm run probscale
 
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { loadDatabase } from './database.mjs';
 import {
   replayRatings,
   calibrateMarginModel,
@@ -18,11 +16,7 @@ import {
   DEFAULT_VOLLEYBALL_BALANCE_OPTIONS,
 } from '../ratings.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.VBALL_DB || resolve(__dirname, '../default_database');
-const db = JSON.parse(readFileSync(DB_PATH, 'utf8'));
-const players = db.players || [];
-const games = db.games || [];
+const { db, players, games, sourceLabel } = await loadDatabase();
 
 const seasonalTaperDays = Math.round(6 * 30.4375);
 
@@ -132,6 +126,8 @@ function findBestSplit({
 function createStats() {
   return {
     n: 0,
+    correct: 0,
+    brierSum: 0,
     actualMarginSum: 0,
     actualWithin5: 0,
     actualBlowouts8: 0,
@@ -148,6 +144,8 @@ function createStats() {
 function summarize(stats) {
   return {
     n: stats.n,
+    accuracy: stats.n ? stats.correct / stats.n : null,
+    brier: stats.n ? stats.brierSum / stats.n : null,
     avgActualMargin: stats.actualMarginSum / stats.n,
     actualWithin5: stats.actualWithin5 / stats.n,
     actualBlowoutRate: stats.actualBlowouts8 / stats.n,
@@ -177,6 +175,47 @@ for (const game of sortedGames) {
     });
   }
   priorGames.push(game);
+}
+
+const backReplay = replayFor(games);
+const backMarginModel = calibrateMarginModel({
+  games,
+  ratingMap: backReplay.ratingMap,
+  carryScoreMap: backReplay.carryMap || {},
+});
+
+function recordPrediction(stats, game, score) {
+  const predictedWinner = score.redWinProbability >= 0.5 ? 'red' : 'blue';
+  const actualRed = game.winner === 'red' ? 1 : 0;
+  if (predictedWinner === game.winner) stats.correct += 1;
+  stats.brierSum += (score.redWinProbability - actualRed) ** 2;
+}
+
+function evaluateBack(probabilityScale) {
+  const volleyballOptions = { probabilityScale };
+  const stats = createStats();
+
+  for (const game of scoredGames) {
+    const score = scoreVolleyballCandidateSplit({
+      redPlayers: game.redTeam,
+      bluePlayers: game.blueTeam,
+      ratingMap: backReplay.ratingMap,
+      carryScoreMap: backReplay.carryMap || {},
+      volleyballOptions,
+    });
+    const predictedActualGap = predictExpectedMargin(score.strengthDiff, backMarginModel);
+    const actualMargin = Math.abs(game.scoreRed - game.scoreBlue);
+
+    stats.n += 1;
+    recordPrediction(stats, game, score);
+    stats.actualMarginSum += actualMargin;
+    stats.actualWithin5 += actualMargin <= 5 ? 1 : 0;
+    stats.actualBlowouts8 += actualMargin > 8 ? 1 : 0;
+    stats.predictedActualGapSum += predictedActualGap;
+    stats.actualMarginErrSum += Math.abs(predictedActualGap - actualMargin);
+  }
+
+  return summarize(stats);
 }
 
 function evaluate(probabilityScale) {
@@ -220,6 +259,7 @@ function evaluate(probabilityScale) {
       (best.redKey === actualBlueKey && best.blueKey === actualRedKey);
 
     stats.n += 1;
+    recordPrediction(stats, game, actualScore);
     stats.actualMarginSum += actualMargin;
     stats.actualWithin5 += actualMargin <= 5 ? 1 : 0;
     stats.actualBlowouts8 += actualMargin > 8 ? 1 : 0;
@@ -234,6 +274,7 @@ function evaluate(probabilityScale) {
 
   return {
     probabilityScale,
+    back: evaluateBack(probabilityScale),
     ...summarize(stats),
   };
 }
@@ -254,6 +295,10 @@ function printRows(title, rows, limit = 16) {
   console.log(title);
   console.log([
     'prob'.padStart(6),
+    'fAcc'.padStart(6),
+    'fBrier'.padStart(8),
+    'bAcc'.padStart(6),
+    'bBrier'.padStart(8),
     'actMAE'.padStart(6),
     'predAct'.padStart(7),
     'predBest'.padStart(8),
@@ -263,10 +308,14 @@ function printRows(title, rows, limit = 16) {
     'same'.padStart(5),
     'score'.padStart(7),
   ].join(' '));
-  console.log('-'.repeat(72));
+  console.log('-'.repeat(102));
   rows.slice(0, limit).forEach(row => {
     console.log([
       fmt(row.probabilityScale).padStart(6),
+      pct(row.accuracy).padStart(6),
+      fmt(row.brier, 3).padStart(8),
+      pct(row.back?.accuracy ?? null).padStart(6),
+      fmt(row.back?.brier ?? null, 3).padStart(8),
       fmt(row.actualMarginMAE).padStart(6),
       fmt(row.avgPredictedActualGap).padStart(7),
       fmt(row.avgPredictedBestGap).padStart(8),
@@ -280,7 +329,7 @@ function printRows(title, rows, limit = 16) {
   console.log('');
 }
 
-console.log(`DB: ${DB_PATH}`);
+console.log(`DB: ${sourceLabel}`);
 console.log(`scoredNonLeague=${scoredGames.length} evaluated=${priorSnapshots.length}`);
 console.log('Sweeping probabilityScale with current production rating + balancer defaults.');
 console.log('');

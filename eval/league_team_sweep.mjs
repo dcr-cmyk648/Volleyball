@@ -7,9 +7,8 @@
 // Run from eval/:
 //   npm run league:team
 
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { loadDatabase } from './database.mjs';
+import { attachAccIQDeltas, compareAccIQDesc, computeAccIQ } from './metrics.mjs';
 import {
   replayRatings,
   calibrateMarginModel,
@@ -19,17 +18,14 @@ import {
   DEFAULT_RATING_OPTIONS,
 } from '../ratings.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.VBALL_DB || resolve(__dirname, '../default_database');
-const db = JSON.parse(readFileSync(DB_PATH, 'utf8'));
-const players = db.players || [];
-const games = db.games || [];
+const { db, players, games, sourceLabel } = await loadDatabase();
 
 const seasonalTaperDays = Math.round(6 * 30.4375);
 
 function parseListEnv(name, fallback) {
   const raw = process.env[name];
   if (!raw) return fallback;
+  if (/^(none|off|false)$/i.test(raw.trim())) return [];
 
   const values = raw
     .split(',')
@@ -46,7 +42,7 @@ function parseModesEnv(fallback) {
   const values = raw
     .split(',')
     .map(value => value.trim())
-    .filter(value => value === 'context' || value === 'pooled');
+    .filter(value => value === 'context' || value === 'pooled' || value === 'level');
 
   return values.length > 0 ? values : fallback;
 }
@@ -308,13 +304,6 @@ function computeBackQuality(options, includeLeagueGames = true) {
 function evaluate(label, options = {}, includeLeagueGames = true) {
   const forward = computeForwardQuality(options, includeLeagueGames);
   const back = computeBackQuality(options, includeLeagueGames);
-  const predictiveScore = computePredictiveQualityScore(forward);
-  const explanatoryScore = computeExplanatoryQualityScore(back);
-  const internalScore = computeWeightedQualityScore([
-    { value: predictiveScore, weight: 60 },
-    { value: explanatoryScore, weight: 40 },
-  ]);
-  const visibleScore = internalScore === null ? null : Math.round(internalScore);
 
   return {
     label,
@@ -322,11 +311,7 @@ function evaluate(label, options = {}, includeLeagueGames = true) {
     includeLeagueGames,
     forward,
     back,
-    predictiveScore,
-    explanatoryScore,
-    internalScore,
-    visibleScore,
-    score: forward.brier * 100 + forward.marginMAE * 0.25 + back.brier * 10,
+    accIQ: computeAccIQ({ forward, back }),
   };
 }
 
@@ -348,12 +333,10 @@ function printRows(title, rows, limit = rows.length) {
     'backAcc'.padStart(8),
     'backBrier'.padStart(9),
     'backMAE'.padStart(7),
-    'predQ'.padStart(7),
-    'backQ'.padStart(7),
-    'intQ'.padStart(7),
-    'score'.padStart(7),
+    'AccIQ'.padStart(7),
+    'dIQ'.padStart(7),
   ].join(' '));
-  console.log('-'.repeat(116));
+  console.log('-'.repeat(100));
   rows.slice(0, limit).forEach(row => {
     console.log([
       row.label.slice(0, 32).padEnd(32),
@@ -363,10 +346,8 @@ function printRows(title, rows, limit = rows.length) {
       pct(row.back.accuracy).padStart(8),
       fmt(row.back.brier).padStart(9),
       fmt(row.back.marginMAE).padStart(7),
-      fmt(row.predictiveScore, 2).padStart(7),
-      fmt(row.explanatoryScore, 2).padStart(7),
-      fmt(row.internalScore, 2).padStart(7),
-      fmt(row.score).padStart(7),
+      fmt(row.accIQ, 2).padStart(7),
+      fmt(row.accIQDelta, 2).padStart(7),
     ].join(' '));
   });
   console.log('');
@@ -375,15 +356,30 @@ function printRows(title, rows, limit = rows.length) {
 const leagueGames = games.filter(game => game?.isLeagueGame);
 const scoredNonLeagueGames = games.filter(isScoredNonLeagueGame);
 
-console.log(`DB: ${DB_PATH}`);
+console.log(`DB: ${sourceLabel}`);
 console.log(`players=${players.length} games=${games.length} leagueGames=${leagueGames.length} scoredNonLeague=${scoredNonLeagueGames.length}`);
 console.log('Sweeping leagueTeamRatingMode, leagueOpponentUpdateMultiplier, and league opponent burn-in.');
 console.log('');
 
-const rows = [
-  evaluate('exclude league games', {}, false),
-  evaluate('current default', {}, true),
-];
+const candidates = [];
+const candidateKeys = new Set();
+
+function candidateKey(options = {}, includeLeagueGames = true) {
+  return `${includeLeagueGames}:${JSON.stringify(options)}`;
+}
+
+function addCandidate(label, options = {}, includeLeagueGames = true) {
+  const key = candidateKey(options, includeLeagueGames);
+  if (candidateKeys.has(key)) return;
+  candidateKeys.add(key);
+  candidates.push({ label, options, includeLeagueGames });
+}
+
+addCandidate('exclude league games', {}, false);
+addCandidate('current default', {}, true);
+addCandidate('current default no league decay', {
+  leagueOpponentSeasonalTaperEnabled: false,
+}, true);
 
 const modes = parseModesEnv(['context', 'pooled']);
 const multipliers = parseListEnv(
@@ -398,6 +394,11 @@ const burnInMultipliers = parseListEnv(
   'LEAGUE_OPPONENT_BURN_IN_MULTIPLIERS',
   [1, 1.5, 2]
 );
+const pregameBayesianSigmas = parseListEnv(
+  'LEAGUE_PREGAME_BAYESIAN_SIGMAS',
+  [1, 2, 4]
+);
+const pregameBayesianGridStep = Number(process.env.LEAGUE_PREGAME_BAYESIAN_GRID_STEP) || DEFAULT_RATING_OPTIONS.leagueBayesianGridStep;
 
 for (const mode of modes) {
   for (const multiplier of multipliers) {
@@ -410,32 +411,42 @@ for (const mode of modes) {
           ? ` burn ${burnInGames}x${burnInMultiplier.toFixed(2)}`
           : '';
 
-        rows.push(evaluate(`${mode} opp x${multiplier.toFixed(2)}${burnLabel}`, {
+        addCandidate(`${mode} opp x${multiplier.toFixed(2)}${burnLabel}`, {
           leagueTeamRatingMode: mode,
           leagueOpponentUpdateMultiplier: multiplier,
           leagueOpponentBurnInGames: burnInGames,
           leagueOpponentBurnInMultiplier: burnInMultiplier,
           leagueUpdateMultiplier: DEFAULT_RATING_OPTIONS.leagueUpdateMultiplier,
-        }));
+        });
+
+        pregameBayesianSigmas.forEach(sigma => {
+          addCandidate(`${mode} bayes seed s${sigma.toFixed(2)} x${multiplier.toFixed(2)}${burnLabel}`, {
+            leagueTeamRatingMode: mode,
+            leagueOpponentUpdateMultiplier: multiplier,
+            leagueOpponentBurnInGames: burnInGames,
+            leagueOpponentBurnInMultiplier: burnInMultiplier,
+            leagueUpdateMultiplier: DEFAULT_RATING_OPTIONS.leagueUpdateMultiplier,
+            leaguePregameBayesianEnabled: true,
+            leaguePregameBayesianSigma: sigma,
+            leagueBayesianGridStep: pregameBayesianGridStep,
+          });
+        });
       }
     }
   }
 }
 
-const uniqueRows = [];
-const seen = new Set();
-rows.forEach(row => {
-  const key = `${row.includeLeagueGames}:${JSON.stringify(row.options)}`;
-  if (seen.has(key)) return;
-  seen.add(key);
-  uniqueRows.push(row);
+console.log(`uniqueCandidates=${candidates.length}`);
+
+const started = Date.now();
+const uniqueRows = candidates.map((candidate, index) => {
+  const elapsed = ((Date.now() - started) / 1000).toFixed(1);
+  console.error(`evaluating ${index + 1}/${candidates.length}: ${candidate.label} (${elapsed}s)`);
+  return evaluate(candidate.label, candidate.options, candidate.includeLeagueGames);
 });
 
-const byComposite = [...uniqueRows].sort((a, b) => a.score - b.score);
-const byInternalQuality = [...uniqueRows].sort((a, b) =>
-  (b.internalScore ?? -Infinity) - (a.internalScore ?? -Infinity) ||
-  a.score - b.score
-);
+attachAccIQDeltas(uniqueRows, row => row.label === 'current default');
+const byAccIQ = [...uniqueRows].sort(compareAccIQDesc);
 const byForwardBrier = [...uniqueRows].sort((a, b) => a.forward.brier - b.forward.brier);
 const byForwardMae = [...uniqueRows].sort((a, b) => a.forward.marginMAE - b.forward.marginMAE);
 const baselines = uniqueRows.filter(row =>
@@ -444,7 +455,6 @@ const baselines = uniqueRows.filter(row =>
 );
 
 printRows('Baselines', baselines);
-printRows('Best internal weighted-quality candidates', byInternalQuality, 14);
-printRows('Best composite candidates', byComposite, 14);
+printRows('Best AccIQ candidates', byAccIQ, 14);
 printRows('Best forward Brier candidates', byForwardBrier, 12);
 printRows('Best forward margin-MAE candidates', byForwardMae, 12);

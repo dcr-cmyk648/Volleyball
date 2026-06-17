@@ -317,6 +317,26 @@
       outline: none;
     }
 
+    .search-input-wrap {
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+    }
+
+    .search-input-wrap input {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .search-clear-button {
+      flex: 0 0 46px;
+      width: 46px;
+      padding: 0;
+      border-radius: 12px;
+      font-size: 22px;
+      line-height: 1;
+    }
+
     .select-row select:focus,
     .search-row input:focus {
       border-color: #60a5fa;
@@ -946,7 +966,19 @@
       <div id="errorMessage" class="error"></div>
       <div class="search-row" style="margin-top: 14px;">
         <label for="playerSearchInput">Search players</label>
-        <input type="search" id="playerSearchInput" placeholder="Start typing a name..." autocomplete="off" />
+        <div class="search-input-wrap">
+          <input
+            type="search"
+            id="playerSearchInput"
+            placeholder="Start typing a name..."
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="none"
+            spellcheck="false"
+            enterkeyhint="done"
+          />
+          <button id="clearPlayerSearchButton" class="ghost search-clear-button" type="button" aria-label="Clear player search">x</button>
+        </div>
       </div>
       <div class="controls hidden" id="addPlayerSearchAction" style="margin-top: 10px;">
         <button id="openAddPlayerDialog" class="success" type="button">Register New Player</button>
@@ -1060,11 +1092,14 @@
   import {
     VERSION,
     replayRatings,
+    buildEnvironmentAdjustedRatingMap,
+    buildPairAdjustmentMap,
     scoreVolleyballCandidateSplit,
     getVolleyballTeamStrength,
     getPlayerRatingsForList,
     formatDisplayedRating,
     formatPublicDisplayRating,
+    getOverallStandingsRawOrdinal as getAdjustedOverallStandingsRawOrdinal,
     getPublicRatingDisplayScale,
     formatMu,
     formatSigma,
@@ -1095,8 +1130,6 @@
   const PROV_PENALTY   = 0.03;
   const SAME_SIZE_MATCHUP_FAIRNESS_TOLERANCE = 0.04;
   const SAME_SIZE_MATCHUP_SCORE_BONUS = 30;
-  const OVERALL_STANDINGS_CONFIDENCE_GAMES = 22;
-  const OVERALL_STANDINGS_CONFIDENCE_POWER = 1.35;
 
   const DEFAULT_SEASON_LENGTH_MONTHS = 6;
   const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
@@ -1143,6 +1176,7 @@
   const decreaseGroupCountButtonEl = document.getElementById('decreaseGroupCountButton');
   const increaseGroupCountButtonEl = document.getElementById('increaseGroupCountButton');
   const playerSearchInputEl = document.getElementById('playerSearchInput');
+  const clearPlayerSearchButtonEl = document.getElementById('clearPlayerSearchButton');
   const redScoreEl = document.getElementById('redScore');
   const blueScoreEl = document.getElementById('blueScore');
   const redScoreLabelEl = document.getElementById('redScoreLabel');
@@ -1195,6 +1229,10 @@
   let defaultDatabaseMeta = null;
   let publicRatingScaleCacheKey = '';
   let publicRatingScaleCache = null;
+  let balanceRatingMapCacheKey = '';
+  let balanceRatingMapCache = null;
+  let balancePairMapCacheKey = '';
+  let balancePairMapCache = null;
   const REPLAY_RESULT_CACHE_PREFIX = 'vballReplayResult:';
   const replayResultMemoryCache = new Map();
   const MAX_REPLAY_RESULT_MEMORY_ENTRIES = 20;
@@ -1360,6 +1398,8 @@
     games,
     seasonal = true,
     volleyballAdjusted = false,
+    volleyballUpdateUsesBalancerContext = true,
+    volleyballUpdateContextMode = 'pair',
     includeLeagueGames = true,
     options = {},
   }) {
@@ -1383,6 +1423,8 @@
       version: VERSION,
       seasonal,
       volleyballAdjusted,
+      volleyballUpdateUsesBalancerContext,
+      volleyballUpdateContextMode,
       includeLeagueGames,
       options,
       players: compactPlayers,
@@ -1439,17 +1481,59 @@
   }
 
   function getRatingData() {
-    return getCachedReplayRatings({
+    const replayArgs = {
       players,
       games,
       seasonal: true,
-      volleyballAdjusted: false,
+      volleyballAdjusted: true,
+      volleyballUpdateUsesBalancerContext: true,
+      volleyballUpdateContextMode: 'pair',
       includeLeagueGames: loadIncludeLeagueGamesEnabled(),
       options: {
         seasonalTaperDays: getSeasonalTaperDays(),
         leagueDisplayEstimateEnabled: true
       }
-    }, { persist: true });
+    };
+    const replay = getCachedReplayRatings(replayArgs, { persist: true });
+    const teamCount = getTeamCount();
+    const playerCount = getPresentPlayers().length;
+    const balanceCacheKey = `${getReplayResultCacheKey(replayArgs)}:${teamCount}:${playerCount}`;
+
+    if (balanceCacheKey !== balanceRatingMapCacheKey || !balanceRatingMapCache) {
+      balanceRatingMapCacheKey = balanceCacheKey;
+      balanceRatingMapCache = buildEnvironmentAdjustedRatingMap({
+        players,
+        games,
+        baseRatingMap: replay.ratingMap,
+        ratingOptions: replayArgs.options,
+        teamCount,
+        playerCount
+      });
+    }
+
+    if (balanceCacheKey !== balancePairMapCacheKey || !balancePairMapCache) {
+      balancePairMapCacheKey = balanceCacheKey;
+      balancePairMapCache = buildPairAdjustmentMap({
+        players,
+        games,
+        ratingOptions: replayArgs.options,
+        seasonal: true
+      });
+    }
+
+    return {
+      ...replay,
+      balanceRatingMap: balanceRatingMapCache,
+      balancePairAdjustmentMap: balancePairMapCache
+    };
+  }
+
+  function getBalanceRatingMap(ratingData) {
+    return ratingData?.balanceRatingMap || ratingData?.ratingMap || {};
+  }
+
+  function getBalancePairAdjustmentMap(ratingData) {
+    return ratingData?.balancePairAdjustmentMap || null;
   }
 
   function getPublicRatingScaleCacheKey() {
@@ -1489,7 +1573,9 @@
       players,
       games,
       seasonal: true,
-      volleyballAdjusted: false,
+      volleyballAdjusted: true,
+      volleyballUpdateUsesBalancerContext: true,
+      volleyballUpdateContextMode: 'pair',
       includeLeagueGames: loadIncludeLeagueGamesEnabled(),
       options: {
         seasonalTaperDays: getSeasonalTaperDays()
@@ -1604,6 +1690,7 @@
       : '';
 
     playerSearchInputEl.value = playerSearchQuery;
+    updatePlayerSearchControls();
     currentAssignmentId = typeof saved.currentAssignmentId === 'string'
       ? saved.currentAssignmentId
       : '';
@@ -1785,15 +1872,7 @@
   }
 
   function getOverallStandingsRawOrdinal(rawOrdinal, games) {
-    const raw = Number(rawOrdinal);
-    if (!Number.isFinite(raw)) return null;
-
-    const safeGames = Math.max(0, Number(games) || 0);
-    const confidence = Math.pow(
-      safeGames / (safeGames + OVERALL_STANDINGS_CONFIDENCE_GAMES),
-      OVERALL_STANDINGS_CONFIDENCE_POWER
-    );
-    return raw * confidence;
+    return getAdjustedOverallStandingsRawOrdinal(rawOrdinal, games);
   }
 
   function getLeagueStandingsRawOrdinal(league) {
@@ -1823,6 +1902,11 @@
     return record?.leagueOpponent?.name ||
       getRecordLeagueContext(record)?.name ||
       LEAGUE_TEAM_NAME;
+  }
+
+  function getLeagueOpponentSizeForGame(game) {
+    const redCount = Array.isArray(game?.redTeam) ? game.redTeam.length : 0;
+    return Math.max(1, redCount || LEAGUE_TEAM_SIZE);
   }
 
   function getTeamCount() {
@@ -1984,6 +2068,23 @@
       visiblePlayers.length === 0;
 
     addPlayerSearchActionEl.classList.toggle('hidden', !shouldShowAction);
+  }
+
+  function updatePlayerSearchControls() {
+    if (!clearPlayerSearchButtonEl) return;
+    clearPlayerSearchButtonEl.disabled = playerSearchQuery.trim().length === 0;
+  }
+
+  function setPlayerSearchQuery(value, { focus = false } = {}) {
+    playerSearchQuery = String(value || '');
+    playerSearchInputEl.value = playerSearchQuery;
+    updatePlayerSearchControls();
+    savePageState();
+    renderPlayers();
+
+    if (focus) {
+      playerSearchInputEl.focus();
+    }
   }
 
   function updatePlayerListScrollMode(visiblePlayers) {
@@ -2315,7 +2416,7 @@
     return diffs.reduce((sum, value) => sum + value, 0) / diffs.length;
   }
 
-  function getPairwiseFairness(teamsByColor, colors, ratingMap, carryMap = {}) {
+  function getPairwiseFairness(teamsByColor, colors, ratingMap, carryMap = {}, pairAdjustmentMap = null) {
     let total = 0;
     let count = 0;
 
@@ -2327,7 +2428,8 @@
           redPlayers: teamsByColor[colorA],
           bluePlayers: teamsByColor[colorB],
           ratingMap,
-          carryScoreMap: carryMap
+          carryScoreMap: carryMap,
+          pairAdjustmentMap
         });
         total += score.fairness;
         count += 1;
@@ -2370,7 +2472,7 @@
     );
   }
 
-  function buildPairMetrics(teamsByColor, colors, ratingMap, carryMap = {}) {
+  function buildPairMetrics(teamsByColor, colors, ratingMap, carryMap = {}, pairAdjustmentMap = null) {
     const pairMetrics = new Map();
 
     for (let i = 0; i < colors.length; i += 1) {
@@ -2386,7 +2488,8 @@
           redPlayers: teamA,
           bluePlayers: teamB,
           ratingMap,
-          carryScoreMap: carryMap
+          carryScoreMap: carryMap,
+          pairAdjustmentMap
         });
 
         pairMetrics.set(getPairKey(colorA, colorB), {
@@ -2439,8 +2542,8 @@
     };
   }
 
-  function getScheduledMatchupCandidates(colors, teamsByColor, strengthsByColor, ratingMap, carryMap = {}) {
-    const pairMetrics = buildPairMetrics(teamsByColor, colors, ratingMap, carryMap);
+  function getScheduledMatchupCandidates(colors, teamsByColor, strengthsByColor, ratingMap, carryMap = {}, pairAdjustmentMap = null) {
+    const pairMetrics = buildPairMetrics(teamsByColor, colors, ratingMap, carryMap, pairAdjustmentMap);
     const candidates = [];
 
     function visit(remainingColors, pairs, unpairedColors) {
@@ -2474,8 +2577,8 @@
     return candidates;
   }
 
-  function getPreferredScheduledMatchups(teamsByColor, colors, strengthsByColor, ratingMap, carryMap = {}) {
-    const candidates = getScheduledMatchupCandidates(colors, teamsByColor, strengthsByColor, ratingMap, carryMap);
+  function getPreferredScheduledMatchups(teamsByColor, colors, strengthsByColor, ratingMap, carryMap = {}, pairAdjustmentMap = null) {
+    const candidates = getScheduledMatchupCandidates(colors, teamsByColor, strengthsByColor, ratingMap, carryMap, pairAdjustmentMap);
 
     if (!candidates.length) {
       return {
@@ -2507,7 +2610,7 @@
     return sameSizeIsCloseEnough ? bestSameSize : bestByFairness;
   }
 
-  function getScheduledMatchupFairness(teamsByColor, scheduledColors, ratingMap, carryMap = {}) {
+  function getScheduledMatchupFairness(teamsByColor, scheduledColors, ratingMap, carryMap = {}, pairAdjustmentMap = null) {
     const fairnessValues = [];
     const strengthDiffs = [];
     let sameSizePairs = 0;
@@ -2521,7 +2624,8 @@
         redPlayers: teamA,
         bluePlayers: teamB,
         ratingMap,
-        carryScoreMap: carryMap
+        carryScoreMap: carryMap,
+        pairAdjustmentMap
       });
 
       fairnessValues.push(score.fairness);
@@ -2548,7 +2652,7 @@
     };
   }
 
-  function getWorstBlowoutRisk({ teamsByColor, scheduledColors, ratingMap, carryMap = {}, marginModel }) {
+  function getWorstBlowoutRisk({ teamsByColor, scheduledColors, ratingMap, carryMap = {}, pairAdjustmentMap = null, marginModel }) {
     let worstRisk = null;
 
     getScheduledPairColors(scheduledColors).forEach(([colorA, colorB]) => {
@@ -2561,7 +2665,8 @@
         redPlayers: teamA,
         bluePlayers: teamB,
         ratingMap,
-        carryScoreMap: carryMap
+        carryScoreMap: carryMap,
+        pairAdjustmentMap
       });
       const winnerIsA = score.redWinProbability >= score.blueWinProbability;
       const winnerProbability = winnerIsA ? score.redWinProbability : score.blueWinProbability;
@@ -2592,7 +2697,7 @@
     return worstRisk;
   }
 
-  function buildMultiTeamCandidate(presentPlayers, colors, ratingMap, carryMap = {}, statsMap = {}) {
+  function buildMultiTeamCandidate(presentPlayers, colors, ratingMap, carryMap = {}, statsMap = {}, pairAdjustmentMap = null) {
     const units = buildPlayerUnits(presentPlayers);
     const targetSizes = getTeamTargetSizes(presentPlayers.length, colors);
     const teamsByColor = assignUnitsToTargetSizes(units, colors, targetSizes);
@@ -2620,8 +2725,8 @@
     const minStrength = Math.min(...strengths);
     const spread = maxStrength - minStrength;
     const averagePairwiseDifference = getAveragePairwiseDifference(strengths);
-    const averagePairwiseFairness = getPairwiseFairness(teamsByColor, colors, ratingMap, carryMap);
-    const scheduledMatchups = getPreferredScheduledMatchups(teamsByColor, colors, strengthsByColor, ratingMap, carryMap);
+    const averagePairwiseFairness = getPairwiseFairness(teamsByColor, colors, ratingMap, carryMap, pairAdjustmentMap);
+    const scheduledMatchups = getPreferredScheduledMatchups(teamsByColor, colors, strengthsByColor, ratingMap, carryMap, pairAdjustmentMap);
 
     const provCounts = colors.map(color =>
       teamsByColor[color].filter(p => (statsMap[String(p.id)]?.games ?? 0) < PROV_THRESHOLD).length
@@ -2874,6 +2979,8 @@
 
     const attempts = computeAttempts(Number(balanceSliderEl.value), presentPlayers.length, teamCount);
     const ratingData = getRatingData();
+    const balanceRatingMap = getBalanceRatingMap(ratingData);
+    const balancePairAdjustmentMap = getBalancePairAdjustmentMap(ratingData);
 
     let bestCandidate = null;
     let validCandidatesFound = 0;
@@ -2883,7 +2990,14 @@
     while (validCandidatesFound < attempts && rawAttempts < maxRawAttempts) {
       rawAttempts += 1;
 
-      const candidate = buildMultiTeamCandidate(presentPlayers, colors, ratingData.ratingMap, ratingData.carryMap, ratingData.statsMap);
+      const candidate = buildMultiTeamCandidate(
+        presentPlayers,
+        colors,
+        balanceRatingMap,
+        ratingData.carryMap,
+        ratingData.statsMap,
+        balancePairAdjustmentMap
+      );
 
       if (candidate.invalid) {
         continue;
@@ -2938,7 +3052,7 @@
 
     const marginModel = calibrateMarginModel({
       games,
-      ratingMap: ratingData.ratingMap,
+      ratingMap: balanceRatingMap,
       carryScoreMap: ratingData.carryMap,
     });
     lastAssignment = {
@@ -2995,6 +3109,8 @@
   function updateBalanceStatus() {
     updateBalanceSliderLabel();
     const ratingData = getRatingData();
+    const balanceRatingMap = getBalanceRatingMap(ratingData);
+    const balancePairAdjustmentMap = getBalancePairAdjustmentMap(ratingData);
 
     if (isLeagueGameMode()) {
       const redTeam = getTeamPlayers('red');
@@ -3037,7 +3153,7 @@
 
       const strength = getVolleyballTeamStrength({
         players: teamPlayers,
-        ratingMap: ratingData.ratingMap,
+        ratingMap: balanceRatingMap,
         carryScoreMap: ratingData.carryMap
       });
 
@@ -3059,18 +3175,31 @@
       return;
     }
 
-    const averagePairwiseFairness = getPairwiseFairness(teamsByColor, colors, ratingData.ratingMap, ratingData.carryMap);
-    const scheduledMatchups = getScheduledMatchupFairness(teamsByColor, colors, ratingData.ratingMap, ratingData.carryMap);
+    const averagePairwiseFairness = getPairwiseFairness(
+      teamsByColor,
+      colors,
+      balanceRatingMap,
+      ratingData.carryMap,
+      balancePairAdjustmentMap
+    );
+    const scheduledMatchups = getScheduledMatchupFairness(
+      teamsByColor,
+      colors,
+      balanceRatingMap,
+      ratingData.carryMap,
+      balancePairAdjustmentMap
+    );
     const marginModel = calibrateMarginModel({
       games,
-      ratingMap: ratingData.ratingMap,
+      ratingMap: balanceRatingMap,
       carryScoreMap: ratingData.carryMap,
     });
     const blowoutRisk = getWorstBlowoutRisk({
       teamsByColor,
       scheduledColors: colors,
-      ratingMap: ratingData.ratingMap,
+      ratingMap: balanceRatingMap,
       carryMap: ratingData.carryMap,
+      pairAdjustmentMap: balancePairAdjustmentMap,
       marginModel
     });
 
@@ -3259,10 +3388,12 @@
 
     const isLeagueGame = isLeagueGameMode();
 
+    const redTeam = getPlainTeamPlayers('red');
+
     const record = {
       id: Date.now(),
       date: new Date().toLocaleDateString('en-CA'),
-      redTeam: getPlainTeamPlayers('red'),
+      redTeam,
       blueTeam: isLeagueGame ? [] : getPlainTeamPlayers('blue'),
       scoreRed: scoreA,
       scoreBlue: scoreB,
@@ -3272,7 +3403,7 @@
         ? {
             id: getCurrentLeagueContext()?.id || LEAGUE_TEAM_ID,
             name: getCurrentLeagueTeamName(),
-            size: LEAGUE_TEAM_SIZE
+            size: getLeagueOpponentSizeForGame({ redTeam })
           }
         : null
     };
@@ -3348,6 +3479,14 @@
     }
 
     return `Score: ${winnerLabel} ${winnerScore} - ${loserLabel} ${loserScore}`;
+  }
+
+  function formatMarginBonusText(marginFactor) {
+    const value = Number(marginFactor);
+    if (!Number.isFinite(value)) return 'Margin bonus: n/a';
+    const bonusPercent = (value - 1) * 100;
+    const sign = bonusPercent >= 0 ? '+' : '';
+    return `Margin bonus: ${sign}${bonusPercent.toFixed(2)}% (${value.toFixed(3)}x)`;
   }
 
   function buildConfirmationSummary(record) {
@@ -3577,6 +3716,7 @@
     } catch {
       ratingData = null;
     }
+    const balanceRatingMap = getBalanceRatingMap(ratingData);
 
     getDisplayColors().forEach(color => {
       const el = summaryContentEls[color];
@@ -3597,7 +3737,7 @@
           ? formatPlayerPublicRating(leagueStandingsRawOrdinal)
           : 'N/A';
         ratingLine.textContent = `Rating: ${leagueRatingText}`;
-        rosterLine.textContent = `${getCurrentLeagueTeamName()} (${LEAGUE_TEAM_SIZE} players)`;
+        rosterLine.textContent = `${getCurrentLeagueTeamName()} (${getPresentPlayers().length || LEAGUE_TEAM_SIZE} players)`;
         el.appendChild(ratingLine);
         el.appendChild(rosterLine);
         return;
@@ -3609,7 +3749,7 @@
       if (ratingData && teamPlayers.length) {
         const strength = getVolleyballTeamStrength({
           players: teamPlayers,
-          ratingMap: ratingData.ratingMap,
+          ratingMap: balanceRatingMap,
           carryScoreMap: ratingData.carryMap
         });
         ratingLine.textContent = `Strength rating: ${formatTeamStrengthRating(strength.strength)}`;
@@ -3744,7 +3884,7 @@
       winnerTeamLine,
       loserTeamLine,
       getRecordScoreLine(latest),
-      `Margin factor: ${marginFactor.toFixed(2)}x`
+      formatMarginBonusText(marginFactor)
     ].join('\n');
   }
 
@@ -3970,7 +4110,7 @@
           ? {
               id: game.leagueOpponent?.id || LEAGUE_TEAM_ID,
               name: game.leagueOpponent?.name || LEAGUE_TEAM_NAME,
-              size: Number(game.leagueOpponent?.size) || LEAGUE_TEAM_SIZE
+              size: getLeagueOpponentSizeForGame(game)
             }
           : null
       }))
@@ -4381,9 +4521,17 @@
   });
 
   playerSearchInputEl.addEventListener('input', () => {
-    playerSearchQuery = playerSearchInputEl.value;
-    savePageState();
-    renderPlayers();
+    setPlayerSearchQuery(playerSearchInputEl.value);
+  });
+
+  clearPlayerSearchButtonEl.addEventListener('click', () => {
+    setPlayerSearchQuery('', { focus: true });
+  });
+
+  playerListEl.addEventListener('pointerdown', event => {
+    if (document.activeElement !== playerSearchInputEl) return;
+    if (!event.target.closest('input[type="checkbox"]')) return;
+    playerSearchInputEl.blur();
   });
 
   redScoreEl.addEventListener('input', savePageState);

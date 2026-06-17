@@ -135,6 +135,19 @@
       margin-bottom: 8px;
     }
 
+    .stats-heading-copy h2 {
+      margin-bottom: 4px;
+    }
+
+    .stats-rating-quote {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      font-style: italic;
+      line-height: 1.35;
+      opacity: 0.78;
+    }
+
     .card {
       background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)), var(--card);
       border-radius: 8px;
@@ -451,6 +464,13 @@
       align-items: center;
     }
 
+    .history-card-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
     .teams-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -470,6 +490,35 @@
       font-size: 12px;
       font-weight: 500;
       margin-left: 6px;
+      white-space: nowrap;
+    }
+
+    .history-team-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .history-detail-line {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .history-detail-main {
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .history-evidence {
+      color: var(--text);
+      font-weight: 700;
       white-space: nowrap;
     }
 
@@ -765,8 +814,8 @@
     .season-movers-table .trend-col { width: 70px; }
     .season-movers-table .rank-col { width: 42px; }
     .season-movers-table .player-col { width: auto; }
-    .season-movers-table .movement-col { width: 96px; }
-    .season-movers-table .season-games-col { width: 116px; }
+    .season-movers-table .movement-col { width: 112px; }
+    .season-movers-table .season-games-col { width: 64px; }
 
     .season-movers-table th,
     .season-movers-table td {
@@ -829,6 +878,14 @@
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
       gap: 12px;
+    }
+
+    .awards-section {
+      margin-top: 18px;
+    }
+
+    .awards-section:first-child {
+      margin-top: 0;
     }
 
     .awards-subsection {
@@ -951,8 +1008,8 @@
     @media (max-width: 750px) {
       .season-movers-table .trend-col { width: 48px; }
       .season-movers-table .rank-col { width: 30px; }
-      .season-movers-table .movement-col { width: 74px; }
-      .season-movers-table .season-games-col { width: 56px; }
+      .season-movers-table .movement-col { width: 86px; }
+      .season-movers-table .season-games-col { width: 44px; }
 
       .season-movers-table th,
       .season-movers-table td {
@@ -1170,7 +1227,10 @@
 
     <div class="card">
       <div class="section-heading">
-        <h2>Stats</h2>
+        <div class="stats-heading-copy">
+          <h2>Stats</h2>
+          <p class="stats-rating-quote">A low rating means the model is uncertain that you are good, not that it is certain you are bad</p>
+        </div>
         <a href="ranking.html" class="button-link">How ranking works</a>
       </div>
 
@@ -1187,7 +1247,6 @@
 
         <div class="scoreboard-mode-row" role="tablist" aria-label="Overall scoreboard type">
           <button id="overallCompositeModeButton" class="scoreboard-mode-button active" type="button">Composite</button>
-          <button id="overallLeagueModeButton" class="scoreboard-mode-button" type="button">League</button>
           <button id="overallBigTeamModeButton" class="scoreboard-mode-button" type="button">Big Team</button>
           <button id="overallSmallTeamModeButton" class="scoreboard-mode-button" type="button">Small Team</button>
         </div>
@@ -1248,7 +1307,7 @@
 
       <section id="awardsPanel" class="tab-panel hidden">
         <div id="awardsSummary" class="status awards-summary">Awards will appear once games are loaded.</div>
-        <div id="awardsGrid" class="awards-grid"></div>
+        <div id="awardsGrid"></div>
         <section id="groupAwardsSection" class="awards-subsection hidden" aria-labelledby="groupAwardsHeading">
           <h3 id="groupAwardsHeading" class="awards-subheading">Pair And Team Awards</h3>
           <div id="groupAwardsGrid" class="awards-grid group-awards-grid"></div>
@@ -1265,7 +1324,7 @@
       <div id="qualityPanels" class="quality-split hidden">
         <section class="quality-panel" aria-labelledby="qualityExplanatoryHeading">
           <h3 id="qualityExplanatoryHeading">Explanatory</h3>
-          <div class="quality-panel-note">Back-prediction using the current full dataset and rating model.</div>
+          <div class="quality-panel-note">Back-prediction using the current full dataset, rating model, and balancer context.</div>
           <div id="qualityExplanatoryScore" class="quality-score-banner hidden"></div>
           <div id="qualityExplanatoryMetrics" class="quality-grid"></div>
         </section>
@@ -1329,12 +1388,13 @@
     import {
       VERSION,
       replayRatings,
+      buildEnvironmentAdjustedRatingMap,
+      buildPairAdjustmentMap,
       scoreVolleyballCandidateSplit,
       predictExpectedMargin,
       getGamesSortedOldestFirst,
       formatDisplayedRating,
-      formatPublicDisplayRating,
-      getPublicRatingDisplayScale,
+      getOverallStandingsRawOrdinal,
       getLeagueContext,
       getLeagueRatingContext,
       LEAGUE_TEAM_ID,
@@ -1364,8 +1424,11 @@
 
     const LEADERBOARD_LOW_SIGMA = 6.4;
     const LEADERBOARD_HIGH_SIGMA = 8.4;
-    const SEASON_MOVER_BASELINE_NON_LEAGUE_GAMES = 6;
-    const SEASON_MOVER_POST_BASELINE_CONFIDENCE_GAMES = 10;
+    const SEASON_MOVER_BASELINE_GAMES = 6;
+    const SEASON_MOVER_POST_BASELINE_CONFIDENCE_GAMES = 8;
+    const SEASON_MOVER_VOLUME_CONFIDENCE_MIN = 0.82;
+    const SEASON_MOVER_RATING_DIFFICULTY_MAX_BONUS = 0.25;
+    const SEASON_MOVER_RATING_DIFFICULTY_RANGE = 600;
     const SEASON_MOVER_SETTLING_SLOPE_START = 0.18;
     const SEASON_MOVER_SETTLING_SLOPE_RANGE = 0.35;
     const SEASON_MOVER_SETTLING_MAX_DISCOUNT = 0.50;
@@ -1374,16 +1437,10 @@
     const SEASON_MOVER_SUSTAINED_CONFIDENCE_GAMES = 8;
     const SEASON_MOVER_SUSTAINED_MAX_BONUS = 0.15;
     const OVERALL_STANDINGS_MIN_GAMES = 5;
-    const OVERALL_STANDINGS_CONFIDENCE_GAMES = 22;
-    const OVERALL_STANDINGS_CONFIDENCE_POWER = 1.35;
     const OVERALL_SCOREBOARD_MODES = {
       composite: {
         label: 'Composite',
-        description: 'All games, including league games and league teams.'
-      },
-      league: {
-        label: 'League',
-        description: 'Only league games, including league team context ratings.'
+        description: 'All games.'
       },
       bigTeam: {
         label: 'Big Team',
@@ -1414,7 +1471,6 @@
     const overallScoreboardModeDescriptionEl = document.getElementById('overallScoreboardModeDescription');
     const overallScoreboardModeButtons = {
       composite: document.getElementById('overallCompositeModeButton'),
-      league: document.getElementById('overallLeagueModeButton'),
       bigTeam: document.getElementById('overallBigTeamModeButton'),
       smallTeam: document.getElementById('overallSmallTeamModeButton')
     };
@@ -1471,11 +1527,6 @@
     let defaultDatabaseDialogMode = 'prompt';
     let defaultDatabaseDialogRequestInFlight = false;
     let isLoadingDefaultDatabase = false;
-    let publicRatingScaleCacheKey = '';
-    let publicRatingScaleCache = null;
-    const publicRatingScaleCacheMap = new Map();
-    const PUBLIC_RATING_SCALE_CACHE_PREFIX = 'vballPublicRatingScale:';
-    const MAX_PUBLIC_RATING_SCALE_CACHE_ENTRIES = 24;
     const REPLAY_RESULT_CACHE_PREFIX = 'vballReplayResult:';
     const replayResultMemoryCache = new Map();
     const MAX_REPLAY_RESULT_MEMORY_ENTRIES = 180;
@@ -1567,6 +1618,8 @@
       games,
       seasonal = true,
       volleyballAdjusted = false,
+      volleyballUpdateUsesBalancerContext = true,
+      volleyballUpdateContextMode = 'pair',
       includeLeagueGames = true,
       options = {},
     }) {
@@ -1590,6 +1643,8 @@
         version: VERSION,
         seasonal,
         volleyballAdjusted,
+        volleyballUpdateUsesBalancerContext,
+        volleyballUpdateContextMode,
         includeLeagueGames,
         options,
         players: compactPlayers,
@@ -1661,10 +1716,18 @@
     function getScoreboardTeamSize(game, side) {
       let size = getTeamSize(game, side);
       if (game?.isLeagueGame && side === 'red') {
-        const leagueSize = Number(game?.leagueOpponent?.size);
-        if (Number.isFinite(leagueSize) && leagueSize > 0) size = leagueSize;
+        size = getLeagueOpponentSizeForGame(game);
       }
       return size > 6 ? 6 : size;
+    }
+
+    function getLeagueOpponentSizeForGame(game) {
+      const redCount = Array.isArray(game?.redTeam) ? game.redTeam.length : 0;
+      const fallbackSize = Number(game?.leagueOpponent?.size);
+      return Math.max(
+        1,
+        redCount || (Number.isFinite(fallbackSize) && fallbackSize > 0 ? fallbackSize : LEAGUE_TEAM_SIZE)
+      );
     }
 
     function isAnyTeamSizeGame(game, sizeMatcher) {
@@ -1681,10 +1744,6 @@
 
     function getOverallScoreboardGames(games = loadGames(), mode = getOverallScoreboardMode()) {
       const safeGames = Array.isArray(games) ? games : [];
-
-      if (mode === 'league') {
-        return safeGames.filter(game => game?.isLeagueGame);
-      }
 
       if (mode === 'bigTeam') {
         return safeGames.filter(game => isAnyTeamSizeGame(game, isLargeTeamSize));
@@ -1745,6 +1804,57 @@
       return map;
     }
 
+    function createOverallStandingsRecencyMap(games, mode = getOverallScoreboardMode()) {
+      const cutoffDate = getOneMonthAgoDateString();
+      const sideMatcher = getOverallScoreboardSideMatcher(mode);
+      const map = new Map();
+
+      const addPlayerDate = (player, date) => {
+        if (!player?.id || !isValidDateString(date) || date < cutoffDate) return;
+        const key = String(player.id);
+        const previous = map.get(key) || '';
+        if (!previous || date > previous) {
+          map.set(key, date);
+        }
+      };
+
+      const addContextDate = (context, date) => {
+        if (!context?.id || !isValidDateString(date) || date < cutoffDate) return;
+        const key = String(context.id);
+        const previous = map.get(key) || '';
+        if (!previous || date > previous) {
+          map.set(key, date);
+        }
+      };
+
+      (Array.isArray(games) ? games : []).forEach(game => {
+        if (!game) return;
+        const date = getGameDateValue(game);
+        if (!isValidDateString(date) || date < cutoffDate) return;
+
+        const redQualifies = sideMatcher
+          ? sideMatcher(getScoreboardTeamSize(game, 'red'))
+          : true;
+        const blueQualifies = sideMatcher
+          ? !game.isLeagueGame && sideMatcher(getScoreboardTeamSize(game, 'blue'))
+          : !game.isLeagueGame;
+
+        if (redQualifies) {
+          (Array.isArray(game.redTeam) ? game.redTeam : []).forEach(player => addPlayerDate(player, date));
+        }
+
+        if (blueQualifies) {
+          (Array.isArray(game.blueTeam) ? game.blueTeam : []).forEach(player => addPlayerDate(player, date));
+        }
+
+        if (game.isLeagueGame && ['composite', 'league'].includes(mode)) {
+          addContextDate(getLeagueRatingContext(game, getLeagueScoreboardRatingOptions(mode)), date);
+        }
+      });
+
+      return map;
+    }
+
     function getOverallScoreboardModeLabel(mode = getOverallScoreboardMode()) {
       return OVERALL_SCOREBOARD_MODES[mode]?.label || OVERALL_SCOREBOARD_MODES.composite.label;
     }
@@ -1781,7 +1891,9 @@
         players,
         games,
         seasonal: true,
-        volleyballAdjusted: false,
+        volleyballAdjusted: true,
+        volleyballUpdateUsesBalancerContext: true,
+        volleyballUpdateContextMode: 'pair',
         includeLeagueGames: isIncludeLeagueGamesMode(),
         options: {
           seasonalTaperDays: getSeasonalTaperDays()
@@ -1789,97 +1901,14 @@
       });
     }
 
-    function getPublicRatingScaleCacheKey(players, games, cacheScope = 'default', ratingOptions = {}) {
-      const playerKey = players
-        .map(player => `${player.id}:${player.name}`)
-        .join('|');
-      const gameKey = games
-        .map(game => [
-          game.id,
-          game.date,
-          game.winner,
-          game.scoreRed,
-          game.scoreBlue,
-          game.isLeagueGame ? 1 : 0,
-          game.createdAt || ''
-        ].join(':'))
-        .join('|');
-
-      return [
-        VERSION,
-        cacheScope,
-        getSeasonalTaperDays(),
-        isIncludeLeagueGamesMode() ? 1 : 0,
-        JSON.stringify(ratingOptions || {}),
-        playerKey,
-        gameKey
-      ].join('||');
-    }
-
-    function getPublicRatingScale(games = loadGames(), cacheScope = 'default', ratingOptions = {}) {
-      const players = loadPlayers();
-      const cacheKey = getPublicRatingScaleCacheKey(players, games, cacheScope, ratingOptions);
-
-      if (cacheKey === publicRatingScaleCacheKey) {
-        return publicRatingScaleCache;
-      }
-
-      if (publicRatingScaleCacheMap.has(cacheKey)) {
-        const cached = publicRatingScaleCacheMap.get(cacheKey);
-        publicRatingScaleCacheMap.delete(cacheKey);
-        publicRatingScaleCacheMap.set(cacheKey, cached);
-        publicRatingScaleCacheKey = cacheKey;
-        publicRatingScaleCache = cached;
-        return cached;
-      }
-
-      try {
-        const saved = sessionStorage.getItem(`${PUBLIC_RATING_SCALE_CACHE_PREFIX}${hashString(cacheKey)}`);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          publicRatingScaleCacheMap.set(cacheKey, parsed);
-          publicRatingScaleCacheKey = cacheKey;
-          publicRatingScaleCache = parsed;
-          return parsed;
-        }
-      } catch {
-        // Ignore cache read failures.
-      }
-
-      publicRatingScaleCacheKey = cacheKey;
-      publicRatingScaleCache = getPublicRatingDisplayScale({
-        players,
-        games,
-        seasonal: true,
-        volleyballAdjusted: false,
-        includeLeagueGames: isIncludeLeagueGamesMode(),
-        options: {
-          seasonalTaperDays: getSeasonalTaperDays(),
-          ...ratingOptions
-        }
-      });
-
-      publicRatingScaleCacheMap.set(cacheKey, publicRatingScaleCache);
-      while (publicRatingScaleCacheMap.size > MAX_PUBLIC_RATING_SCALE_CACHE_ENTRIES) {
-        const oldestKey = publicRatingScaleCacheMap.keys().next().value;
-        publicRatingScaleCacheMap.delete(oldestKey);
-      }
-
-      try {
-        sessionStorage.setItem(`${PUBLIC_RATING_SCALE_CACHE_PREFIX}${hashString(cacheKey)}`, JSON.stringify(publicRatingScaleCache));
-      } catch {
-        // Ignore cache quota/write failures.
-      }
-
-      return publicRatingScaleCache;
-    }
-
-    function formatPublicRating(rawOrdinal, games = loadGames(), cacheScope = 'default', ratingOptions = {}) {
-      return formatPublicDisplayRating(rawOrdinal, getPublicRatingScale(games, cacheScope, ratingOptions));
-    }
-
-    function formatOverallRatingDisplay(player, games = loadGames(), cacheScope = 'default', ratingOptions = {}) {
-      return formatPublicRating(getExperimentalLeaderboardRaw(player), games, cacheScope, ratingOptions);
+    function formatOverallRatingDisplay(
+      player,
+      games = loadGames(),
+      cacheScope = 'default',
+      ratingOptions = {},
+      displayScale = null
+    ) {
+      return formatDisplayedRating(getExperimentalLeaderboardRaw(player));
     }
 
     function clamp(value, min, max) {
@@ -1998,39 +2027,36 @@
 
 
     function getExperimentalLeaderboardRaw(player) {
-      if (player?.isLeagueContext) {
-        const raw = Number(player.leaderboardRawOrdinal ?? player.rating ?? player.rawOrdinal);
-        return Number.isFinite(raw) ? raw : 0;
-      }
-
-      // rawOrdinal is already conservative (mu − 3σ). Multiply by a game-count
-      // confidence factor that pulls low-game players toward the 0 baseline
-      // (displayed as 1500). Approximate confidence: 5 games ≈ 10%, 10 ≈ 22%,
-      // 20 ≈ 42%, 40 ≈ 68%. Leaderboard display only — no effect on ratings.
-      const conservativeRaw =
+      const rawOrdinal =
         typeof player.rawOrdinal === 'number'
           ? player.rawOrdinal
           : typeof player.rating === 'number'
             ? player.rating
             : 0;
       const games = Math.max(0, Number(player.games) || 0);
-      const gameConfidence = Math.pow(
-        games / (games + OVERALL_STANDINGS_CONFIDENCE_GAMES),
-        OVERALL_STANDINGS_CONFIDENCE_POWER
-      );
-      return gameConfidence * conservativeRaw;
+      return getOverallStandingsRawOrdinal(rawOrdinal, games);
     }
 
-    function isOverallStandingsEligible(player, mode = getOverallScoreboardMode()) {
-      return (Boolean(player?.isLeagueContext) && !['bigTeam', 'smallTeam'].includes(mode)) ||
-        Number(player?.games) >= OVERALL_STANDINGS_MIN_GAMES;
+    function isOverallStandingsEligible(
+      player,
+      mode = getOverallScoreboardMode(),
+      recencyMap = null
+    ) {
+      if (Boolean(player?.isLeagueContext) && ['composite', 'league'].includes(mode)) {
+        return Number(player?.games) > 0;
+      }
+
+      const id = String(player?.id ?? '');
+      return Number(player?.games) >= OVERALL_STANDINGS_MIN_GAMES &&
+        Boolean(recencyMap?.has(id));
     }
 
-    function getSortedStandingsRows(result, mode = getOverallScoreboardMode()) {
+    function getSortedStandingsRows(result, mode = getOverallScoreboardMode(), games = loadGames()) {
       const cfg = SORT_CONFIGS[activeSortBy] || null;
+      const recencyMap = createOverallStandingsRecencyMap(games, mode);
 
       return result.standings
-        .filter(player => isOverallStandingsEligible(player, mode))
+        .filter(player => isOverallStandingsEligible(player, mode, recencyMap))
         .map(player => ({
           ...player,
           experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player)
@@ -2055,9 +2081,17 @@
         });
     }
 
-    function getSortedFieldDisplay(player, ratingGames = loadGames(), ratingScope = 'default', ratingOptions = {}) {
+    function getSortedFieldDisplay(
+      player,
+      ratingGames = loadGames(),
+      ratingScope = 'default',
+      ratingOptions = {},
+      displayScale = null
+    ) {
       const cfg = SORT_CONFIGS[activeSortBy];
-      if (!cfg) return formatOverallRatingDisplay(player, ratingGames, ratingScope, ratingOptions);
+      if (!cfg) {
+        return formatOverallRatingDisplay(player, ratingGames, ratingScope, ratingOptions, displayScale);
+      }
       const val = player[cfg.field];
       if (activeSortBy === 'winrate') return `${Math.round((Number(val) || 0) * 100)}%`;
       if (activeSortBy === 'mu' || activeSortBy === 'sigma' || activeSortBy === 'rawOrdinal') {
@@ -2093,11 +2127,7 @@
     }
 
     function getLeagueScoreboardRatingOptions(mode = getOverallScoreboardMode()) {
-      return mode === 'league'
-        ? {
-            leagueTeamRatingMode: 'context',
-          }
-        : {};
+      return {};
     }
 
     function getOverallReplayResult({ games = loadGames(), mode = getOverallScoreboardMode() } = {}) {
@@ -2128,7 +2158,9 @@
         players,
         games,
         seasonal: true,
-        volleyballAdjusted: false,
+        volleyballAdjusted: true,
+        volleyballUpdateUsesBalancerContext: true,
+        volleyballUpdateContextMode: 'pair',
         includeLeagueGames: isIncludeLeagueGamesMode(),
         options: {
           seasonalTaperDays: getSeasonalTaperDays(),
@@ -2155,8 +2187,20 @@
       return date.toISOString().slice(0, 10);
     }
 
-    function getRecentSessionGames(allGames) {
-      const scored = getGamesSortedOldestFirst(allGames).filter(isScoredNonLeagueGame);
+    function isScoredSeasonMoverGame(game) {
+      return (
+        game &&
+        Array.isArray(game.redTeam) && game.redTeam.length > 0 &&
+        typeof game.scoreRed === 'number' && typeof game.scoreBlue === 'number' &&
+        (game.winner === 'red' || game.winner === 'blue') &&
+        (!game.isLeagueGame || game.redTeam.some(player => player?.id || player?.name))
+      );
+    }
+
+    function getRecentSessionGames(allGames, { includeLeagueGames = false } = {}) {
+      const scored = getGamesSortedOldestFirst(allGames).filter(
+        includeLeagueGames ? isScoredSeasonMoverGame : isScoredNonLeagueGame
+      );
       const dates = [...new Set(scored.map(getGameDateValue).filter(isValidDateString))].sort();
       const latestDate = dates.at(-1);
       if (!latestDate) return [];
@@ -2177,9 +2221,10 @@
     }
 
     // Ranks players by the leaderboard formula (always rating-based, ignores activeSortBy).
-    function getRatingBasedRankMap(result, mode = getOverallScoreboardMode()) {
+    function getRatingBasedRankMap(result, mode = getOverallScoreboardMode(), games = loadGames()) {
+      const recencyMap = createOverallStandingsRecencyMap(games, mode);
       const rows = result.standings
-        .filter(player => isOverallStandingsEligible(player, mode))
+        .filter(player => isOverallStandingsEligible(player, mode, recencyMap))
         .map(p => ({ ...p, experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(p) }))
         .sort((a, b) => {
           if (b.experimentalLeaderboardRaw !== a.experimentalLeaderboardRaw)
@@ -2226,12 +2271,12 @@
       return Number.isFinite(value) ? value : fallback;
     }
 
-    function formatDisplayDeltaFromModelDelta(modelDelta) {
+    function formatDisplayDeltaFromModelDelta(modelDelta, { signed = true } = {}) {
       const value = Number(modelDelta);
-      if (!Number.isFinite(value)) return '+0';
+      if (!Number.isFinite(value)) return signed ? '+0' : '0';
 
       const displayDelta = Math.round(value * 50);
-      return `${displayDelta >= 0 ? '+' : ''}${displayDelta}`;
+      return `${signed && displayDelta >= 0 ? '+' : ''}${displayDelta}`;
     }
 
     function getGameDateValue(game) {
@@ -2311,13 +2356,13 @@
             });
           }
 
-          if (nextCount === SEASON_MOVER_BASELINE_NON_LEAGUE_GAMES && !existing.baselineReached) {
+          if (nextCount === SEASON_MOVER_BASELINE_GAMES && !existing.baselineReached) {
             baselineMap.set(id, {
               ...baselineMap.get(id),
               baselineReached: true,
               baselineGameIndex: index,
               baselineDate: getGameDateValue(game),
-              totalNonLeagueGames: nextCount
+              totalSeasonMoverGames: nextCount
             });
           }
         });
@@ -2327,7 +2372,7 @@
         const existing = baselineMap.get(id) || { baselineReached: false };
         baselineMap.set(id, {
           ...existing,
-          totalNonLeagueGames: count
+          totalSeasonMoverGames: count
         });
       });
 
@@ -2374,6 +2419,23 @@
       return 1 + SEASON_MOVER_SUSTAINED_MAX_BONUS * volume * consistency;
     }
 
+    function getSeasonMoverVolumeFactor(postBaselineGames) {
+      const confidence = postBaselineGames /
+        (postBaselineGames + SEASON_MOVER_POST_BASELINE_CONFIDENCE_GAMES);
+      return SEASON_MOVER_VOLUME_CONFIDENCE_MIN +
+        (1 - SEASON_MOVER_VOLUME_CONFIDENCE_MIN) * confidence;
+    }
+
+    function getSeasonMoverRatingDifficultyFactor(startMu) {
+      const startDisplayRating = 1500 + (Number(startMu) - DEFAULT_MODEL_MU) * 50;
+      const difficulty = clamp(
+        (startDisplayRating - 1500) / SEASON_MOVER_RATING_DIFFICULTY_RANGE,
+        0,
+        1
+      );
+      return 1 + SEASON_MOVER_RATING_DIFFICULTY_MAX_BONUS * difficulty;
+    }
+
     function countPlayerGamesAfterIndex(games, playerId, startIndex) {
       const id = String(playerId);
       let count = 0;
@@ -2397,7 +2459,7 @@
     }
 
     function isSeasonMoversGame(game) {
-      return game && typeof game === 'object' && !game.isLeagueGame;
+      return game && typeof game === 'object';
     }
 
     function getSeasonMoverCandidateRows(seasonStartDate = getSeasonStartDate(), games = loadGames()) {
@@ -2446,7 +2508,7 @@
           const id = String(player.id);
           const baselineInfo = baselineMap.get(id) || {
             baselineReached: false,
-            totalNonLeagueGames: Number(player.games) || 0
+            totalSeasonMoverGames: Number(player.games) || 0
           };
 
           const currentMu = getModelMuFromStanding(player, NaN);
@@ -2462,7 +2524,7 @@
               gamesThisSeason: seasonGameCountMap.get(id) || 0,
               gamesSinceDate: 0,
               postBaselineGames: 0,
-              totalNonLeagueGames: Number(baselineInfo.totalNonLeagueGames) || 0,
+              totalSeasonMoverGames: Number(baselineInfo.totalSeasonMoverGames) || 0,
               baselineReached: false,
               baselineDate: '',
               startMu: DEFAULT_MODEL_MU,
@@ -2471,8 +2533,9 @@
               rawMuChange: 0,
               adjustedMuChange: 0,
               confidence: 0,
-              gamesConfidence: 0,
+              volumeFactor: 0,
               certaintyConfidence: 0,
+              ratingDifficultyFactor: 1,
               isNewThisSeason: true
             };
           }
@@ -2493,15 +2556,8 @@
             ? getPlayerMuAtIndex(baselineInfo.firstGameIndex, id, DEFAULT_MODEL_MU)
             : DEFAULT_MODEL_MU;
           const baselineMu = getPlayerMuAtIndex(Number(baselineInfo.baselineGameIndex), id, firstMu);
-          const earlyGameSpan = Math.max(1, SEASON_MOVER_BASELINE_NON_LEAGUE_GAMES - 1);
+          const earlyGameSpan = Math.max(1, SEASON_MOVER_BASELINE_GAMES - 1);
           const earlySlope = (baselineMu - firstMu) / earlyGameSpan;
-          const uncertainty = clamp(
-            (currentSigma - LEADERBOARD_LOW_SIGMA) /
-              Math.max(0.01, LEADERBOARD_HIGH_SIGMA - LEADERBOARD_LOW_SIGMA),
-            0,
-            1
-          );
-
           const postBaselineGames = gamesSinceDate;
           const postSlope = postBaselineGames > 0 ? rawMuChange / postBaselineGames : 0;
           const postGameIndexes = allGames
@@ -2509,15 +2565,19 @@
             .filter(entry => entry.index > deltaStartIndex && getPlayerIdsForGame(entry.game).has(id))
             .map(entry => entry.index);
           const pathStats = getPostBaselinePathStats(id, postGameIndexes, startMu);
-          const gamesConfidence = postBaselineGames / (postBaselineGames + SEASON_MOVER_POST_BASELINE_CONFIDENCE_GAMES);
-          const certaintyConfidence = 1 - 0.35 * uncertainty;
+          const volumeFactor = getSeasonMoverVolumeFactor(postBaselineGames);
+          const certaintyConfidence = 1;
           const settlingDiscount = getSettlingDiscount(earlySlope, postSlope);
           const sustainedBonus = getSustainedImprovementBonus({
             postBaselineGames,
             positiveStepConsistency: pathStats.positiveStepConsistency,
             settlingDiscount
           });
-          const confidence = gamesConfidence * certaintyConfidence * settlingDiscount * sustainedBonus;
+          const ratingDifficultyFactor = getSeasonMoverRatingDifficultyFactor(startMu);
+          const confidence = volumeFactor *
+            settlingDiscount *
+            sustainedBonus *
+            ratingDifficultyFactor;
           const adjustedMuChange = rawMuChange * confidence;
 
           return {
@@ -2525,7 +2585,7 @@
             gamesThisSeason: seasonGameCountMap.get(id) || 0,
             gamesSinceDate,
             postBaselineGames,
-            totalNonLeagueGames: Number(baselineInfo.totalNonLeagueGames) || 0,
+            totalSeasonMoverGames: Number(baselineInfo.totalSeasonMoverGames) || 0,
             baselineReached: true,
             baselineDate: baselineInfo.baselineDate || '',
             deltaStartIndex,
@@ -2535,10 +2595,11 @@
             rawMuChange,
             adjustedMuChange,
             confidence,
-            gamesConfidence,
+            volumeFactor,
             certaintyConfidence,
             settlingDiscount,
             sustainedBonus,
+            ratingDifficultyFactor,
             positiveStepConsistency: pathStats.positiveStepConsistency,
             isNewThisSeason: false
           };
@@ -2548,8 +2609,8 @@
 
     function sortSeasonMoverRows(rows) {
       return [...rows].sort((a, b) => {
-        if (b.rawMuChange !== a.rawMuChange) return b.rawMuChange - a.rawMuChange;
         if (b.adjustedMuChange !== a.adjustedMuChange) return b.adjustedMuChange - a.adjustedMuChange;
+        if (b.rawMuChange !== a.rawMuChange) return b.rawMuChange - a.rawMuChange;
         if (b.gamesSinceDate !== a.gamesSinceDate) return b.gamesSinceDate - a.gamesSinceDate;
         return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
       });
@@ -2611,7 +2672,7 @@
                 <th class="trend-col">Trend</th>
                 <th class="rank-col">#</th>
                 <th class="player-col">Player</th>
-                <th class="movement-col">Movement</th>
+                <th class="movement-col" title="Improvement Score">Improvement<br>Score</th>
                 <th class="season-games-col">Games</th>
               </tr>
             </thead>
@@ -2624,7 +2685,7 @@
                     <td>${renderSeasonMoverTrendCell(row, trendMaps || {})}</td>
                     <td>${escapeHtml(rank)}</td>
                     <td class="player-cell">${formatPlayerNameCell(row)}</td>
-                    <td class="season-mover-score">${escapeHtml(formatDisplayDeltaFromModelDelta(row.rawMuChange))}</td>
+                    <td class="season-mover-score">${escapeHtml(formatDisplayDeltaFromModelDelta(row.adjustedMuChange, { signed: false }))}</td>
                     <td>${escapeHtml(row.gamesThisSeason || 0)}</td>
                   </tr>
                 `;
@@ -2674,7 +2735,7 @@
       const rankMap = new Map(
         rows.map((row, index) => [String(row.id), index + 1])
       );
-      const recentSessionGames = getRecentSessionGames(allGames);
+      const recentSessionGames = getRecentSessionGames(allGames, { includeLeagueGames: true });
       const excludeIds = new Set(recentSessionGames.map(game => game.id));
       const priorRows = getSeasonMoverRows(
         getSeasonMoverCandidateRows(
@@ -2691,21 +2752,28 @@
 
       if (!rows.length) {
         seasonMoversSummaryEl.textContent =
-          `No positive season movers found since ${seasonStartDate}. Baseline is each player's first 6 non-league games; movement is measured after that baseline and after the season date. This scale is more sensitive to recent improvement than Overall Standings, so the numbers will not match exactly.`;
+          `No positive season movers found since ${seasonStartDate}. Improvement Score uses league and non-league model gain since the later of season start or each player's first 6-game baseline, then adjusts for season-game volume, sustained gains, and higher-rating difficulty.`;
         return;
       }
 
       seasonMoversSummaryEl.textContent =
-        `${rows.length} positive season mover${rows.length === 1 ? '' : 's'} since ${seasonStartDate}. Ranked by raw mu gain after each player's first 6 non-league games. This scale is more sensitive to recent improvement than Overall Standings, so the numbers will not match exactly.`;
+        `${rows.length} positive season mover${rows.length === 1 ? '' : 's'} since ${seasonStartDate}. Improvement Score uses league and non-league model gain since the later of season start or each player's first 6-game baseline, then adjusts for season-game volume, sustained gains, and higher-rating difficulty.`;
 
       renderSeasonMoverTable(seasonMoversListEl, rows, { rankMap, trendMaps });
     }
 
     const AWARD_MIN_GAMES = 5;
     const AWARD_MIN_RATE_GAMES = 5;
+    const AWARD_MIN_LEAGUE_GAMES = 3;
     const AWARD_CLOSE_MARGIN = 5;
     const AWARD_NARROW_MARGIN = 2;
     const AWARD_BLOWOUT_MARGIN = 8;
+
+    function getOneMonthAgoDateString() {
+      const date = new Date(`${getTodayDateString()}T00:00:00`);
+      date.setMonth(date.getMonth() - 1);
+      return date.toISOString().slice(0, 10);
+    }
 
     function formatAwardPercent(value) {
       return Number.isFinite(value) ? `${Math.round(value * 100)}%` : 'n/a';
@@ -2748,10 +2816,46 @@
         overtimeGames: 0,
         overtimeWins: 0,
         twoPointWins: 0,
+        leagueGames: 0,
+        leagueWins: 0,
+        leagueScoredGames: 0,
+        leagueCloseGames: 0,
+        leagueCloseWins: 0,
+        leagueUpsetWins: 0,
+        leagueMarginSum: 0,
         smallBallGames: 0,
         smallBallWins: 0,
+        smallBallScoredGames: 0,
+        smallBallCloseGames: 0,
+        smallBallCloseWins: 0,
+        smallBallUpsetWins: 0,
+        smallBallTwoPointWins: 0,
+        smallBallHighMarginWins: 0,
+        smallBallOpponentPointsSum: 0,
+        smallBallOpponentScoreGames: 0,
+        smallBallPostLossGames: 0,
+        smallBallPostLossWins: 0,
+        smallBallCarryTotal: 0,
+        smallBallCarryGames: 0,
+        threePlayerGames: 0,
+        threePlayerWins: 0,
+        fourPlayerGames: 0,
+        fourPlayerWins: 0,
         bigSquadGames: 0,
         bigSquadWins: 0,
+        bigSquadCloseGames: 0,
+        bigSquadCloseWins: 0,
+        bigSquadMarginSum: 0,
+        bigSquadScoredGames: 0,
+        bigSquadOpponentPointsSum: 0,
+        bigSquadOpponentScoreGames: 0,
+        bigSquadTwoPointWins: 0,
+        bigSquadHighMarginWins: 0,
+        bigSquadSixesGames: 0,
+        bigSquadSixesWins: 0,
+        bigSquadTeammates: new Set(),
+        bigSquadTeammateDeltaSum: 0,
+        bigSquadTeammateDeltaN: 0,
         shortTeamGames: 0,
         shortTeamWins: 0,
         narrowWins: 0,
@@ -2764,7 +2868,6 @@
         underdogGames: 0,
         underdogWins: 0,
         upsetWins: 0,
-        biggestUpsetGap: 0,
         lowestWinProbability: null,
         nearEvenGames: 0,
         nearEvenWins: 0,
@@ -2813,6 +2916,8 @@
         carryGames: 0,
         standingGames: 0,
         standingWins: 0,
+        lastGameDate: '',
+        awardEligible: false,
         distinctDates: 0,
         encoreSessions: 0,
         longestDateStreak: 0
@@ -2987,7 +3092,6 @@
       const teammatePairs = new Map();
       const teammateTrios = new Map();
       const rivalryPairs = new Map();
-      const fullLineupUpsets = [];
       const lastWonById = new Map();
       const awardCarryMap = {};
       const globalPlayDates = [...new Set(
@@ -3062,6 +3166,16 @@
           const opponentPower = side === 'red' ? teamPowers.blue : teamPowers.red;
           const teammateDeltas = getAwardTeamDeltas(beforeEntries, afterEntries);
           const opponentScore = hasScores ? (side === 'red' ? game.scoreBlue : game.scoreRed) : null;
+          const teamSize = Array.isArray(game?.[`${side}Team`])
+            ? game[`${side}Team`].length
+            : beforeEntries.length;
+          const opponentSize = game.isLeagueGame
+            ? getAwardSideEntries(entry, opponentSide).length
+            : side === 'red'
+              ? (Array.isArray(game.blueTeam) ? game.blueTeam.length : getAwardSideEntries(entry, 'blue').length)
+              : (Array.isArray(game.redTeam) ? game.redTeam.length : getAwardSideEntries(entry, 'red').length);
+          const isSmallBallGame = !game.isLeagueGame && [3, 4].includes(teamSize) && [3, 4].includes(opponentSize);
+          const isBigSquadGame = teamSize >= 5 && opponentSize >= 5;
           const facedOpponentComingOffWin = opponentEntries
             .some(opponent => lastWonById.get(String(opponent.id)) === true);
           beforeEntries.forEach((player, index) => {
@@ -3098,6 +3212,12 @@
             stat.expectedWins += teamProbability;
             gameResultsById.set(id, won);
 
+            if (game.isLeagueGame) {
+              stat.leagueGames += 1;
+              if (won) stat.leagueWins += 1;
+              if (won && teamProbability < 0.5) stat.leagueUpsetWins += 1;
+            }
+
             if (lastWonById.get(id) === false) {
               stat.postLossGames += 1;
               if (won) stat.postLossWins += 1;
@@ -3121,6 +3241,9 @@
 
             if (isValidDateString(date)) {
               stat.dates.add(date);
+              stat.lastGameDate = stat.lastGameDate && stat.lastGameDate > date
+                ? stat.lastGameDate
+                : date;
               const dateGames = (stat.gamesByDate.get(date) || 0) + 1;
               stat.gamesByDate.set(date, dateGames);
               stat.maxGamesInDay = Math.max(stat.maxGamesInDay, dateGames);
@@ -3143,6 +3266,15 @@
                 else stat.closeLosses += 1;
               }
 
+              if (game.isLeagueGame) {
+                stat.leagueScoredGames += 1;
+                stat.leagueMarginSum += margin;
+                if (margin <= AWARD_CLOSE_MARGIN) {
+                  stat.leagueCloseGames += 1;
+                  if (won) stat.leagueCloseWins += 1;
+                }
+              }
+
               if (Math.max(game.scoreRed, game.scoreBlue) >= 26) {
                 stat.overtimeGames += 1;
                 if (won) stat.overtimeWins += 1;
@@ -3158,34 +3290,57 @@
               }
 
               if (
-                !game.isLeagueGame &&
-                Array.isArray(game.redTeam) &&
-                Array.isArray(game.blueTeam) &&
-                [3, 4].includes(game.redTeam.length) &&
-                [3, 4].includes(game.blueTeam.length)
+                isSmallBallGame
               ) {
                 stat.smallBallGames += 1;
                 if (won) stat.smallBallWins += 1;
+                stat.smallBallScoredGames += 1;
+                if (Number.isFinite(opponentScore)) {
+                  stat.smallBallOpponentPointsSum += opponentScore;
+                  stat.smallBallOpponentScoreGames += 1;
+                }
+                if (teamSize === 3) {
+                  stat.threePlayerGames += 1;
+                  if (won) stat.threePlayerWins += 1;
+                }
+                if (teamSize === 4) {
+                  stat.fourPlayerGames += 1;
+                  if (won) stat.fourPlayerWins += 1;
+                }
+                if (won && margin === 2) stat.smallBallTwoPointWins += 1;
+                if (won && margin > AWARD_BLOWOUT_MARGIN) stat.smallBallHighMarginWins += 1;
+                if (margin <= AWARD_CLOSE_MARGIN) {
+                  stat.smallBallCloseGames += 1;
+                  if (won) stat.smallBallCloseWins += 1;
+                }
               }
 
               if (
-                !game.isLeagueGame &&
-                Array.isArray(game.redTeam) &&
-                Array.isArray(game.blueTeam) &&
-                game.redTeam.length >= 5 &&
-                game.blueTeam.length >= 5
+                isBigSquadGame
               ) {
                 stat.bigSquadGames += 1;
                 if (won) stat.bigSquadWins += 1;
+                stat.bigSquadScoredGames += 1;
+                stat.bigSquadMarginSum += margin;
+                if (Number.isFinite(opponentScore)) {
+                  stat.bigSquadOpponentPointsSum += opponentScore;
+                  stat.bigSquadOpponentScoreGames += 1;
+                }
+                if (teamSize === 6 && opponentSize === 6) {
+                  stat.bigSquadSixesGames += 1;
+                  if (won) stat.bigSquadSixesWins += 1;
+                }
+                if (won && margin === 2) stat.bigSquadTwoPointWins += 1;
+                if (won && margin > AWARD_BLOWOUT_MARGIN) stat.bigSquadHighMarginWins += 1;
+                if (margin <= AWARD_CLOSE_MARGIN) {
+                  stat.bigSquadCloseGames += 1;
+                  if (won) stat.bigSquadCloseWins += 1;
+                }
               }
 
               if (
-                !game.isLeagueGame &&
-                Array.isArray(game.redTeam) &&
-                Array.isArray(game.blueTeam)
+                !game.isLeagueGame
               ) {
-                const teamSize = side === 'red' ? game.redTeam.length : game.blueTeam.length;
-                const opponentSize = side === 'red' ? game.blueTeam.length : game.redTeam.length;
                 if (teamSize < opponentSize) {
                   stat.shortTeamGames += 1;
                   if (won) stat.shortTeamWins += 1;
@@ -3199,6 +3354,16 @@
             }
 
             if (!game.isLeagueGame) {
+              if (isSmallBallGame) {
+                stat.smallBallCarryTotal += (won ? 1 : 0) - teamProbability;
+                stat.smallBallCarryGames += 1;
+                if (lastWonById.get(id) === false) {
+                  stat.smallBallPostLossGames += 1;
+                  if (won) stat.smallBallPostLossWins += 1;
+                }
+                if (won && teamProbability < 0.5) stat.smallBallUpsetWins += 1;
+              }
+
               if (teamProbability < 0.5) {
                 stat.underdogGames += 1;
                 if (won) {
@@ -3208,10 +3373,6 @@
                     ? teamProbability
                     : Math.min(stat.lowestWinProbability, teamProbability);
                 }
-              }
-
-              if (won && teamPower < opponentPower) {
-                stat.biggestUpsetGap = Math.max(stat.biggestUpsetGap, opponentPower - teamPower);
               }
 
               if (teamProbability >= 0.45 && teamProbability <= 0.55) {
@@ -3232,6 +3393,7 @@
                 if (isFirstTimeTeammate) hadFirstTimeTeammate = true;
                 stat.teammateSlots += 1;
                 stat.teammates.add(teammateId);
+                if (isBigSquadGame) stat.bigSquadTeammates.add(teammateId);
                 if (won) stat.winningTeammates.add(teammateId);
               });
               if (won && hadFirstTimeTeammate) stat.firstTimeTeammateWins += 1;
@@ -3246,20 +3408,28 @@
               if (teammateDeltaValues.length) {
                 stat.teammateDeltaSum += teammateDeltaValues.reduce((sum, delta) => sum + delta, 0);
                 stat.teammateDeltaN += teammateDeltaValues.length;
+                if (isBigSquadGame) {
+                  stat.bigSquadTeammateDeltaSum += teammateDeltaValues.reduce((sum, delta) => sum + delta, 0);
+                  stat.bigSquadTeammateDeltaN += teammateDeltaValues.length;
+                }
+              }
+            } else if (isBigSquadGame) {
+              beforeEntries.forEach(teammate => {
+                const teammateId = String(teammate.id);
+                if (teammateId !== id) stat.bigSquadTeammates.add(teammateId);
+              });
+
+              const teammateDeltaValues = [...teammateDeltas.entries()]
+                .filter(([teammateId]) => teammateId !== id)
+                .map(([, delta]) => delta);
+              if (teammateDeltaValues.length) {
+                stat.bigSquadTeammateDeltaSum += teammateDeltaValues.reduce((sum, delta) => sum + delta, 0);
+                stat.bigSquadTeammateDeltaN += teammateDeltaValues.length;
               }
             }
           });
 
           if (!game.isLeagueGame) {
-            if (won && beforeEntries.length >= LEAGUE_TEAM_SIZE && teamPower < opponentPower) {
-              fullLineupUpsets.push({
-                playerIds: beforeEntries.map(entry => String(entry.id)),
-                date,
-                teamSize: beforeEntries.length,
-                gap: opponentPower - teamPower
-              });
-            }
-
             for (let i = 0; i < beforeEntries.length; i += 1) {
               for (let j = i + 1; j < beforeEntries.length; j += 1) {
                 const pair = getAwardPairStat(teammatePairs, beforeEntries[i].id, beforeEntries[j].id);
@@ -3325,8 +3495,18 @@
         }
       });
 
+      const awardRecentCutoffDate = (() => {
+        const date = new Date(`${getTodayDateString()}T00:00:00`);
+        date.setMonth(date.getMonth() - 1);
+        return date.toISOString().slice(0, 10);
+      })();
+
       playerStats.forEach(stat => {
         stat.distinctDates = stat.dates.size;
+        stat.awardEligible =
+          stat.games >= AWARD_MIN_GAMES &&
+          isValidDateString(stat.lastGameDate) &&
+          stat.lastGameDate >= awardRecentCutoffDate;
         stat.encoreSessions = [...stat.gamesByDate.values()]
           .filter(count => count > 3)
           .length;
@@ -3361,7 +3541,6 @@
         teammatePairs: [...teammatePairs.values()],
         teammateTrios: [...teammateTrios.values()],
         rivalryPairs: [...rivalryPairs.values()],
-        fullLineupUpsets,
         globalPlayDates,
       };
     }
@@ -3375,7 +3554,7 @@
     } = {}) {
       return players
         .map(stat => ({ stat, value: getValue(stat) }))
-        .filter(item => Number.isFinite(item.value) && filter(item.stat, item.value))
+        .filter(item => item.stat.awardEligible && Number.isFinite(item.value) && filter(item.stat, item.value))
         .sort((a, b) => ascending ? a.value - b.value : b.value - a.value)
         .map(item => ({
           playerIds: playerIds(item.stat),
@@ -3393,13 +3572,14 @@
         const selected = candidates[0];
         return {
           title: def.title,
+          category: def.category || 'overall',
           ...selected
         };
       }).filter(Boolean);
     }
 
     function getAwardDefinitions(data) {
-      const { players, playerMap, teammatePairs, teammateTrios, rivalryPairs, fullLineupUpsets, games, globalPlayDates } = data;
+      const { players, playerMap, teammatePairs, teammateTrios, rivalryPairs, games, globalPlayDates } = data;
       const seasonStartDate = getSeasonStartDate();
       const seasonRows = getSeasonMoverRows(getSeasonMoverCandidateRows(seasonStartDate, games));
       const recentSessionGames = getRecentSessionGames(games);
@@ -3411,8 +3591,12 @@
       });
       const priorResult = getLeaderboardSnapshotExcludingGames(recentSessionGames, games);
       const priorRawMap = new Map(priorResult.standings.map(player => [String(player.id), Number(player.rawOrdinal)]));
+      const overallRecencyMap = createOverallStandingsRecencyMap(games, 'composite');
       const topRankedPlayer = (data.result.standings || [])
-        .filter(player => playerMap.has(String(player.id)) && Number(player.games) >= OVERALL_STANDINGS_MIN_GAMES)
+        .filter(player =>
+          playerMap.has(String(player.id)) &&
+          isOverallStandingsEligible(player, 'composite', overallRecencyMap)
+        )
         .map(player => ({
           ...player,
           experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player)
@@ -3434,16 +3618,35 @@
       const pairWinnerHtml = pair => joinAwardPlayerLinks(playerMap, pair.ids);
       const CHEMISTRY_MIN_PAIR_GAMES = 3;
       const CHEMISTRY_PAIR_WEIGHT_CAP = 8;
-      const hasAwardGames = stat => stat.games >= AWARD_MIN_GAMES;
-      const hasPairAwardGames = pair => pair.games >= AWARD_MIN_GAMES;
+      const hasAwardGames = stat => Boolean(stat.awardEligible);
+      const awardEligibleIds = new Set(players.filter(hasAwardGames).map(stat => String(stat.id)));
+      const areAwardPlayersEligible = ids =>
+        (ids || []).every(id => awardEligibleIds.has(String(id)));
+      const hasPairAwardGames = pair => pair.games >= AWARD_MIN_GAMES && areAwardPlayersEligible(pair.ids);
       const winRate = stat => stat.games > 0 ? stat.wins / stat.games : null;
       const closeWinRate = stat => stat.closeGames > 0 ? stat.closeWins / stat.closeGames : null;
       const closeGameRate = stat => stat.scoredGames > 0 ? stat.closeGames / stat.scoredGames : null;
       const closeLossRate = stat => stat.scoredLosses > 0 ? stat.closeLosses / stat.scoredLosses : null;
       const overtimeWinRate = stat => stat.overtimeGames > 0 ? stat.overtimeWins / stat.overtimeGames : null;
       const twoPointWinRate = stat => stat.scoredWins > 0 ? stat.twoPointWins / stat.scoredWins : null;
+      const leagueWinRate = stat => stat.leagueGames > 0 ? stat.leagueWins / stat.leagueGames : null;
+      const leagueCloseWinRate = stat => stat.leagueCloseGames > 0 ? stat.leagueCloseWins / stat.leagueCloseGames : null;
+      const leagueAverageMargin = stat => stat.leagueScoredGames > 0 ? stat.leagueMarginSum / stat.leagueScoredGames : null;
       const smallBallWinRate = stat => stat.smallBallGames > 0 ? stat.smallBallWins / stat.smallBallGames : null;
+      const smallBallCloseWinRate = stat => stat.smallBallCloseGames > 0 ? stat.smallBallCloseWins / stat.smallBallCloseGames : null;
+      const smallBallCloseGameRate = stat => stat.smallBallScoredGames > 0 ? stat.smallBallCloseGames / stat.smallBallScoredGames : null;
+      const smallBallCarryScore = stat => stat.smallBallCarryGames > 0 ? stat.smallBallCarryTotal / stat.smallBallCarryGames : null;
+      const smallBallAverageOpponentScore = stat => stat.smallBallOpponentScoreGames > 0 ? stat.smallBallOpponentPointsSum / stat.smallBallOpponentScoreGames : null;
+      const threePlayerWinRate = stat => stat.threePlayerGames > 0 ? stat.threePlayerWins / stat.threePlayerGames : null;
+      const fourPlayerWinRate = stat => stat.fourPlayerGames > 0 ? stat.fourPlayerWins / stat.fourPlayerGames : null;
+      const smallBallPostLossWinRate = stat => stat.smallBallPostLossGames > 0 ? stat.smallBallPostLossWins / stat.smallBallPostLossGames : null;
       const bigSquadWinRate = stat => stat.bigSquadGames > 0 ? stat.bigSquadWins / stat.bigSquadGames : null;
+      const bigSquadCloseWinRate = stat => stat.bigSquadCloseGames > 0 ? stat.bigSquadCloseWins / stat.bigSquadCloseGames : null;
+      const bigSquadCloseGameRate = stat => stat.bigSquadScoredGames > 0 ? stat.bigSquadCloseGames / stat.bigSquadScoredGames : null;
+      const bigSquadAverageMargin = stat => stat.bigSquadScoredGames > 0 ? stat.bigSquadMarginSum / stat.bigSquadScoredGames : null;
+      const bigSquadAverageOpponentScore = stat => stat.bigSquadOpponentScoreGames > 0 ? stat.bigSquadOpponentPointsSum / stat.bigSquadOpponentScoreGames : null;
+      const bigSquadSixesWinRate = stat => stat.bigSquadSixesGames > 0 ? stat.bigSquadSixesWins / stat.bigSquadSixesGames : null;
+      const bigSquadTeammateDeltaAvg = stat => stat.bigSquadTeammateDeltaN > 0 ? stat.bigSquadTeammateDeltaSum / stat.bigSquadTeammateDeltaN : null;
       const shortTeamWinRate = stat => stat.shortTeamGames > 0 ? stat.shortTeamWins / stat.shortTeamGames : null;
       const underdogGameRate = stat => stat.games > 0 ? stat.underdogGames / stat.games : null;
       const attendanceRate = stat => globalPlayDates.length > 0 ? stat.distinctDates / globalPlayDates.length : null;
@@ -3525,7 +3728,11 @@
       const pairCandidates = (pairs, getValue, { filter = () => true, statLine, winnerHtml = pairWinnerHtml } = {}) =>
         pairs
           .map(pair => ({ pair, value: getValue(pair) }))
-          .filter(item => Number.isFinite(item.value) && filter(item.pair, item.value))
+          .filter(item =>
+            Number.isFinite(item.value) &&
+            areAwardPlayersEligible(item.pair.ids) &&
+            filter(item.pair, item.value)
+          )
           .sort((a, b) => b.value - a.value)
           .map(item => ({
             playerIds: item.pair.ids,
@@ -3536,7 +3743,11 @@
       const groupCandidates = (groups, getValue, { filter = () => true, statLine } = {}) =>
         groups
           .map(group => ({ group, value: getValue(group) }))
-          .filter(item => Number.isFinite(item.value) && filter(item.group, item.value))
+          .filter(item =>
+            Number.isFinite(item.value) &&
+            areAwardPlayersEligible(item.group.ids) &&
+            filter(item.group, item.value)
+          )
           .sort((a, b) => {
             if (b.value !== a.value) return b.value - a.value;
             if (b.group.games !== a.group.games) return b.group.games - a.group.games;
@@ -3550,19 +3761,14 @@
           }));
 
       const seasonCandidates = seasonRows
-        .filter(row => (Number(row.gamesThisSeason) || 0) >= AWARD_MIN_GAMES)
+        .filter(row =>
+          awardEligibleIds.has(String(row.id)) &&
+          (Number(row.gamesThisSeason) || 0) >= AWARD_MIN_GAMES
+        )
         .map(row => ({
           playerIds: [String(row.id)],
           statLine: `biggest season movement: ${formatAwardSignedRatingDelta(row.rawMuChange)} in ${row.gamesThisSeason || 0} games`,
           value: Number(row.rawMuChange) || 0
-        }));
-      const fullLineupUpsetCandidates = fullLineupUpsets
-        .filter(entry => Number.isFinite(entry.gap) && entry.gap > 0 && entry.playerIds.length >= LEAGUE_TEAM_SIZE)
-        .sort((a, b) => b.gap - a.gap)
-        .map(entry => ({
-          playerIds: entry.playerIds,
-          statLine: `biggest full-lineup team rating upset: ${formatAwardRatingDelta(entry.gap)} on ${entry.date || 'unknown date'}`,
-          value: entry.gap
         }));
       const topPlayerHeadToHeadCandidates = topRankedPlayerId
         ? rivalryPairs
@@ -3580,6 +3786,7 @@
             })
             .filter(candidate =>
               candidate.playerIds.length > 0 &&
+              areAwardPlayersEligible(candidate.playerIds) &&
               Number.isFinite(candidate.value) &&
               candidate.games >= AWARD_MIN_GAMES
             )
@@ -3594,24 +3801,13 @@
 
       buildChemistryScores();
 
-      return [
+      const defs = [
         {
           title: 'Comeback Kid',
           candidates: rankAwardPlayers(players, stat => stat.upsetWins, {
             filter: stat => hasAwardGames(stat) && stat.upsetWins > 0,
             statLine: stat => `most upset wins: ${stat.upsetWins}`
           })
-        },
-        {
-          title: 'Giant Slayer',
-          candidates: rankAwardPlayers(players, stat => stat.biggestUpsetGap, {
-            filter: stat => hasAwardGames(stat) && stat.biggestUpsetGap > 0,
-            statLine: (stat, value) => `biggest rating gap overcome: ${formatAwardRatingDelta(value)}`
-          })
-        },
-        {
-          title: 'Giant-Killer Squad',
-          candidates: fullLineupUpsetCandidates
         },
         {
           title: 'Slumdog Millionaire',
@@ -3656,6 +3852,39 @@
           })
         },
         {
+          title: 'League Anchor',
+          category: 'league',
+          candidates: rankAwardPlayers(players, leagueWinRate, {
+            filter: stat => stat.leagueGames >= AWARD_MIN_LEAGUE_GAMES,
+            statLine: stat => `best league-game win rate: ${formatAwardPercent(leagueWinRate(stat))} over ${stat.leagueGames} games`
+          })
+        },
+        {
+          title: 'League Workhorse',
+          category: 'league',
+          candidates: rankAwardPlayers(players, stat => stat.leagueGames, {
+            filter: stat => stat.leagueGames >= AWARD_MIN_LEAGUE_GAMES,
+            statLine: stat => `most league games played: ${stat.leagueGames}`
+          })
+        },
+        {
+          title: 'League Closer',
+          category: 'league',
+          candidates: rankAwardPlayers(players, leagueCloseWinRate, {
+            filter: stat => stat.leagueCloseGames >= AWARD_MIN_LEAGUE_GAMES,
+            statLine: stat => `best close league-game record: ${formatAwardPercent(leagueCloseWinRate(stat))}`
+          })
+        },
+        {
+          title: 'League Nailbiter',
+          category: 'league',
+          candidates: rankAwardPlayers(players, leagueAverageMargin, {
+            ascending: true,
+            filter: stat => stat.leagueScoredGames >= AWARD_MIN_LEAGUE_GAMES,
+            statLine: (stat, value) => `lowest average league margin: ${value.toFixed(1)} pts`
+          })
+        },
+        {
           title: 'Small Ball Specialist',
           candidates: rankAwardPlayers(players, smallBallWinRate, {
             filter: stat => hasAwardGames(stat) && stat.smallBallGames >= AWARD_MIN_GAMES,
@@ -3663,17 +3892,167 @@
           })
         },
         {
-          title: 'Big Squad Boss',
+          title: 'Small Ball Regular',
+          candidates: rankAwardPlayers(players, stat => stat.smallBallGames, {
+            filter: stat => stat.smallBallGames >= AWARD_MIN_GAMES,
+            statLine: stat => `most 3v3/4v4 games: ${stat.smallBallGames}`
+          })
+        },
+        {
+          title: 'Short Court Closer',
+          candidates: rankAwardPlayers(players, smallBallCloseWinRate, {
+            filter: stat => stat.smallBallCloseGames >= AWARD_MIN_GAMES,
+            statLine: stat => `best close 3v3/4v4 record: ${formatAwardPercent(smallBallCloseWinRate(stat))}`
+          })
+        },
+        {
+          title: 'Small Team Carry',
+          candidates: rankAwardPlayers(players, smallBallCarryScore, {
+            filter: stat => stat.smallBallCarryGames >= AWARD_MIN_GAMES && smallBallCarryScore(stat) > 0,
+            statLine: stat => `highest small-team carry score: +${smallBallCarryScore(stat).toFixed(3)}`
+          })
+        },
+        {
+          title: 'Open Space Operator',
+          candidates: rankAwardPlayers(players, threePlayerWinRate, {
+            filter: stat => stat.threePlayerGames >= AWARD_MIN_GAMES,
+            statLine: stat => `best 3-player-team win rate: ${formatAwardPercent(threePlayerWinRate(stat))}`
+          })
+        },
+        {
+          title: 'Four-Point General',
+          candidates: rankAwardPlayers(players, fourPlayerWinRate, {
+            filter: stat => stat.fourPlayerGames >= AWARD_MIN_GAMES,
+            statLine: stat => `best 4-player-team win rate: ${formatAwardPercent(fourPlayerWinRate(stat))}`
+          })
+        },
+        {
+          title: 'Short-Handed Hero',
+          candidates: rankAwardPlayers(players, shortTeamWinRate, {
+            filter: stat => hasAwardGames(stat) && stat.shortTeamGames >= AWARD_MIN_GAMES,
+            statLine: stat => `best win rate on smaller teams: ${formatAwardPercent(shortTeamWinRate(stat))}`
+          })
+        },
+        {
+          title: 'Tiny Margin Merchant',
+          candidates: rankAwardPlayers(players, stat => stat.smallBallTwoPointWins, {
+            filter: stat => stat.smallBallGames >= AWARD_MIN_GAMES && stat.smallBallTwoPointWins > 0,
+            statLine: stat => `most 2-point wins in 3v3/4v4: ${stat.smallBallTwoPointWins}`
+          })
+        },
+        {
+          title: 'Small Court Survivor',
+          candidates: rankAwardPlayers(players, smallBallPostLossWinRate, {
+            filter: stat => stat.smallBallPostLossGames >= AWARD_MIN_GAMES,
+            statLine: stat => `best 3v3/4v4 win rate after a loss: ${formatAwardPercent(smallBallPostLossWinRate(stat))}`
+          })
+        },
+        {
+          title: 'Small Court Nailbiter',
+          candidates: rankAwardPlayers(players, smallBallCloseGameRate, {
+            filter: stat => stat.smallBallScoredGames >= AWARD_MIN_GAMES && stat.smallBallCloseGames > 0,
+            statLine: stat => `highest 3v3/4v4 close-game rate: ${formatAwardPercent(smallBallCloseGameRate(stat))}`
+          })
+        },
+        {
+          title: 'Short Court Brick Wall',
+          candidates: rankAwardPlayers(players, smallBallAverageOpponentScore, {
+            ascending: true,
+            filter: stat => stat.smallBallOpponentScoreGames >= AWARD_MIN_GAMES,
+            statLine: (stat, value) => `lowest average opponent score in 3v3/4v4: ${value.toFixed(1)} pts`
+          })
+        },
+        {
+          title: 'Small Court Grinder',
+          candidates: rankAwardPlayers(players, stat => stat.smallBallHighMarginWins, {
+            filter: stat => stat.smallBallGames >= AWARD_MIN_GAMES && stat.smallBallHighMarginWins > 0,
+            statLine: stat => `most high-margin 3v3/4v4 wins: ${stat.smallBallHighMarginWins}`
+          })
+        },
+        {
+          title: 'Traffic Controller',
           candidates: rankAwardPlayers(players, bigSquadWinRate, {
             filter: stat => hasAwardGames(stat) && stat.bigSquadGames >= AWARD_MIN_GAMES,
             statLine: stat => `best 5v5+ win rate: ${formatAwardPercent(bigSquadWinRate(stat))}`
           })
         },
         {
-          title: 'Extra Arm',
-          candidates: rankAwardPlayers(players, shortTeamWinRate, {
-            filter: stat => hasAwardGames(stat) && stat.shortTeamGames >= AWARD_MIN_GAMES,
-            statLine: stat => `best win rate on smaller teams: ${formatAwardPercent(shortTeamWinRate(stat))}`
+          title: 'Big Squad Regular',
+          candidates: rankAwardPlayers(players, stat => stat.bigSquadGames, {
+            filter: stat => stat.bigSquadGames >= AWARD_MIN_GAMES,
+            statLine: stat => `most 5v5+ games: ${stat.bigSquadGames}`
+          })
+        },
+        {
+          title: 'Crowded Court Closer',
+          candidates: rankAwardPlayers(players, bigSquadCloseWinRate, {
+            filter: stat => stat.bigSquadCloseGames >= AWARD_MIN_GAMES,
+            statLine: stat => `best close 5v5+ record: ${formatAwardPercent(bigSquadCloseWinRate(stat))}`
+          })
+        },
+        {
+          title: 'Big Team Stabilizer',
+          candidates: rankAwardPlayers(players, bigSquadAverageMargin, {
+            ascending: true,
+            filter: stat => stat.bigSquadScoredGames >= AWARD_MIN_GAMES,
+            statLine: (stat, value) => `lowest average 5v5+ margin: ${value.toFixed(1)} pts`
+          })
+        },
+        {
+          title: 'Deep Rotation Hero',
+          candidates: rankAwardPlayers(players, stat => stat.bigSquadWins, {
+            filter: stat => stat.bigSquadGames >= AWARD_MIN_GAMES && stat.bigSquadWins > 0,
+            statLine: stat => `most 5v5+ wins: ${stat.bigSquadWins}`
+          })
+        },
+        {
+          title: 'Six-Pack Specialist',
+          candidates: rankAwardPlayers(players, bigSquadSixesWinRate, {
+            filter: stat => stat.bigSquadSixesGames >= 3,
+            statLine: stat => `best 6v6 win rate: ${formatAwardPercent(bigSquadSixesWinRate(stat))}`
+          })
+        },
+        {
+          title: 'Big Court Brick Wall',
+          candidates: rankAwardPlayers(players, bigSquadAverageOpponentScore, {
+            ascending: true,
+            filter: stat => stat.bigSquadOpponentScoreGames >= AWARD_MIN_GAMES,
+            statLine: (stat, value) => `lowest average opponent score in 5v5+: ${value.toFixed(1)} pts`
+          })
+        },
+        {
+          title: 'Crowd Favorite',
+          candidates: rankAwardPlayers(players, stat => stat.bigSquadTeammates.size, {
+            filter: stat => stat.bigSquadGames >= AWARD_MIN_GAMES && stat.bigSquadTeammates.size > 0,
+            statLine: stat => `most distinct 5v5+ teammates: ${stat.bigSquadTeammates.size}`
+          })
+        },
+        {
+          title: 'Big Squad Spark',
+          candidates: rankAwardPlayers(players, bigSquadTeammateDeltaAvg, {
+            filter: stat => stat.bigSquadTeammateDeltaN >= AWARD_MIN_GAMES && bigSquadTeammateDeltaAvg(stat) > 0,
+            statLine: stat => `best average 5v5+ teammate rating gain: ${formatAwardSignedRatingDelta(bigSquadTeammateDeltaAvg(stat))}`
+          })
+        },
+        {
+          title: 'Big Squad Nailbiter',
+          candidates: rankAwardPlayers(players, bigSquadCloseGameRate, {
+            filter: stat => stat.bigSquadScoredGames >= AWARD_MIN_GAMES && stat.bigSquadCloseGames > 0,
+            statLine: stat => `highest 5v5+ close-game rate: ${formatAwardPercent(bigSquadCloseGameRate(stat))}`
+          })
+        },
+        {
+          title: 'Big Squad Houdini',
+          candidates: rankAwardPlayers(players, stat => stat.bigSquadTwoPointWins, {
+            filter: stat => stat.bigSquadGames >= AWARD_MIN_GAMES && stat.bigSquadTwoPointWins > 0,
+            statLine: stat => `most 2-point wins in 5v5+: ${stat.bigSquadTwoPointWins}`
+          })
+        },
+        {
+          title: 'Big Squad Grinder',
+          candidates: rankAwardPlayers(players, stat => stat.bigSquadHighMarginWins, {
+            filter: stat => stat.bigSquadGames >= AWARD_MIN_GAMES && stat.bigSquadHighMarginWins > 0,
+            statLine: stat => `most high-margin 5v5+ wins: ${stat.bigSquadHighMarginWins}`
           })
         },
         {
@@ -3968,6 +4347,53 @@
           })
         }
       ];
+
+      return defs.map(def => ({
+        category: def.category || getAwardCategoryForTitle(def.title),
+        ...def
+      }));
+    }
+
+    function getAwardCategoryForTitle(title) {
+      const pairGroupTitles = new Set([
+        'Dynamic Duo',
+        'Triple Threat',
+        'Familiar Faces',
+        'Rivalry'
+      ]);
+      const bigTeamTitles = new Set([
+        'Traffic Controller',
+        'Big Squad Regular',
+        'Crowded Court Closer',
+        'Big Team Stabilizer',
+        'Deep Rotation Hero',
+        'Six-Pack Specialist',
+        'Big Court Brick Wall',
+        'Crowd Favorite',
+        'Big Squad Spark',
+        'Big Squad Nailbiter',
+        'Big Squad Houdini',
+        'Big Squad Grinder'
+      ]);
+      const smallTeamTitles = new Set([
+        'Small Ball Specialist',
+        'Small Ball Regular',
+        'Short Court Closer',
+        'Small Team Carry',
+        'Open Space Operator',
+        'Four-Point General',
+        'Short-Handed Hero',
+        'Tiny Margin Merchant',
+        'Small Court Survivor',
+        'Small Court Nailbiter',
+        'Short Court Brick Wall',
+        'Small Court Grinder'
+      ]);
+
+      if (pairGroupTitles.has(title)) return 'pairGroup';
+      if (bigTeamTitles.has(title)) return 'bigTeam';
+      if (smallTeamTitles.has(title)) return 'smallTeam';
+      return 'overall';
     }
 
     function getAwardPlayerHue(id) {
@@ -4047,6 +4473,27 @@
       return getAwardWinnerCount(award) > 1;
     }
 
+    const AWARD_CATEGORY_ORDER = [
+      ['overall', 'Overall'],
+      ['league', 'League'],
+      ['bigTeam', 'Big Team'],
+      ['smallTeam', 'Small Team'],
+      ['pairGroup', 'Pair And Group']
+    ];
+
+    function renderAwardSection(title, awards, categoryKey) {
+      if (!awards.length) return '';
+      const gridClass = categoryKey === 'pairGroup'
+        ? 'awards-grid group-awards-grid'
+        : 'awards-grid';
+      return `
+        <section class="awards-section" aria-label="${escapeHtml(title)} awards">
+          <h3 class="awards-subheading">${escapeHtml(title)}</h3>
+          <div class="${gridClass}">${awards.map(renderAwardBadge).join('')}</div>
+        </section>
+      `;
+    }
+
     function maybePostTrendAwards(awards) {
       const params = new URLSearchParams(window.location.search);
       if (params.get('embed') !== 'trendAwards') return;
@@ -4094,24 +4541,25 @@
       const recursionAward = createRecursionAward(awards, data.playerMap);
       if (recursionAward) awards.push(recursionAward);
 
-      const individualAwards = awards.filter(award => !isGroupAward(award));
-      const groupAwards = awards.filter(isGroupAward);
-
       const uniqueWinners = new Set();
       awards.forEach(award => {
         (award.playerIds || []).forEach(id => uniqueWinners.add(String(id)));
       });
 
-      awardsSummaryEl.textContent =
-        `${awards.length} awards across ${uniqueWinners.size} player${uniqueWinners.size === 1 ? '' : 's'} (${individualAwards.length} individual, ${groupAwards.length} pair/team).`;
-      awardsGridEl.innerHTML = individualAwards.map(renderAwardBadge).join('');
+      const awardsByCategory = new Map(AWARD_CATEGORY_ORDER.map(([key]) => [key, []]));
+      awards.forEach(award => {
+        const category = awardsByCategory.has(award.category) ? award.category : 'overall';
+        awardsByCategory.get(category).push(award);
+      });
+      const categoryCounts = AWARD_CATEGORY_ORDER
+        .map(([key, label]) => `${label}: ${awardsByCategory.get(key).length}`)
+        .join(' | ');
 
-      if (groupAwards.length && groupAwardsGridEl && groupAwardsSectionEl) {
-        groupAwardsSectionEl.classList.remove('hidden');
-        groupAwardsGridEl.innerHTML = groupAwards.map(renderAwardBadge).join('');
-      } else if (groupAwards.length) {
-        awardsGridEl.innerHTML += groupAwards.map(renderAwardBadge).join('');
-      }
+      awardsSummaryEl.textContent =
+        `${awards.length} awards across ${uniqueWinners.size} player${uniqueWinners.size === 1 ? '' : 's'} (${categoryCounts}).`;
+      awardsGridEl.innerHTML = AWARD_CATEGORY_ORDER
+        .map(([key, label]) => renderAwardSection(label, awardsByCategory.get(key) || [], key))
+        .join('');
 
       maybePostTrendAwards(awards);
     }
@@ -4275,24 +4723,24 @@
       return getDisplayLabelForSide(game, getLoserSide(game));
     }
 
-    function formatScore(game) {
-      const winnerLabel = getWinnerDisplayLabel(game);
-      const loserLabel = getLoserDisplayLabel(game);
-
+    function getSideScoreLabel(game, side) {
       if (
         game.scoreRed === null ||
         game.scoreBlue === null ||
         typeof game.scoreRed === 'undefined' ||
         typeof game.scoreBlue === 'undefined'
       ) {
-        return 'Score: none';
+        return '';
       }
 
-      if (game.winner === 'blue') {
-        return `Score: ${winnerLabel} ${game.scoreBlue} - ${loserLabel} ${game.scoreRed}`;
-      }
+      const score = side === 'blue' ? game.scoreBlue : game.scoreRed;
+      return Number.isFinite(Number(score)) ? `: ${score}` : '';
+    }
 
-      return `Score: ${winnerLabel} ${game.scoreRed} - ${loserLabel} ${game.scoreBlue}`;
+    function formatMarginBonusText(marginFactor) {
+      const value = Number(marginFactor);
+      if (!Number.isFinite(value)) return 'Margin: n/a';
+      return `Margin: ${value.toFixed(3)}x`;
     }
 
     function averageRawOrdinal(entries) {
@@ -4301,10 +4749,10 @@
     }
 
     function formatHistoryPlayerRating(rawOrdinal, games) {
-      return formatPublicRating(getExperimentalLeaderboardRaw({
+      return formatOverallRatingDisplay({
         rawOrdinal,
         games
-      }));
+      });
     }
 
     function getHistoryGameCountMap(history) {
@@ -4463,14 +4911,27 @@
       );
     }
 
-    function createOverallLookupResult(player, ratingGames = loadGames(), ratingScope = 'default', ratingOptions = {}) {
+    function createOverallLookupResult(
+      player,
+      ratingGames = loadGames(),
+      ratingScope = 'default',
+      ratingOptions = {},
+      recencyMap = null,
+      displayScale = null
+    ) {
       const div = document.createElement('div');
       div.className = 'season-mover-row';
 
-      const ratingText = formatOverallRatingDisplay(player, ratingGames, ratingScope, ratingOptions);
-      const eligibilityText = isOverallStandingsEligible(player, getOverallScoreboardMode())
+      const ratingText = formatOverallRatingDisplay(
+        player,
+        ratingGames,
+        ratingScope,
+        ratingOptions,
+        displayScale
+      );
+      const eligibilityText = isOverallStandingsEligible(player, getOverallScoreboardMode(), recencyMap)
         ? `Shown in ${getOverallScoreboardModeLabel()} standings.`
-        : `Needs ${OVERALL_STANDINGS_MIN_GAMES} games in this scoreboard to appear in standings.`;
+        : `Needs ${OVERALL_STANDINGS_MIN_GAMES} games in this scoreboard and one qualifying game in the last month to appear in standings.`;
 
       div.innerHTML = `
         <div class="season-mover-header">
@@ -4484,8 +4945,15 @@
       return div;
     }
 
-    function renderOverallPlayerLookup(result, ratingGames = loadGames(), ratingScope = 'default', ratingOptions = {}) {
+    function renderOverallPlayerLookup(
+      result,
+      ratingGames = loadGames(),
+      ratingScope = 'default',
+      ratingOptions = {},
+      displayScale = null
+    ) {
       if (!overallPlayerLookupResultEl) return;
+      const recencyMap = createOverallStandingsRecencyMap(ratingGames, getOverallScoreboardMode());
 
       const query = getOverallPlayerLookupQuery();
       overallPlayerLookupResultEl.innerHTML = '';
@@ -4508,7 +4976,9 @@
         return;
       }
 
-      overallPlayerLookupResultEl.appendChild(createOverallLookupResult(match, ratingGames, ratingScope, ratingOptions));
+      overallPlayerLookupResultEl.appendChild(
+        createOverallLookupResult(match, ratingGames, ratingScope, ratingOptions, recencyMap, displayScale)
+      );
     }
 
     function renderStats() {
@@ -4519,7 +4989,7 @@
       const scoreboardGames = replay.games;
       const ratingOptions = replay.ratingOptions || {};
       const ratingScope = `overall:${mode}`;
-      const rows = getSortedStandingsRows(result, mode);
+      const rows = getSortedStandingsRows(result, mode, scoreboardGames);
       renderOverallPlayerLookup(result, scoreboardGames, ratingScope, ratingOptions);
 
       // Update column header and sort indicator
@@ -4542,7 +5012,7 @@
         const tr = document.createElement('tr');
         const td = document.createElement('td');
         td.colSpan = 5;
-        td.innerHTML = `<div class="empty-state">No players have at least ${OVERALL_STANDINGS_MIN_GAMES} games in ${escapeHtml(getOverallScoreboardModeLabel(mode))} standings.</div>`;
+        td.innerHTML = `<div class="empty-state">No players have at least ${OVERALL_STANDINGS_MIN_GAMES} games and a qualifying game in the last month in ${escapeHtml(getOverallScoreboardModeLabel(mode))} standings.</div>`;
         tr.appendChild(td);
         statsTableBody.appendChild(tr);
         return;
@@ -4559,8 +5029,8 @@
         priorGames,
         mode
       );
-      const currentMap = getRatingBasedRankMap(result, mode);
-      const priorSessionMap = getRatingBasedRankMap(priorResult, mode);
+      const currentMap = getRatingBasedRankMap(result, mode, allGames);
+      const priorSessionMap = getRatingBasedRankMap(priorResult, mode, priorGames);
 
       rows.forEach((player, index) => {
         const trend      = computeTrend(player.id, currentMap, priorSessionMap);
@@ -4603,6 +5073,8 @@
         const blueDisplayLabel = game.isLeagueGame
           ? getLeagueContextName(game, entry)
           : getDisplayLabelForSide(game, 'blue');
+        const redScoreLabel = getSideScoreLabel(game, 'red');
+        const blueScoreLabel = getSideScoreLabel(game, 'blue');
         const leagueContextName = getLeagueContextName(game, entry);
         const courtTypeText = `Court type: ${getCourtTypeLabel(game)}`;
         const teamPowers = powerMap.get(entry) || {
@@ -4651,48 +5123,42 @@
               return `${name} (${formatHistoryPlayerRating(p.rating, counts.before)} → ${formatHistoryPlayerRating(after.rating, counts.after)})`;
             }).join(', ') || '(none)';
 
-        const modeBits = [courtTypeText];
+        const modeBits = [];
 
-        if (typeof entry.seasonalWeight === 'number' && entry.seasonalWeight !== 1) {
-          modeBits.push(`Seasonal weight: ${entry.seasonalWeight.toFixed(2)}x`);
+        if (typeof entry.marginFactor === 'number') {
+          modeBits.push(formatMarginBonusText(entry.marginFactor));
         }
 
         if (entry.volleyballAdjusted) {
           modeBits.push(`Volleyball update: ${entry.volleyballUpdateMultiplier.toFixed(2)}x`);
         }
 
-        if (typeof entry.finalUpdateMultiplier === 'number') {
-          modeBits.push(`Final update: ${entry.finalUpdateMultiplier.toFixed(2)}x`);
+        if (typeof entry.seasonalWeight === 'number') {
+          modeBits.push(`Season: ${entry.seasonalWeight.toFixed(2)}x`);
         }
 
-        if (typeof entry.blowoutBonusFactor === 'number' && entry.blowoutBonusFactor !== 1) {
-          modeBits.push(`Margin bonus: ${entry.blowoutBonusFactor.toFixed(2)}x`);
+        if (typeof entry.finalUpdateMultiplier === 'number') {
+          modeBits.push(`Final update: ${entry.finalUpdateMultiplier.toFixed(2)}x`);
         }
 
         if (typeof entry.closeOvertimeDampener === 'number' && entry.closeOvertimeDampener !== 1) {
           modeBits.push(`Close overtime dampener: ${entry.closeOvertimeDampener.toFixed(2)}x`);
         }
 
-        if (game.isLeagueGame) {
-          modeBits.push(leagueContextName);
-        }
-
-        if (game.displayWinnerColor || game.displayLoserColor) {
-          modeBits.push(`Displayed matchup: ${getDisplayLabelForSide(game, 'red')} vs ${getDisplayLabelForSide(game, 'blue')}`);
-        }
+        const evidenceText = typeof entry.evidenceWeight === 'number'
+          ? `Evidence weight: ${entry.evidenceWeight.toFixed(2)}x`
+          : '';
 
         const card = document.createElement('div');
         card.className = 'game-card';
 
         card.innerHTML = `
           <div class="game-header">
-            <div>
-              <strong>${game.date || 'Unknown date'}</strong><br>
+            <div class="history-card-meta">
+              <strong>${game.date || 'Unknown date'}</strong>
               <span class="winner-badge ${winnerDisplayColor}">${escapeHtml(winnerText)} win</span>
-              <div>
-                <span class="meta-pill">${escapeHtml(courtTypeText)}</span>
-                ${game.isLeagueGame ? `<span class="meta-pill">${escapeHtml(leagueContextName)}</span>` : ''}
-              </div>
+              <span class="meta-pill">${escapeHtml(courtTypeText)}</span>
+              ${game.isLeagueGame ? `<span class="meta-pill">${escapeHtml(leagueContextName)}</span>` : ''}
             </div>
             <div>
               <button class="danger" data-game-id="${game.id}">Delete</button>
@@ -4700,17 +5166,18 @@
           </div>
           <div class="teams-grid">
             <div class="team-box ${redDisplayColor}-team">
-              <strong>${escapeHtml(redDisplayLabel)}<span class="team-power">Power: ${escapeHtml(redPowerText)}</span></strong>
+              <strong class="history-team-title"><span>${escapeHtml(`${redDisplayLabel}${redScoreLabel}`)}</span><span class="team-power">Power: ${escapeHtml(redPowerText)}</span></strong>
               <div>${escapeHtml(redNames)}</div>
             </div>
             <div class="team-box ${blueDisplayColor}-team">
-              <strong>${escapeHtml(blueDisplayLabel)}<span class="team-power">Power: ${escapeHtml(bluePowerText)}</span></strong>
+              <strong class="history-team-title"><span>${escapeHtml(`${blueDisplayLabel}${blueScoreLabel}`)}</span><span class="team-power">Power: ${escapeHtml(bluePowerText)}</span></strong>
               <div>${escapeHtml(blueNames)}</div>
             </div>
           </div>
-          <div class="small">${escapeHtml(formatScore(game))}</div>
-          <div class="small">Margin factor: ${entry.marginFactor.toFixed(2)}x</div>
-          ${modeBits.length ? `<div class="small">${modeBits.map(escapeHtml).join(' | ')}</div>` : ''}
+          <div class="small history-detail-line">
+            <span class="history-detail-main">${modeBits.map(escapeHtml).join(' | ')}</span>
+            ${evidenceText ? `<span class="history-evidence">${escapeHtml(evidenceText)}</span>` : ''}
+          </div>
         `;
 
         const deleteButton = card.querySelector('button[data-game-id]');
@@ -4746,7 +5213,7 @@
       return getGamesSortedOldestFirst(loadGames()).filter(isQualityGame);
     }
 
-    const QUALITY_CACHE_VERSION = 'model-relative-tiers-v21-league-sort-display-match';
+    const QUALITY_CACHE_VERSION = 'model-relative-tiers-v24-gap-labels';
     const QUALITY_TIERS = [
       { key: 'balanced', label: 'Balanced', detail: 'expected + 1 error' },
       { key: 'imbalanced', label: 'Imbalanced', detail: '+1-2 errors' },
@@ -4788,16 +5255,21 @@
         algorithmTieredGames: 0,
         algorithmBalancedGames: 0,
         diffs: [],
+        chartDiffs: [],
         tierSamples: [],
         tiers: createEmptyQualityTiers()
       };
     }
 
     function getQualityStatsSummary(stats) {
+      const gapSum = Array.isArray(stats.diffs)
+        ? stats.diffs.reduce((sum, value) => sum + Number(value || 0), 0)
+        : 0;
       return {
         accuracy: stats.n > 0 ? stats.correct / stats.n : null,
         brier: stats.n > 0 ? stats.brierSum / stats.n : null,
         avgProvisionalImbalance: stats.n > 0 ? stats.provisionalImbalanceSum / stats.n : null,
+        avgGap: stats.nScored > 0 ? gapSum / stats.nScored : null,
         within5Pct: stats.nScored > 0 ? stats.within5 / stats.nScored : null,
         blowoutRate: stats.nScored > 0 ? stats.blowouts8 / stats.nScored : null,
         marginMAE: stats.marginErrN > 0 ? stats.marginErrSum / stats.marginErrN : null,
@@ -4845,6 +5317,9 @@
       stats.excessSum += excess;
       stats.weightedExcessSum += Math.pow(excess / 5, 1.5);
       stats.diffs.push(gap);
+      if (!game.isLeagueGame) {
+        stats.chartDiffs.push(gap);
+      }
       stats.nScored += 1;
 
       if (marginModel?.sampleSize > 0) {
@@ -4935,10 +5410,72 @@
       return redPlayers.length > 0 && bluePlayers.length > 0;
     }
 
+    function getQualityTargetSilo(game) {
+      const { redPlayers, bluePlayers } = getQualityGameTeams(game);
+      const largestTeamSize = Math.max(redPlayers.length, bluePlayers.length);
+      if (largestTeamSize >= 5) return 'big';
+      if (largestTeamSize >= 3) return 'small';
+      return 'overall';
+    }
+
+    function createBackQualityScoringContext(games, replay) {
+      const players = loadPlayers();
+      return {
+        players,
+        games,
+        baseRatingMap: replay.ratingMap,
+        carryScoreMap: replay.carryMap || {},
+        adjustedRatingMaps: new Map(),
+        pairAdjustmentMap: buildPairAdjustmentMap({
+          players,
+          games,
+          ratingOptions: { seasonalTaperDays: getSeasonalTaperDays() },
+          seasonal: true
+        })
+      };
+    }
+
+    function getBackQualityRatingMapForGame(context, game) {
+      const { redPlayers, bluePlayers } = getQualityGameTeams(game);
+      const targetSilo = getQualityTargetSilo(game);
+      const cacheKey = targetSilo;
+      if (context.adjustedRatingMaps.has(cacheKey)) {
+        return context.adjustedRatingMaps.get(cacheKey);
+      }
+
+      const adjustedMap = buildEnvironmentAdjustedRatingMap({
+        players: context.players,
+        games: context.games,
+        baseRatingMap: context.baseRatingMap,
+        ratingOptions: { seasonalTaperDays: getSeasonalTaperDays() },
+        teamCount: 2,
+        playerCount: redPlayers.length + bluePlayers.length,
+        targetSilo
+      });
+      const ratingMap = {
+        ...context.baseRatingMap,
+        ...adjustedMap
+      };
+      context.adjustedRatingMaps.set(cacheKey, ratingMap);
+      return ratingMap;
+    }
+
+    function scoreQualityGame(game, context) {
+      const { redPlayers, bluePlayers } = getQualityGameTeams(game);
+      return scoreVolleyballCandidateSplit({
+        redPlayers,
+        bluePlayers,
+        ratingMap: getBackQualityRatingMapForGame(context, game),
+        carryScoreMap: context?.carryScoreMap || {},
+        pairAdjustmentMap: context?.pairAdjustmentMap || null,
+      });
+    }
+
     function calibrateQualityMarginModel({
       games = [],
       ratingMap = {},
       carryScoreMap = {},
+      scoringContext = null,
     } = {}) {
       const xs = [];
       const ys = [];
@@ -4948,12 +5485,14 @@
         if (typeof game.scoreRed !== 'number' || typeof game.scoreBlue !== 'number') return;
 
         const { redPlayers, bluePlayers } = getQualityGameTeams(game);
-        const score = scoreVolleyballCandidateSplit({
-          redPlayers,
-          bluePlayers,
-          ratingMap,
-          carryScoreMap,
-        });
+        const score = scoringContext
+          ? scoreQualityGame(game, scoringContext)
+          : scoreVolleyballCandidateSplit({
+            redPlayers,
+            bluePlayers,
+            ratingMap,
+            carryScoreMap,
+          });
 
         xs.push(Math.abs(score.strengthDiff));
         ys.push(Math.abs(game.scoreRed - game.scoreBlue));
@@ -5023,23 +5562,19 @@
 
     function computeBackPredictionQuality(games) {
       const replay = getReplayResultForGames(games);
+      const scoringContext = createBackQualityScoringContext(games, replay);
       const marginModel = calibrateQualityMarginModel({
         games,
         ratingMap: replay.ratingMap,
         carryScoreMap: replay.carryMap || {},
+        scoringContext,
       });
       const stats = createEmptyQualityStats();
 
       getGamesSortedOldestFirst(games).forEach(game => {
         if (!isQualityGame(game)) return;
 
-        const { redPlayers, bluePlayers } = getQualityGameTeams(game);
-        const score = scoreVolleyballCandidateSplit({
-          redPlayers,
-          bluePlayers,
-          ratingMap: replay.ratingMap,
-          carryScoreMap: replay.carryMap || {},
-        });
+        const score = scoreQualityGame(game, scoringContext);
 
         recordQualityPrediction(stats, {
           game,
@@ -5116,6 +5651,10 @@
 
     function formatQualityMarginError(summary) {
       return summary.marginMAE === null ? 'n/a' : `${summary.marginMAE.toFixed(1)} pts`;
+    }
+
+    function formatQualityAverageGap(summary) {
+      return summary.avgGap === null ? 'n/a' : `${summary.avgGap.toFixed(1)} pts`;
     }
 
     function formatQualityBaseline(stats) {
@@ -5225,12 +5764,15 @@
 
     function renderQualityChart(playForward, playSummary) {
       if (qualityChart) { qualityChart.destroy(); qualityChart = null; }
-      if (!qualityChartEl || !playForward.diffs?.length) return;
+      const chartDiffs = Array.isArray(playForward.chartDiffs)
+        ? playForward.chartDiffs
+        : (playForward.diffs || []).filter((_, index) => !playForward.diffGameTypes?.[index]?.isLeagueGame);
+      if (!qualityChartEl || !chartDiffs.length) return;
 
       const windowSize = 5;
-      const labels = playForward.diffs.map((_, i) => String(i + 1));
-      const rolling = playForward.diffs.map((_, i) => {
-        const w = playForward.diffs.slice(Math.max(0, i - windowSize + 1), i + 1);
+      const labels = chartDiffs.map((_, i) => String(i + 1));
+      const rolling = chartDiffs.map((_, i) => {
+        const w = chartDiffs.slice(Math.max(0, i - windowSize + 1), i + 1);
         return Math.round(w.reduce((s, v) => s + v, 0) / w.length * 10) / 10;
       });
 
@@ -5266,7 +5808,7 @@
       }
       if (baseline !== null) {
         datasets.push({
-          label: 'Baseline gap',
+          label: 'Even-team model gap',
           data: labels.map(() => baseline),
           borderColor: '#facc15',
           backgroundColor: 'rgba(250, 204, 21, 0)',
@@ -5277,7 +5819,7 @@
         });
       }
       datasets.push({
-        label: `Rolling ${windowSize}-game avg point differential`,
+        label: `Rolling ${windowSize}-game avg non-league point differential`,
         data: rolling,
         borderColor: '#60a5fa',
         backgroundColor: 'rgba(96, 165, 250, 0.15)',
@@ -5389,9 +5931,10 @@
       renderQualityMetrics(qualityExplanatoryMetricsEl, [
         ['Games', formatQualityGameCount(backPrediction)],
         ['Margin error', formatQualityMarginError(backSummary)],
+        ['Observed avg gap', formatQualityAverageGap(backSummary)],
         ['Brier score', formatQualityDecimal(backSummary.brier, 3)],
         ['Winner accuracy', formatQualityPct(backSummary.accuracy)],
-        ['Baseline gap', formatQualityBaseline(backPrediction)],
+        ['Even-team model gap', formatQualityBaseline(backPrediction)],
         ['Pts per strength unit', formatQualitySlope(backPrediction)],
       ]);
 
@@ -5404,9 +5947,10 @@
         )],
         ['All balanced', formatQualityRateWithCount(forwardBalancedRate, forwardBalancedGames, forwardTierTotalGames)],
         ['Margin error', formatQualityMarginError(playSummary)],
+        ['Observed avg gap', formatQualityAverageGap(playSummary)],
         ['Brier score', formatQualityDecimal(playSummary.brier, 3)],
         ['Winner accuracy', formatQualityPct(playSummary.accuracy)],
-        ['Baseline gap', formatQualityBaseline(playForward)],
+        ['Even-team model gap', formatQualityBaseline(playForward)],
         ['Pts per strength unit', formatQualitySlope(playForward)],
       ]);
 
@@ -5491,7 +6035,7 @@
               ? {
                   id: game.leagueOpponent?.id || LEAGUE_TEAM_ID,
                   name: game.leagueOpponent?.name || LEAGUE_TEAM_NAME,
-                  size: Number(game.leagueOpponent?.size) || LEAGUE_TEAM_SIZE
+                  size: getLeagueOpponentSizeForGame(game)
                 }
               : null
           };

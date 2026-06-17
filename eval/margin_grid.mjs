@@ -11,12 +11,11 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve, join } from 'node:path';
+import { loadDatabase } from './database.mjs';
+import { attachAccIQDeltas, compareAccIQDesc, computeAccIQ } from './metrics.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.VBALL_DB || resolve(__dirname, '../default_database');
-const db = JSON.parse(readFileSync(DB_PATH, 'utf8'));
-const players = db.players || [];
-const games = db.games || [];
+const { db, players, games, sourceLabel } = await loadDatabase();
 
 const SEASON_MONTHS = 6;
 const seasonalTaperDays = Math.round(SEASON_MONTHS * 30.4375);
@@ -313,12 +312,6 @@ for (const cap of [0.10, 0.15, 0.20, 0.25, 0.30, 0.40]) {
   }
 }
 
-function compositeScore(row) {
-  // Lower is better. Brier is the primary forward-looking metric; forward MAE
-  // breaks ties, with a light penalty for worse explanatory Brier.
-  return row.forward.brier * 100 + row.forward.marginMAE * 0.25 + row.back.brier * 10;
-}
-
 function fmt(value, digits = 3) {
   return value === null || !Number.isFinite(value) ? 'n/a' : value.toFixed(digits);
 }
@@ -327,7 +320,7 @@ function pct(value) {
   return value === null || !Number.isFinite(value) ? 'n/a' : `${(value * 100).toFixed(1)}%`;
 }
 
-console.log(`DB: ${DB_PATH}`);
+console.log(`DB: ${sourceLabel}`);
 console.log(`variants=${variants.length} qualityGames=${games.filter(isQualityGame).length}`);
 console.log('This exact sweep may take a while because play-forward replays before each quality game.');
 console.log('');
@@ -345,7 +338,7 @@ for (const variant of variants) {
     forward,
     back,
     impact,
-    score: compositeScore({ forward, back }),
+    accIQ: computeAccIQ({ forward, back }),
     factor2510: getScoreMarginFactor(25, 10, variant.options),
     factor2515: getScoreMarginFactor(25, 15, variant.options),
     factor2523: getScoreMarginFactor(25, 23, variant.options),
@@ -368,11 +361,12 @@ function printRows(title, selected, limit = 12) {
     'backAcc'.padStart(8),
     'backBrier'.padStart(9),
     'backMAE'.padStart(7),
+    'AccIQ'.padStart(7),
+    'dIQ'.padStart(7),
     '25-10'.padStart(6),
     'Shiv'.padStart(7),
-    'score'.padStart(7),
   ].join(' '));
-  console.log('-'.repeat(112));
+  console.log('-'.repeat(120));
   selected.slice(0, limit).forEach(row => {
     console.log([
       row.label.slice(0, 38).padEnd(38),
@@ -382,23 +376,25 @@ function printRows(title, selected, limit = 12) {
       pct(row.back.accuracy).padStart(8),
       fmt(row.back.brier).padStart(9),
       fmt(row.back.marginMAE).padStart(7),
+      fmt(row.accIQ, 2).padStart(7),
+      fmt(row.accIQDelta, 2).padStart(7),
       fmt(row.factor2510).padStart(6),
       fmt(row.impact?.shivDelta, 1).padStart(7),
-      fmt(row.score).padStart(7),
     ].join(' '));
   });
   console.log('');
 }
 
-const byComposite = [...rows].sort((a, b) => a.score - b.score);
+attachAccIQDeltas(rows, row => row.family === 'current');
+const byAccIQ = [...rows].sort(compareAccIQDesc);
 const byForwardBrier = [...rows].sort((a, b) => a.forward.brier - b.forward.brier);
 const byForwardMae = [...rows].sort((a, b) => a.forward.marginMAE - b.forward.marginMAE);
 const byBackBrier = [...rows].sort((a, b) => a.back.brier - b.back.brier);
 const byFamilyBest = family => [...rows]
   .filter(row => row.family === family)
-  .sort((a, b) => a.score - b.score);
+  .sort(compareAccIQDesc);
 
-printRows('Best composite candidates', byComposite, 15);
+printRows('Best AccIQ candidates', byAccIQ, 15);
 printRows('Best forward Brier candidates', byForwardBrier, 10);
 printRows('Best forward margin-MAE candidates', byForwardMae, 10);
 printRows('Best back Brier candidates', byBackBrier, 10);
@@ -410,5 +406,5 @@ const none = rows.find(row => row.family === 'none');
 
 console.log('Baselines');
 [current, none].forEach(row => {
-  console.log(`${row.label}: fwdAcc=${pct(row.forward.accuracy)} fwdBrier=${fmt(row.forward.brier)} fwdMAE=${fmt(row.forward.marginMAE)} backBrier=${fmt(row.back.brier)} 25-10=${fmt(row.factor2510)} Shiv=${fmt(row.impact?.shivDelta, 1)}`);
+  console.log(`${row.label}: fwdAcc=${pct(row.forward.accuracy)} fwdBrier=${fmt(row.forward.brier)} fwdMAE=${fmt(row.forward.marginMAE)} AccIQ=${fmt(row.accIQ, 2)} dIQ=${fmt(row.accIQDelta, 2)} backBrier=${fmt(row.back.brier)} 25-10=${fmt(row.factor2510)} Shiv=${fmt(row.impact?.shivDelta, 1)}`);
 });

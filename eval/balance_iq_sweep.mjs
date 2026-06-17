@@ -1,10 +1,9 @@
-// Eval-only sweep for carryScale and carryConfidenceGames using current
-// production rating and balancing defaults.
+// Focused BalanceIQ sweep for rating/update settings that affect team assignment.
 //
 // Run from eval/:
-//   npm run carry
+//   npm run balance:iq
 // Or target values:
-//   CARRY_SCALES=0,4,8,12 CARRY_CONFIDENCE_GAMES=10,15,20 npm run carry
+//   LEAGUE_MULTIPLIERS=1.5,1.75,2 CARRY_SCALES=8,10,12 CARRY_CONFIDENCE_GAMES=8,10 npm run balance:iq
 
 import { loadDatabase } from './database.mjs';
 import {
@@ -13,10 +12,16 @@ import {
   predictExpectedMargin,
   scoreVolleyballCandidateSplit,
   getGamesSortedOldestFirst,
+  DEFAULT_RATING_OPTIONS,
   DEFAULT_VOLLEYBALL_BALANCE_OPTIONS,
 } from '../ratings.js';
+import {
+  attachBalanceIQDeltas,
+  compareBalanceIQDesc,
+  computeBalanceIQ,
+} from './metrics.mjs';
 
-const { db, players, games, sourceLabel } = await loadDatabase();
+const { players, games, sourceLabel } = await loadDatabase();
 
 const seasonalTaperDays = Math.round(6 * 30.4375);
 
@@ -32,8 +37,22 @@ function parseListEnv(name, fallback) {
   return values.length > 0 ? values : fallback;
 }
 
-const carryScales = parseListEnv('CARRY_SCALES', [0, 2, 4, 6, 8, 10, 12, 14, 16]);
-const carryConfidenceGames = parseListEnv('CARRY_CONFIDENCE_GAMES', [6, 10, 15, 20, 25, 35]);
+function withRequiredValue(values, required) {
+  return [...new Set([...values, required])].sort((a, b) => a - b);
+}
+
+const leagueMultipliers = withRequiredValue(
+  parseListEnv('LEAGUE_MULTIPLIERS', [0.5, 1.5, 1.75, 2, 2.25, 2.5]),
+  DEFAULT_RATING_OPTIONS.leagueUpdateMultiplier
+);
+const carryScales = withRequiredValue(
+  parseListEnv('CARRY_SCALES', [0, 8, 10, 12, 14, 16]),
+  DEFAULT_VOLLEYBALL_BALANCE_OPTIONS.carryScale
+);
+const carryConfidenceGames = withRequiredValue(
+  parseListEnv('CARRY_CONFIDENCE_GAMES', [8, 10, 12, 15]),
+  DEFAULT_VOLLEYBALL_BALANCE_OPTIONS.carryConfidenceGames
+);
 
 function isScoredNonLeagueGame(game) {
   return (
@@ -49,14 +68,17 @@ function isScoredNonLeagueGame(game) {
   );
 }
 
-function replayFor(priorGames) {
+function replayFor({ priorGames, leagueUpdateMultiplier }) {
   return replayRatings({
     players,
     games: priorGames,
     seasonal: true,
     volleyballAdjusted: false,
     includeLeagueGames: true,
-    options: { seasonalTaperDays },
+    options: {
+      seasonalTaperDays,
+      leagueUpdateMultiplier,
+    },
   });
 }
 
@@ -153,37 +175,42 @@ function summarize(stats) {
   };
 }
 
-const sortedGames = getGamesSortedOldestFirst(games);
-const scoredGames = sortedGames.filter(isScoredNonLeagueGame);
-const priorSnapshots = [];
-const priorGames = [];
+function buildSnapshots(leagueUpdateMultiplier) {
+  const sortedGames = getGamesSortedOldestFirst(games);
+  const snapshots = [];
+  const priorGames = [];
 
-for (const game of sortedGames) {
-  if (isScoredNonLeagueGame(game)) {
-    const prior = replayFor(priorGames);
-    priorSnapshots.push({
-      game,
-      ratingMap: prior.ratingMap,
-      carryScoreMap: prior.carryMap || {},
-      modelGames: [...priorGames],
-    });
+  for (const game of sortedGames) {
+    if (isScoredNonLeagueGame(game)) {
+      const prior = replayFor({ priorGames, leagueUpdateMultiplier });
+      snapshots.push({
+        game,
+        ratingMap: prior.ratingMap,
+        carryScoreMap: prior.carryMap || {},
+        modelGames: [...priorGames],
+      });
+    }
+    priorGames.push(game);
   }
-  priorGames.push(game);
+
+  return snapshots;
 }
 
-function evaluate(carryScale, carryConfidenceGamesValue) {
+function evaluate({ leagueUpdateMultiplier, carryScale, confidenceGames, snapshots }) {
+  const ratingOptions = { leagueUpdateMultiplier };
   const volleyballOptions = {
     carryScale,
-    carryConfidenceGames: carryConfidenceGamesValue,
+    carryConfidenceGames: confidenceGames,
   };
   const stats = createStats();
 
-  for (const snapshot of priorSnapshots) {
+  for (const snapshot of snapshots) {
     const { game, ratingMap, carryScoreMap, modelGames } = snapshot;
     const marginModel = calibrateMarginModel({
       games: modelGames,
       ratingMap,
       carryScoreMap,
+      options: ratingOptions,
       volleyballOptions,
     });
 
@@ -227,30 +254,32 @@ function evaluate(carryScale, carryConfidenceGamesValue) {
     stats.sameAsActualCount += sameAsActual ? 1 : 0;
   }
 
+  const summary = summarize(stats);
   return {
+    leagueUpdateMultiplier,
     carryScale,
-    carryConfidenceGames: carryConfidenceGamesValue,
-    ...summarize(stats),
+    carryConfidenceGames: confidenceGames,
+    ...summary,
+    balanceIQ: computeBalanceIQ(summary),
   };
 }
 
-function composite(row) {
-  return row.avgPredictedBestGap * 10 + row.actualMarginMAE - row.avgPredictedGapReduction * 0.5;
-}
-
 function fmt(value, digits = 2) {
-  return value === null || !Number.isFinite(value) ? 'n/a' : value.toFixed(digits);
+  return value === null || !Number.isFinite(Number(value)) ? 'n/a' : Number(value).toFixed(digits);
 }
 
 function pct(value) {
-  return value === null || !Number.isFinite(value) ? 'n/a' : `${(value * 100).toFixed(0)}%`;
+  return value === null || !Number.isFinite(Number(value)) ? 'n/a' : `${(Number(value) * 100).toFixed(0)}%`;
 }
 
-function printRows(title, rows, limit = 16) {
+function printRows(title, rows, limit = 18) {
   console.log(title);
   console.log([
-    'scale'.padStart(6),
-    'conf'.padStart(6),
+    'lg'.padStart(5),
+    'carry'.padStart(6),
+    'conf'.padStart(5),
+    'BalIQ'.padStart(6),
+    'dBal'.padStart(6),
     'actMAE'.padStart(6),
     'predAct'.padStart(7),
     'predBest'.padStart(8),
@@ -258,13 +287,15 @@ function printRows(title, rows, limit = 16) {
     'selLow'.padStart(6),
     'selHigh'.padStart(7),
     'same'.padStart(5),
-    'score'.padStart(7),
   ].join(' '));
-  console.log('-'.repeat(80));
+  console.log('-'.repeat(89));
   rows.slice(0, limit).forEach(row => {
     console.log([
+      fmt(row.leagueUpdateMultiplier).padStart(5),
       fmt(row.carryScale).padStart(6),
-      fmt(row.carryConfidenceGames, 0).padStart(6),
+      fmt(row.carryConfidenceGames, 0).padStart(5),
+      fmt(row.balanceIQ).padStart(6),
+      fmt(row.balanceIQDelta).padStart(6),
       fmt(row.actualMarginMAE).padStart(6),
       fmt(row.avgPredictedActualGap).padStart(7),
       fmt(row.avgPredictedBestGap).padStart(8),
@@ -272,52 +303,65 @@ function printRows(title, rows, limit = 16) {
       pct(row.selectedLowRiskRate).padStart(6),
       pct(row.selectedHighRiskRate).padStart(7),
       pct(row.sameAsActualRate).padStart(5),
-      fmt(row.score).padStart(7),
     ].join(' '));
   });
   console.log('');
 }
 
 console.log(`DB: ${sourceLabel}`);
-console.log(`scoredNonLeague=${scoredGames.length} evaluated=${priorSnapshots.length}`);
-console.log('Sweeping carryScale and carryConfidenceGames with current production rating + balancer defaults.');
+console.log(`leagueMultipliers=${leagueMultipliers.join(',')}`);
+console.log(`carryScales=${carryScales.join(',')}`);
+console.log(`carryConfidenceGames=${carryConfidenceGames.join(',')}`);
+console.log('Metric notes: BalanceIQ is primary. AccIQ/release checks still guard rating drift before shipping.');
 console.log('');
 
+const snapshotsByLeague = new Map();
 const rows = [];
 let completed = 0;
 const started = Date.now();
 
-for (const carryScale of carryScales) {
-  for (const confidenceGames of carryConfidenceGames) {
-    const row = evaluate(carryScale, confidenceGames);
-    row.score = composite(row);
-    rows.push(row);
-    completed += 1;
+for (const leagueUpdateMultiplier of leagueMultipliers) {
+  const snapshots = buildSnapshots(leagueUpdateMultiplier);
+  snapshotsByLeague.set(leagueUpdateMultiplier, snapshots);
+
+  for (const carryScale of carryScales) {
+    for (const confidenceGames of carryConfidenceGames) {
+      rows.push(evaluate({
+        leagueUpdateMultiplier,
+        carryScale,
+        confidenceGames,
+        snapshots,
+      }));
+      completed += 1;
+    }
   }
+
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
-  console.error(`completed ${completed}/${carryScales.length * carryConfidenceGames.length} in ${elapsed}s`);
+  console.error(`completed ${completed}/${leagueMultipliers.length * carryScales.length * carryConfidenceGames.length} in ${elapsed}s`);
 }
 
-const baseline = rows.filter(row =>
+attachBalanceIQDeltas(rows, row =>
+  Math.abs(row.leagueUpdateMultiplier - DEFAULT_RATING_OPTIONS.leagueUpdateMultiplier) < 1e-9 &&
   Math.abs(row.carryScale - DEFAULT_VOLLEYBALL_BALANCE_OPTIONS.carryScale) < 1e-9 &&
   Math.abs(row.carryConfidenceGames - DEFAULT_VOLLEYBALL_BALANCE_OPTIONS.carryConfidenceGames) < 1e-9
 );
-const byComposite = [...rows].sort((a, b) => a.score - b.score);
-const byBestGap = [...rows].sort((a, b) =>
-  a.avgPredictedBestGap - b.avgPredictedBestGap ||
-  a.actualMarginMAE - b.actualMarginMAE
+
+const baseline = rows.filter(row =>
+  Math.abs(row.leagueUpdateMultiplier - DEFAULT_RATING_OPTIONS.leagueUpdateMultiplier) < 1e-9 &&
+  Math.abs(row.carryScale - DEFAULT_VOLLEYBALL_BALANCE_OPTIONS.carryScale) < 1e-9 &&
+  Math.abs(row.carryConfidenceGames - DEFAULT_VOLLEYBALL_BALANCE_OPTIONS.carryConfidenceGames) < 1e-9
 );
-const byReduction = [...rows].sort((a, b) =>
-  b.avgPredictedGapReduction - a.avgPredictedGapReduction ||
-  a.avgPredictedBestGap - b.avgPredictedBestGap
+const byBalanceIQ = [...rows].sort(compareBalanceIQDesc);
+const byPredictedGap = [...rows].sort((a, b) =>
+  a.avgPredictedBestGap - b.avgPredictedBestGap ||
+  Number(b.balanceIQ) - Number(a.balanceIQ)
 );
 const byCalibration = [...rows].sort((a, b) =>
   a.actualMarginMAE - b.actualMarginMAE ||
-  a.avgPredictedBestGap - b.avgPredictedBestGap
+  Number(b.balanceIQ) - Number(a.balanceIQ)
 );
 
 printRows('Baseline', baseline, 1);
-printRows('Best composite candidates', byComposite, 16);
-printRows('Best predicted balancing closeness', byBestGap, 16);
-printRows('Largest predicted improvement over actual splits', byReduction, 16);
-printRows('Best actual-split calibration', byCalibration, 16);
+printRows('Best BalanceIQ candidates', byBalanceIQ, 20);
+printRows('Best predicted balancing closeness', byPredictedGap, 14);
+printRows('Best actual-split calibration', byCalibration, 14);

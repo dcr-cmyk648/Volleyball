@@ -1,15 +1,13 @@
 // Sweeps rating-stability knobs (surprise softening, final-multiplier cap) and
 // probabilityScale through the real ratings.js model. Weights stay at defaults.
 // Run: node --import ./register.mjs stability.mjs
-import { readFileSync } from 'node:fs';
+import { loadDatabase } from './database.mjs';
 import {
   replayRatings, calibrateMarginModel, predictExpectedMargin,
   scoreVolleyballCandidateSplit, getGamesSortedOldestFirst,
 } from '../ratings.js';
 
-const db = JSON.parse(readFileSync('C:/Users/rowla/Documents/Volleyball/default_database', 'utf8'));
-const players = db.players || [];
-const games = db.games || [];
+const { db, players, games, sourceLabel } = await loadDatabase();
 const seasonalTaperDays = Math.round(6 * 30.4375);
 
 function evaluate(vb = {}) {

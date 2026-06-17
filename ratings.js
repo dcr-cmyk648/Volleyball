@@ -88,9 +88,30 @@ const POOLED_LEAGUE_CONTEXT = {
   name: LEAGUE_TEAM_NAME,
 };
 
+const LEVEL_POOLED_LEAGUE_CONTEXTS = [
+  {
+    id: `${LEAGUE_TEAM_ID}_${LEAGUE_LEVEL_REC}`,
+    key: LEAGUE_LEVEL_REC,
+    level: LEAGUE_LEVEL_REC,
+    courtType: 'pooled',
+    name: 'League - Rec',
+  },
+  {
+    id: `${LEAGUE_TEAM_ID}_${LEAGUE_LEVEL_INTERMEDIATE}`,
+    key: LEAGUE_LEVEL_INTERMEDIATE,
+    level: LEAGUE_LEVEL_INTERMEDIATE,
+    courtType: 'pooled',
+    name: 'League - Intermediate',
+  },
+];
+
 export const LEAGUE_TEAM_MEMBER_COUNT = 12;
 
-export const LEAGUE_TEAM_MEMBER_IDS = [...LEAGUE_CONTEXTS, POOLED_LEAGUE_CONTEXT].flatMap(context =>
+export const LEAGUE_TEAM_MEMBER_IDS = [
+  ...LEAGUE_CONTEXTS,
+  POOLED_LEAGUE_CONTEXT,
+  ...LEVEL_POOLED_LEAGUE_CONTEXTS,
+].flatMap(context =>
   Array.from(
     { length: LEAGUE_TEAM_MEMBER_COUNT },
     (_, i) => `${context.id}_${i + 1}`
@@ -100,14 +121,13 @@ export const LEAGUE_TEAM_MEMBER_IDS = [...LEAGUE_CONTEXTS, POOLED_LEAGUE_CONTEXT
 export const DISPLAY_RATING_BASE = 1500;
 export const DISPLAY_RATING_SCALE = 50;
 
-export const PUBLIC_RATING_FLOOR = 1000;
-export const PUBLIC_RATING_NEUTRAL = 1500;
+export const PUBLIC_RATING_FLOOR = 1200;
 export const PUBLIC_RATING_CEILING = 2500;
-export const PUBLIC_RATING_CURVE_EXPONENT = 0.85;
-export const PUBLIC_RATING_THEORETICAL_SIGMA = 1;
+export const PUBLIC_RATING_THEORETICAL_SIGMA = 0;
 export const PUBLIC_RATING_MIN_GAMES = 5;
-export const PUBLIC_RATING_CONFIDENCE_GAMES = 22;
-export const PUBLIC_RATING_CONFIDENCE_POWER = 1.35;
+export const PUBLIC_RATING_LOW_GAME_PENALTY = 2.5;
+export const PUBLIC_RATING_LOW_GAME_PENALTY_GAMES = 8;
+export const PUBLIC_RATING_LOW_GAME_PENALTY_POWER = 1.10;
 
 export const SEASONAL_FULL_WEIGHT_DAYS = 7;
 export const SEASONAL_TAPER_DAYS = 180;
@@ -123,11 +143,11 @@ export const DEFAULT_RATING_OPTIONS = {
   // League games are stronger evidence than casual mixed games because they
   // reuse a fixed external opponent context. This scales only league-game
   // rating updates; non-league games stay at 1.0x.
-  leagueUpdateMultiplier: 1.4,
+  leagueUpdateMultiplier: 2.0,
   // Eval/modeling knobs for synthetic league opponents. The database still
   // records exact league context metadata; this controls only rating identity
   // and how quickly the synthetic opponent rating reacts.
-  leagueTeamRatingMode: 'pooled',
+  leagueTeamRatingMode: 'level',
   leagueOpponentUpdateMultiplier: 4,
   leagueOpponentBurnInGames: 4,
   leagueOpponentBurnInMultiplier: 2.25,
@@ -137,21 +157,28 @@ export const DEFAULT_RATING_OPTIONS = {
   leagueDisplayEstimateEnabled: false,
   leagueBayesianPriorSd: 4,
   leagueBayesianGridStep: 0.1,
+  leaguePregameBayesianEnabled: false,
+  leaguePregameBayesianSigma: 2,
+  leagueOpponentSeasonalTaperEnabled: false,
 
-  // Blowout bonus — uses dominance ratio (winner's share of total points) rather than raw point diff.
-  // Formula: bonus = marginBonusScale × (dominanceMargin ^ marginBonusPower)
-  // where dominanceMargin = winnerScore / (winnerScore + loserScore) - 0.5
+  // Blowout bonus — delayed logistic point-differential bonus. This keeps ordinary
+  // close and mid-margin wins near 1.0x, while still adding a small capped reward
+  // for clear blowouts.
   //
-  // Representative values (cap = maxMarginBonus = 0.03):
-  //   25-23 → 1.00x   25-21 → 1.00x   25-20 → 1.01x
-  //   25-15 → 1.01x   25-10 → 1.02x   25-5  → 1.03x (capped)
-  maxMarginBonus: 0.03,
+  // Representative factors:
+  //   25-23 → 1.00x   25-21 → 1.00x   25-20 → 1.00x
+  //   25-15 → 1.03x   25-10 → 1.09x   25-5 → 1.10x (near cap)
+  marginBonusFormula: 'logistic',
+  maxMarginBonus: 0.10,
+  marginLogisticMidpoint: 12,
+  marginLogisticSteepness: 0.90,
+  // Legacy dominance-power options remain supported for eval overrides.
   marginBonusScale: 0.60,
-  marginBonusPower: 2.20,
+  marginBonusPower: 1.20,
 
   // Close two-point dampener:
-  // Kept as a configurable hook, but disabled by default. Historical fit favored
-  // treating narrow wins as ordinary wins rather than adding a separate dampener.
+  // Disabled by default. It remains configurable, but current replay fit favors
+  // treating narrow wins as ordinary wins.
   closeOvertimeDampenerMin: 1,
   closeOvertimeDampenerStep: 0,
 
@@ -199,21 +226,45 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260613-15';
+export const VERSION = 'beta-20260617-19';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
-  // Depth-emphasis weights: weak-link aware without fully discarding team-average signal.
-  topPlayerWeight: 0.30,
-  secondPlayerWeight: 0.24,
-  averageWeight: 0.01,
-  depthWeight: 0.10,
+  // Flatter team-strength weights. Forward validation favored restoring
+  // average-team signal over heavy weak-link emphasis.
+  topPlayerWeight: 0.25,
+  secondPlayerWeight: 0.22,
+  averageWeight: 0.33,
+  depthWeight: 0.12,
   // worstPlayerWeight is scaled by match closeness at runtime — full weight only in even matchups
-  worstPlayerWeight: 0.35,
+  worstPlayerWeight: 0.08,
   // Carry score: bonus raw ordinal added to top player's effective rating
   // when they have a history of winning above their team's modeled probability
-  carryScale: 0,
-  carryConfidenceGames: 10,
-  sizeBonusPerExtraPlayer: 2.3,
+  carryScale: 16,
+  carryConfidenceGames: 8,
+  sizeBonusPerExtraPlayer: 2.2,
+  sizeBonusByBaseSizeEnabled: true,
+  sizeBonusByBaseSize: {
+    3: 2.2,
+    4: 1.4,
+    5: 2.6,
+    6: 0,
+  },
+  weakLinkPenaltyMode: 'avgGap',
+  weakLinkPenaltyScale: 0.35,
+  weakLinkPenaltyThreshold: 2.0,
+  environmentSiloMode: 'blend',
+  environmentSiloMinGames: 12,
+  environmentSiloConfidenceGames: 6,
+  environmentSiloMaxBlend: 0.7,
+  environmentSiloAdjustmentCap: 1.5,
+  environmentSiloMinDelta: 0.5,
+  pairAdjustmentMode: 'blend',
+  pairAdjustmentMinGames: 8,
+  pairAdjustmentConfidenceGames: 4,
+  pairAdjustmentMaxBlend: 0.75,
+  pairAdjustmentPerPairCap: 0.5,
+  pairAdjustmentTeamCap: 0.75,
+  pairAdjustmentMinDelta: 0.1,
   probabilityScale: 4.2,
   // Post-hoc probability calibration. This sharpens displayed/model win
   // probabilities without changing team-strength construction.
@@ -225,8 +276,8 @@ export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Hard cap on the per-game volatility core (marginFactor * surpriseMultiplier),
   // applied before seasonal weighting and size damping. Keeps one surprising blowout
   // from whipsawing the leaderboard, without overriding seasonal taper of old games.
-  finalUpdateMultiplierMin: 0.5,
-  finalUpdateMultiplierMax: 1.75,
+  finalUpdateMultiplierMin: 0.75,
+  finalUpdateMultiplierMax: 1.35,
 };
 
 function clamp(value, min, max) {
@@ -259,6 +310,26 @@ function sigmoid(value) {
 
 function getEffectiveVolleyballSize(players) {
   return Math.min(Array.isArray(players) ? players.length : 0, LEAGUE_TEAM_SIZE);
+}
+
+function getVolleyballSizeBonusPerExtraPlayer(redPlayers, bluePlayers, volleyballCfg) {
+  if (!volleyballCfg.sizeBonusByBaseSizeEnabled) {
+    return Number(volleyballCfg.sizeBonusPerExtraPlayer) || 0;
+  }
+
+  const redSize = Array.isArray(redPlayers) ? redPlayers.length : 0;
+  const blueSize = Array.isArray(bluePlayers) ? bluePlayers.length : 0;
+  const baseSize = Math.min(redSize, blueSize);
+  if (baseSize <= 0 || redSize === blueSize) return 0;
+
+  const sizeBonusByBaseSize = volleyballCfg.sizeBonusByBaseSize || {};
+  if (baseSize >= 6 && Number.isFinite(Number(sizeBonusByBaseSize[6]))) {
+    return Number(sizeBonusByBaseSize[6]);
+  }
+  if (Number.isFinite(Number(sizeBonusByBaseSize[baseSize]))) {
+    return Number(sizeBonusByBaseSize[baseSize]);
+  }
+  return Number(volleyballCfg.sizeBonusPerExtraPlayer) || 0;
 }
 
 export function mergeRatingOptions(overrides = {}) {
@@ -299,26 +370,22 @@ export function toDisplayRating(rawOrdinal) {
 }
 
 export function getOverallStandingsRawOrdinal(rawOrdinal, games = 0, options = {}) {
-  const confidenceGames = Number(options.confidenceGames ?? PUBLIC_RATING_CONFIDENCE_GAMES);
-  const confidencePower = Number(options.confidencePower ?? PUBLIC_RATING_CONFIDENCE_POWER);
+  const raw = Number(rawOrdinal);
+  if (!Number.isFinite(raw) || raw <= 0) return Number.isFinite(raw) ? raw : 0;
 
-  return getLeaderboardRawOrdinal(rawOrdinal, games, {
-    leaderboardConfidenceGames: confidenceGames,
-    leaderboardConfidencePower: confidencePower,
-  });
+  const safeGames = Math.max(0, Number(games) || 0);
+  const maxPenalty = Math.max(0, Number(options.lowGamePenalty ?? PUBLIC_RATING_LOW_GAME_PENALTY) || 0);
+  const penaltyGames = Math.max(1, Number(options.lowGamePenaltyGames ?? PUBLIC_RATING_LOW_GAME_PENALTY_GAMES) || 1);
+  const penaltyPower = Math.max(0.1, Number(options.lowGamePenaltyPower ?? PUBLIC_RATING_LOW_GAME_PENALTY_POWER) || 1);
+  const missingConfidence = Math.pow(penaltyGames / (safeGames + penaltyGames), penaltyPower);
+  const penalty = maxPenalty * missingConfidence;
+
+  return raw - penalty;
 }
 
 function getRawOrdinalFromMuSigma(mu, sigma, options = {}) {
   const z = Number(options.ordinalSigmaMultiplier ?? DEFAULT_RATING_OPTIONS.ordinalSigmaMultiplier);
   return Number(mu) - z * Number(sigma);
-}
-
-function getOverallStandingsRawFromMuSigma({ mu, sigma, games }, options = {}) {
-  return getOverallStandingsRawOrdinal(
-    getRawOrdinalFromMuSigma(mu, sigma, options),
-    games,
-    options
-  );
 }
 
 export function getPublicRatingDisplayScale({
@@ -328,32 +395,39 @@ export function getPublicRatingDisplayScale({
   seasonal = true,
   volleyballAdjusted = false,
   volleyballOptions = {},
+  volleyballUpdateUsesBalancerContext = true,
+  volleyballUpdateContextMode = 'pair',
   includeLeagueGames = true,
   minGames = PUBLIC_RATING_MIN_GAMES,
-  confidenceGames = PUBLIC_RATING_CONFIDENCE_GAMES,
-  confidencePower = PUBLIC_RATING_CONFIDENCE_POWER,
+  lowGamePenalty = PUBLIC_RATING_LOW_GAME_PENALTY,
+  lowGamePenaltyGames = PUBLIC_RATING_LOW_GAME_PENALTY_GAMES,
+  lowGamePenaltyPower = PUBLIC_RATING_LOW_GAME_PENALTY_POWER,
   theoreticalSigma = PUBLIC_RATING_THEORETICAL_SIGMA,
-  curveExponent = PUBLIC_RATING_CURVE_EXPONENT,
 } = {}) {
   const displayOptions = {
-    confidenceGames,
-    confidencePower,
+    lowGamePenalty,
+    lowGamePenaltyGames,
+    lowGamePenaltyPower,
     ordinalSigmaMultiplier:
       Number(options.ordinalSigmaMultiplier ?? DEFAULT_RATING_OPTIONS.ordinalSigmaMultiplier),
   };
+  const startingSigma = Number(options.sigma ?? DEFAULT_RATING_OPTIONS.sigma);
   const replayOptions = {
     players,
     seasonal,
     volleyballAdjusted,
     volleyballOptions,
+    volleyballUpdateUsesBalancerContext,
+    volleyballUpdateContextMode,
     includeLeagueGames,
     options,
   };
   const sortedGames = getGamesSortedOldestFirst(getIncludedGames(games, includeLeagueGames, options));
 
-  let historyLow = null;
-  let historyHigh = null;
-  let maxSigma = -Infinity;
+  let historyMinMu = null;
+  let historyMaxMu = null;
+  let maxSigma = Number.isFinite(startingSigma) ? startingSigma : -Infinity;
+  let minSigma = Infinity;
 
   for (let i = 0; i <= sortedGames.length; i += 1) {
     const prefixGames = sortedGames.slice(0, i).map((game, index) =>
@@ -373,51 +447,38 @@ export function getPublicRatingDisplayScale({
       const sigma = Number(player.sigma);
       if (!Number.isFinite(mu) || !Number.isFinite(sigma)) return;
 
-      const gamesPlayed = Number(player.games) || 0;
-      const standingsRaw = getOverallStandingsRawFromMuSigma(
-        { mu, sigma, games: gamesPlayed },
-        displayOptions
-      );
       const entry = {
         id: player.id,
         name: player.name,
-        games: gamesPlayed,
+        games: Number(player.games) || 0,
         wins: Number(player.wins) || 0,
         mu,
         sigma,
-        standingsRaw,
       };
 
-      if (!historyLow || standingsRaw < historyLow.standingsRaw) {
-        historyLow = entry;
+      if (!historyMinMu || mu < historyMinMu.mu) {
+        historyMinMu = entry;
       }
-      if (!historyHigh || standingsRaw > historyHigh.standingsRaw) {
-        historyHigh = entry;
+      if (!historyMaxMu || mu > historyMaxMu.mu) {
+        historyMaxMu = entry;
       }
       if (sigma > maxSigma) {
         maxSigma = sigma;
       }
+      if (sigma < minSigma) {
+        minSigma = sigma;
+      }
     });
   }
 
-  if (!historyLow || !historyHigh || !Number.isFinite(maxSigma)) {
+  if (!historyMinMu || !historyMaxMu || !Number.isFinite(maxSigma) || !Number.isFinite(minSigma)) {
     return null;
   }
 
-  const lowerRaw = getOverallStandingsRawFromMuSigma(
-    { mu: historyLow.mu, sigma: maxSigma, games: historyLow.games },
-    displayOptions
-  );
-  const upperRaw = getOverallStandingsRawFromMuSigma(
-    {
-      mu: historyHigh.mu,
-      sigma: Math.max(0, Number(theoreticalSigma) || 0),
-      games: historyHigh.games,
-    },
-    displayOptions
-  );
+  const lowerRaw = getRawOrdinalFromMuSigma(historyMinMu.mu, maxSigma, displayOptions);
+  const upperRaw = Number(historyMaxMu.mu) - minSigma;
 
-  if (!(lowerRaw < 0 && upperRaw > 0)) {
+  if (!(lowerRaw < upperRaw)) {
     return null;
   }
 
@@ -425,15 +486,15 @@ export function getPublicRatingDisplayScale({
     lowerRaw,
     upperRaw,
     floor: PUBLIC_RATING_FLOOR,
-    neutral: PUBLIC_RATING_NEUTRAL,
     ceiling: PUBLIC_RATING_CEILING,
-    curveExponent,
-    historyLow,
-    historyHigh,
+    historyMinMu,
+    historyMaxMu,
     maxSigma,
+    minSigma,
     theoreticalSigma,
-    confidenceGames,
-    confidencePower,
+    lowGamePenalty,
+    lowGamePenaltyGames,
+    lowGamePenaltyPower,
     minGames,
   };
 }
@@ -445,20 +506,12 @@ export function toPublicDisplayRating(rawOrdinal, displayScale = null) {
 
   const lowerRaw = Number(displayScale.lowerRaw);
   const upperRaw = Number(displayScale.upperRaw);
-  if (!(lowerRaw < 0 && upperRaw > 0)) return toDisplayRating(raw);
+  if (!(lowerRaw < upperRaw)) return toDisplayRating(raw);
 
   const floor = Number(displayScale.floor ?? PUBLIC_RATING_FLOOR);
-  const neutral = Number(displayScale.neutral ?? PUBLIC_RATING_NEUTRAL);
   const ceiling = Number(displayScale.ceiling ?? PUBLIC_RATING_CEILING);
-  const exponent = Math.max(0.1, Number(displayScale.curveExponent) || PUBLIC_RATING_CURVE_EXPONENT);
-
-  if (raw >= 0) {
-    const t = clamp(raw / upperRaw, 0, 1);
-    return neutral + (ceiling - neutral) * Math.pow(t, exponent);
-  }
-
-  const t = clamp(-raw / Math.abs(lowerRaw), 0, 1);
-  return neutral - (neutral - floor) * Math.pow(t, exponent);
+  const t = clamp((raw - lowerRaw) / (upperRaw - lowerRaw), 0, 1);
+  return floor + (ceiling - floor) * t;
 }
 
 export function formatPublicDisplayRating(rawOrdinal, displayScale = null) {
@@ -544,6 +597,8 @@ export function getLeagueContext(game) {
 
 export function getLeagueContextById(id) {
   if (String(id) === String(POOLED_LEAGUE_CONTEXT.id)) return POOLED_LEAGUE_CONTEXT;
+  const levelContext = LEVEL_POOLED_LEAGUE_CONTEXTS.find(context => String(context.id) === String(id));
+  if (levelContext) return levelContext;
   return LEAGUE_CONTEXTS.find(context => String(context.id) === String(id)) || null;
 }
 
@@ -565,21 +620,28 @@ function getLeagueTeamMemberIdsForContext(context, count = LEAGUE_TEAM_SIZE) {
 
 export function getLeagueRatingContext(game, options = {}) {
   const cfg = mergeRatingOptions(options);
-  return cfg.leagueTeamRatingMode === 'pooled'
-    ? POOLED_LEAGUE_CONTEXT
-    : getLeagueContext(game);
+  if (cfg.leagueTeamRatingMode === 'pooled') return POOLED_LEAGUE_CONTEXT;
+  if (cfg.leagueTeamRatingMode === 'level') {
+    const level = getLeagueLevel(game);
+    return LEVEL_POOLED_LEAGUE_CONTEXTS.find(context => context.level === level) ||
+      LEVEL_POOLED_LEAGUE_CONTEXTS[0];
+  }
+  return getLeagueContext(game);
 }
 
 function getLeagueTeamContextsForMode(options = {}) {
   const cfg = mergeRatingOptions(options);
-  return cfg.leagueTeamRatingMode === 'pooled'
-    ? [POOLED_LEAGUE_CONTEXT]
-    : LEAGUE_CONTEXTS;
+  if (cfg.leagueTeamRatingMode === 'pooled') return [POOLED_LEAGUE_CONTEXT];
+  if (cfg.leagueTeamRatingMode === 'level') return LEVEL_POOLED_LEAGUE_CONTEXTS;
+  return LEAGUE_CONTEXTS;
 }
 
 function gameMatchesLeagueContext(game, context) {
   if (!game?.isLeagueGame || !context) return false;
   if (context.key === POOLED_LEAGUE_CONTEXT.key) return true;
+  if (LEVEL_POOLED_LEAGUE_CONTEXTS.some(levelContext => levelContext.key === context.key)) {
+    return getLeagueLevel(game) === context.level;
+  }
   return getLeagueContextKey(game) === context.key;
 }
 
@@ -711,15 +773,28 @@ export function getScoreMarginDetails(scoreRed, scoreBlue, options = {}) {
   const winnerScore = Math.max(red, blue);
   const loserScore = Math.min(red, blue);
 
-  // Dominance ratio: winner's fraction of total points, shifted so 50/50 = 0.
-  // This naturally encodes loser score — 25-21 has lower dominance than 25-17 even though
-  // both might be considered a 4-point or 8-point margin.
   const totalPoints = winnerScore + loserScore;
   const dominanceMargin = totalPoints > 0 ? winnerScore / totalPoints - 0.5 : 0;
   const scale = Number(cfg.marginBonusScale) || 4.0;
   const power = Number(cfg.marginBonusPower) || 1.5;
-  const rawBonus = scale * Math.pow(Math.max(0, dominanceMargin), power);
-  const bonus = clamp(rawBonus, 0, cfg.maxMarginBonus);
+  const maxBonus = Number.isFinite(Number(cfg.maxMarginBonus))
+    ? Number(cfg.maxMarginBonus)
+    : DEFAULT_RATING_OPTIONS.maxMarginBonus;
+  let rawBonus = scale * Math.pow(Math.max(0, dominanceMargin), power);
+
+  if (cfg.marginBonusFormula === 'logistic') {
+    const midpoint = Number.isFinite(Number(cfg.marginLogisticMidpoint))
+      ? Number(cfg.marginLogisticMidpoint)
+      : DEFAULT_RATING_OPTIONS.marginLogisticMidpoint;
+    const steepness = Number.isFinite(Number(cfg.marginLogisticSteepness))
+      ? Number(cfg.marginLogisticSteepness)
+      : DEFAULT_RATING_OPTIONS.marginLogisticSteepness;
+    const floor = sigmoid(-steepness * midpoint);
+    const value = sigmoid(steepness * (pointDiff - midpoint));
+    rawBonus = maxBonus * clamp((value - floor) / Math.max(0.0001, 1 - floor), 0, 1);
+  }
+
+  const bonus = clamp(rawBonus, 0, maxBonus);
   const blowoutBonusFactor = 1 + bonus;
 
   const isCloseOvertime =
@@ -794,6 +869,35 @@ function getBlueTeamIds(game, options = {}) {
   }
 
   return (Array.isArray(game?.blueTeam) ? game.blueTeam : []).map(player => player.id);
+}
+
+function getSkillFromRawOrdinal(rawOrdinal, cfg, sigmaOverride = null) {
+  const sigma = clamp(
+    Number(sigmaOverride ?? cfg.sigma) || cfg.sigma,
+    0.1,
+    cfg.sigma
+  );
+  return rating({
+    mu: Number(rawOrdinal) + Number(cfg.ordinalSigmaMultiplier) * sigma,
+    sigma,
+  });
+}
+
+function seedPregameBayesianLeagueOpponent(game, ratingMap, history, cfg) {
+  if (cfg.leaguePregameBayesianEnabled !== true || !game?.isLeagueGame) {
+    return null;
+  }
+
+  const context = getLeagueRatingContext(game, cfg);
+  const rawOrdinal = getBayesianLeagueRawFromHistory({ context, history, cfg });
+  if (!Number.isFinite(rawOrdinal)) return null;
+
+  const skill = getSkillFromRawOrdinal(rawOrdinal, cfg, cfg.leaguePregameBayesianSigma);
+  getLeagueTeamMemberIdsForContext(context, LEAGUE_TEAM_MEMBER_COUNT).forEach(id => {
+    ratingMap[id] = rating({ mu: Number(skill.mu), sigma: Number(skill.sigma) });
+  });
+
+  return rawOrdinal;
 }
 
 function buildTeamObjectsFromIds(ids, ratingMap) {
@@ -871,6 +975,283 @@ function updateCarryScore(carryMap, id, isWinner, teamWinProb) {
   carryMap[id].totalContribution += contribution;
   carryMap[id].games += 1;
   carryMap[id].score = carryMap[id].totalContribution / carryMap[id].games;
+}
+
+function cloneSkill(skill) {
+  return skill ? { mu: Number(skill.mu), sigma: Number(skill.sigma) } : null;
+}
+
+function getScoreboardSideSize(game, side) {
+  const team = Array.isArray(game?.[`${side}Team`]) ? game[`${side}Team`] : [];
+  return team.length;
+}
+
+function isSmallEnvironmentSize(size) {
+  return size === 3 || size === 4;
+}
+
+function isBigEnvironmentSize(size) {
+  return size >= 5;
+}
+
+function getEnvironmentSiloForGame(game) {
+  const redSize = getScoreboardSideSize(game, 'red');
+  const blueSize = game?.isLeagueGame ? 0 : getScoreboardSideSize(game, 'blue');
+  if (game?.isLeagueGame || isBigEnvironmentSize(redSize) || isBigEnvironmentSize(blueSize)) return 'big';
+  if (isSmallEnvironmentSize(redSize) || isSmallEnvironmentSize(blueSize)) return 'small';
+  return 'overall';
+}
+
+function getEnvironmentSiloForPlayers(teamCount, playerCount) {
+  const teams = Math.max(1, Number(teamCount) || 1);
+  const largestTeamSize = Math.ceil(Math.max(0, Number(playerCount) || 0) / teams);
+  if (isBigEnvironmentSize(largestTeamSize)) return 'big';
+  if (isSmallEnvironmentSize(largestTeamSize)) return 'small';
+  return 'overall';
+}
+
+function countEnvironmentSiloGames(games, silo) {
+  const counts = {};
+  (Array.isArray(games) ? games : []).forEach(game => {
+    if (getEnvironmentSiloForGame(game) !== silo) return;
+
+    const add = player => {
+      if (!player?.id) return;
+      const id = String(player.id);
+      counts[id] = (counts[id] || 0) + 1;
+    };
+
+    if (Array.isArray(game.redTeam)) game.redTeam.forEach(add);
+    if (!game.isLeagueGame && Array.isArray(game.blueTeam)) game.blueTeam.forEach(add);
+  });
+  return counts;
+}
+
+function getEnvironmentAdjustedSkill({ overallSkill, siloSkill, siloGames, ratingOptions, volleyballOptions }) {
+  if (!overallSkill) return cloneSkill(siloSkill) || makeInitialRating(ratingOptions);
+  if (!siloSkill) return cloneSkill(overallSkill);
+
+  const overallRaw = getRawOrdinal(overallSkill, ratingOptions);
+  const siloRaw = getRawOrdinal(siloSkill, ratingOptions);
+  const delta = siloRaw - overallRaw;
+  const minDelta = Math.max(0, Number(volleyballOptions.environmentSiloMinDelta) || 0);
+  if (Math.abs(delta) < minDelta) return cloneSkill(overallSkill);
+
+  const confidenceGames = Math.max(0.01, Number(volleyballOptions.environmentSiloConfidenceGames) || 6);
+  const maxBlend = clamp(Number(volleyballOptions.environmentSiloMaxBlend) || 0, 0, 1);
+  const adjustmentCap = Math.max(0, Number(volleyballOptions.environmentSiloAdjustmentCap) || Infinity);
+  const blend = Math.min(maxBlend, siloGames / (siloGames + confidenceGames));
+  const adjustment = clamp(delta * blend, -adjustmentCap, adjustmentCap);
+  return getSkillFromRawOrdinal(overallRaw + adjustment, ratingOptions, overallSkill.sigma);
+}
+
+export function buildEnvironmentAdjustedRatingMap({
+  players = [],
+  games = [],
+  baseRatingMap = {},
+  ratingOptions = {},
+  volleyballOptions = {},
+  teamCount = 2,
+  playerCount = 0,
+  targetSilo = null,
+} = {}) {
+  const ratingCfg = mergeRatingOptions(ratingOptions);
+  const volleyballCfg = mergeVolleyballBalanceOptions(volleyballOptions);
+  if (volleyballCfg.environmentSiloMode !== 'blend') return baseRatingMap;
+
+  const silo = targetSilo || getEnvironmentSiloForPlayers(teamCount, playerCount);
+  if (!['small', 'big'].includes(silo)) return baseRatingMap;
+
+  const includedGames = getIncludedGames(games, true, ratingCfg);
+  const siloGames = includedGames.filter(game => getEnvironmentSiloForGame(game) === silo);
+  if (!siloGames.length) return baseRatingMap;
+
+  const siloReplay = replayRatings({
+    players,
+    games: siloGames,
+    options: ratingCfg,
+    seasonal: true,
+    volleyballAdjusted: false,
+    includeLeagueGames: true,
+  });
+  const siloCounts = countEnvironmentSiloGames(includedGames, silo);
+  const minGames = Math.max(0, Number(volleyballCfg.environmentSiloMinGames) || 0);
+  const adjustedMap = {};
+
+  players.forEach(player => {
+    if (!player?.id) return;
+    const id = String(player.id);
+    const overallSkill = baseRatingMap[id] || makeInitialRating(ratingCfg);
+    const siloSkill = siloReplay.ratingMap?.[id];
+    const gamesInSilo = siloCounts[id] || 0;
+    adjustedMap[id] = gamesInSilo >= minGames
+      ? getEnvironmentAdjustedSkill({
+        overallSkill,
+        siloSkill,
+        siloGames: gamesInSilo,
+        ratingOptions: ratingCfg,
+        volleyballOptions: volleyballCfg,
+      })
+      : cloneSkill(overallSkill);
+  });
+
+  return adjustedMap;
+}
+
+function getSameTeamPairKeys(players = []) {
+  const ids = players
+    .map(player => player?.id)
+    .filter(id => id !== undefined && id !== null)
+    .map(String)
+    .sort();
+  const keys = [];
+
+  for (let i = 0; i < ids.length; i += 1) {
+    for (let j = i + 1; j < ids.length; j += 1) {
+      keys.push(`${ids[i]}|${ids[j]}`);
+    }
+  }
+
+  return keys;
+}
+
+function addPairObservation(pairMap, key, value) {
+  const current = pairMap.get(key) || { total: 0, count: 0 };
+  current.total += value;
+  current.count += 1;
+  pairMap.set(key, current);
+}
+
+function updatePairAdjustmentMap(pairMap, redTeam, blueTeam, residual) {
+  getSameTeamPairKeys(redTeam).forEach(key => addPairObservation(pairMap, key, residual));
+  getSameTeamPairKeys(blueTeam).forEach(key => addPairObservation(pairMap, key, -residual));
+}
+
+function gameCanLearnPairSignal(game, redPlayers, bluePlayers) {
+  return (
+    !game?.isLeagueGame &&
+    redPlayers.length >= 2 &&
+    bluePlayers.length >= 2 &&
+    typeof game?.scoreRed === 'number' &&
+    typeof game?.scoreBlue === 'number' &&
+    (game?.winner === 'red' || game?.winner === 'blue')
+  );
+}
+
+function learnPairAdjustmentFromGame({
+  pairMap,
+  game,
+  ratingMap,
+  ratingOptions,
+  volleyballOptions,
+}) {
+  if (!pairMap) return;
+  const redPlayers = Array.isArray(game?.redTeam) ? game.redTeam : [];
+  const bluePlayers = Array.isArray(game?.blueTeam) ? game.blueTeam : [];
+  if (!gameCanLearnPairSignal(game, redPlayers, bluePlayers)) return;
+
+  const score = scoreVolleyballCandidateSplit({
+    redPlayers,
+    bluePlayers,
+    ratingMap,
+    options: ratingOptions,
+    volleyballOptions: {
+      ...volleyballOptions,
+      pairAdjustmentMode: 'off',
+    },
+  });
+  updatePairAdjustmentMap(
+    pairMap,
+    redPlayers,
+    bluePlayers,
+    (game.winner === 'red' ? 1 : 0) - score.redWinProbability
+  );
+}
+
+function getPairAdjustmentForTeam(players = [], pairMap, volleyballOptions = {}) {
+  if (!pairMap || volleyballOptions.pairAdjustmentMode !== 'blend') {
+    return { adjustment: 0, usablePairs: 0 };
+  }
+
+  const minGames = Math.max(0, Number(volleyballOptions.pairAdjustmentMinGames) || 0);
+  const confidenceGames = Math.max(0.01, Number(volleyballOptions.pairAdjustmentConfidenceGames) || 4);
+  const maxBlend = clamp(Number(volleyballOptions.pairAdjustmentMaxBlend) || 0, 0, 1);
+  const perPairCap = Math.max(0, Number(volleyballOptions.pairAdjustmentPerPairCap) || 0);
+  const teamCap = Math.max(0, Number(volleyballOptions.pairAdjustmentTeamCap) || Infinity);
+  const minDelta = Math.max(0, Number(volleyballOptions.pairAdjustmentMinDelta) || 0);
+  let total = 0;
+  let usablePairs = 0;
+
+  getSameTeamPairKeys(players).forEach(key => {
+    const stat = pairMap.get(key);
+    if (!stat || stat.count < minGames) return;
+
+    const raw = stat.total / stat.count;
+    if (Math.abs(raw) < minDelta) return;
+
+    const blend = Math.min(maxBlend, stat.count / (stat.count + confidenceGames));
+    total += clamp(raw * blend, -perPairCap, perPairCap);
+    usablePairs += 1;
+  });
+
+  return {
+    adjustment: clamp(total, -teamCap, teamCap),
+    usablePairs,
+  };
+}
+
+export function buildPairAdjustmentMap({
+  players = [],
+  games = [],
+  ratingOptions = {},
+  volleyballOptions = {},
+  seasonal = true,
+} = {}) {
+  const ratingCfg = mergeRatingOptions(ratingOptions);
+  const volleyballCfg = mergeVolleyballBalanceOptions(volleyballOptions);
+  const pairMap = new Map();
+
+  if (volleyballCfg.pairAdjustmentMode !== 'blend') return pairMap;
+
+  const ratingMap = {};
+  players.forEach(player => {
+    if (!player?.id) return;
+    ratingMap[player.id] = makeInitialRating(ratingCfg);
+  });
+
+  const includedGames = getIncludedGames(games, true, ratingCfg);
+  const sortedGames = getGamesSortedOldestFirst(includedGames);
+  const seasonalTaperDays =
+    typeof ratingCfg.seasonalTaperDays === 'number'
+      ? ratingCfg.seasonalTaperDays
+      : SEASONAL_TAPER_DAYS;
+  const referenceDate = seasonal ? getMostRecentGameDate(sortedGames) : null;
+
+  sortedGames.forEach(game => {
+    const redPlayers = Array.isArray(game?.redTeam) ? game.redTeam : [];
+    const bluePlayers = Array.isArray(game?.blueTeam) ? game.blueTeam : [];
+    if (gameCanLearnPairSignal(game, redPlayers, bluePlayers)) {
+      learnPairAdjustmentFromGame({
+        pairMap,
+        game,
+        ratingMap,
+        ratingOptions: ratingCfg,
+        volleyballOptions: volleyballCfg,
+      });
+    }
+
+    const seasonalWeight = seasonal
+      ? getSeasonalWeight(game?.date, referenceDate, seasonalTaperDays)
+      : 1;
+    rateSingleGame(game, ratingMap, {
+      ...ratingCfg,
+      seasonalWeight,
+      volleyballAdjusted: true,
+      volleyballOptions: volleyballCfg,
+    });
+  });
+
+  return pairMap;
 }
 
 export function getVolleyballTeamStrength({
@@ -969,6 +1350,43 @@ export function getVolleyballTeamStrength({
   };
 }
 
+function getSecondWorstRatingFromBreakdown(breakdown) {
+  const ratings = Array.isArray(breakdown?.ratedPlayers)
+    ? breakdown.ratedPlayers
+      .map(player => Number(player.rawOrdinal))
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b)
+    : [];
+  return ratings.length >= 2 ? ratings[1] : Number(breakdown?.worstRating);
+}
+
+function getWeakLinkGapFromBreakdown(breakdown, mode) {
+  const worstRating = Number(breakdown?.worstRating);
+  if (!Number.isFinite(worstRating)) return 0;
+
+  if (mode === 'avgGap') {
+    const averageRating = Number(breakdown?.averageRating);
+    return Number.isFinite(averageRating) ? Math.max(0, averageRating - worstRating) : 0;
+  }
+
+  if (mode === 'secondWorstGap') {
+    const secondWorstRating = getSecondWorstRatingFromBreakdown(breakdown);
+    return Number.isFinite(secondWorstRating) ? Math.max(0, secondWorstRating - worstRating) : 0;
+  }
+
+  return 0;
+}
+
+function getWeakLinkPenaltyFromBreakdown(breakdown, volleyballCfg) {
+  const mode = volleyballCfg.weakLinkPenaltyMode || 'off';
+  if (mode === 'off') return 0;
+
+  const scale = Math.max(0, Number(volleyballCfg.weakLinkPenaltyScale) || 0);
+  const threshold = Math.max(0, Number(volleyballCfg.weakLinkPenaltyThreshold) || 0);
+  const gap = getWeakLinkGapFromBreakdown(breakdown, mode);
+  return Math.max(0, gap - threshold) * scale;
+}
+
 export function scoreVolleyballCandidateSplit({
   redPlayers,
   bluePlayers,
@@ -976,6 +1394,7 @@ export function scoreVolleyballCandidateSplit({
   carryScoreMap = {},
   options = {},
   volleyballOptions = {},
+  pairAdjustmentMap = null,
   ignoreSizeAdjustment = false,
 } = {}) {
   const ratingCfg = mergeRatingOptions(options);
@@ -1003,9 +1422,14 @@ export function scoreVolleyballCandidateSplit({
   const redEffectiveSize = getEffectiveVolleyballSize(redPlayers);
   const blueEffectiveSize = getEffectiveVolleyballSize(bluePlayers);
 
-  const sizeDiff = ignoreSizeAdjustment ? 0 : redEffectiveSize - blueEffectiveSize;
-  const redSizeAdjustment = ignoreSizeAdjustment ? 0 : sizeDiff * volleyballCfg.sizeBonusPerExtraPlayer;
-  const blueSizeAdjustment = ignoreSizeAdjustment ? 0 : -sizeDiff * volleyballCfg.sizeBonusPerExtraPlayer;
+  const rawSizeDiff = (Array.isArray(redPlayers) ? redPlayers.length : 0) -
+    (Array.isArray(bluePlayers) ? bluePlayers.length : 0);
+  const sizeDiff = ignoreSizeAdjustment ? 0 : rawSizeDiff;
+  const sizeBonusPerExtraPlayer = ignoreSizeAdjustment
+    ? 0
+    : getVolleyballSizeBonusPerExtraPlayer(redPlayers, bluePlayers, volleyballCfg);
+  const redSizeAdjustment = sizeDiff * sizeBonusPerExtraPlayer;
+  const blueSizeAdjustment = -sizeDiff * sizeBonusPerExtraPlayer;
 
   // Conditional worst player weight: scale down when one team has a dominant star.
   // In a close matchup (matchCloseness ≈ 1) the weak link matters; in a lopsided one it doesn't.
@@ -1015,8 +1439,14 @@ export function scoreVolleyballCandidateSplit({
   const blueWithoutWorst = blueStrengthBase.baseStrength - blueWorstContrib + blueSizeAdjustment;
   const matchCloseness = Math.max(0, 1 - Math.abs(redWithoutWorst - blueWithoutWorst) / (volleyballCfg.probabilityScale * 1.5));
 
-  const redStrength = redWithoutWorst + redWorstContrib * matchCloseness;
-  const blueStrength = blueWithoutWorst + blueWorstContrib * matchCloseness;
+  const redStrengthBeforeWeakLinkPenalty = redWithoutWorst + redWorstContrib * matchCloseness;
+  const blueStrengthBeforeWeakLinkPenalty = blueWithoutWorst + blueWorstContrib * matchCloseness;
+  const redWeakLinkPenalty = getWeakLinkPenaltyFromBreakdown(redStrengthBase, volleyballCfg);
+  const blueWeakLinkPenalty = getWeakLinkPenaltyFromBreakdown(blueStrengthBase, volleyballCfg);
+  const redPairAdjustment = getPairAdjustmentForTeam(redPlayers, pairAdjustmentMap, volleyballCfg);
+  const bluePairAdjustment = getPairAdjustmentForTeam(bluePlayers, pairAdjustmentMap, volleyballCfg);
+  const redStrength = redStrengthBeforeWeakLinkPenalty - redWeakLinkPenalty + redPairAdjustment.adjustment;
+  const blueStrength = blueStrengthBeforeWeakLinkPenalty - blueWeakLinkPenalty + bluePairAdjustment.adjustment;
 
   const strengthDiff = redStrength - blueStrength;
 
@@ -1055,21 +1485,37 @@ export function scoreVolleyballCandidateSplit({
     redEffectiveSize,
     blueEffectiveSize,
     sizeDiff,
+    sizeBonusPerExtraPlayer,
 
     redSizeAdjustment,
     blueSizeAdjustment,
+    redWeakLinkPenalty,
+    blueWeakLinkPenalty,
+    redPairAdjustment: redPairAdjustment.adjustment,
+    bluePairAdjustment: bluePairAdjustment.adjustment,
+    pairUsableLinks: redPairAdjustment.usablePairs + bluePairAdjustment.usablePairs,
 
     redBreakdown: {
       ...redStrengthBase,
       strength: redStrength,
+      strengthBeforeWeakLinkPenalty: redStrengthBeforeWeakLinkPenalty,
+      weakLinkPenalty: redWeakLinkPenalty,
+      pairAdjustment: redPairAdjustment.adjustment,
+      usablePairLinks: redPairAdjustment.usablePairs,
       sizeAdjustment: redSizeAdjustment,
+      sizeBonusPerExtraPlayer,
       effectiveTeamSize: redEffectiveSize,
     },
 
     blueBreakdown: {
       ...blueStrengthBase,
       strength: blueStrength,
+      strengthBeforeWeakLinkPenalty: blueStrengthBeforeWeakLinkPenalty,
+      weakLinkPenalty: blueWeakLinkPenalty,
+      pairAdjustment: bluePairAdjustment.adjustment,
+      usablePairLinks: bluePairAdjustment.usablePairs,
       sizeAdjustment: blueSizeAdjustment,
+      sizeBonusPerExtraPlayer,
       effectiveTeamSize: blueEffectiveSize,
     },
   };
@@ -1149,7 +1595,13 @@ function getOpenSkillWinnerProbability(redTeam, blueTeam, winner) {
   return winner === 'red' ? redProbability : blueProbability;
 }
 
-function getVolleyballWinnerProbability(game, ratingMap, options = {}, volleyballOptions = {}) {
+function getVolleyballWinnerProbability(
+  game,
+  ratingMap,
+  options = {},
+  volleyballOptions = {},
+  pairAdjustmentMap = null
+) {
   const redPlayers = Array.isArray(game?.redTeam) ? game.redTeam : [];
   const bluePlayers = getBluePlayersForVolleyballModel(game, options);
 
@@ -1159,6 +1611,7 @@ function getVolleyballWinnerProbability(game, ratingMap, options = {}, volleybal
     ratingMap,
     options,
     volleyballOptions,
+    pairAdjustmentMap,
     ignoreSizeAdjustment: Boolean(game?.isLeagueGame),
   });
 
@@ -1198,6 +1651,8 @@ function getVolleyballUpdateMultiplier({
   ratingMap,
   options = {},
   volleyballOptions = {},
+  volleyballScoringRatingMap = null,
+  volleyballScoringPairAdjustmentMap = null,
 }) {
   if (!game) {
     return {
@@ -1224,7 +1679,13 @@ function getVolleyballUpdateMultiplier({
   };
 
   const volleyballWinnerProbability = clamp(
-    getVolleyballWinnerProbability(game, ratingMap, options, updateVolleyballOptions) ?? openSkillWinnerProbability,
+    getVolleyballWinnerProbability(
+      game,
+      volleyballScoringRatingMap || ratingMap,
+      options,
+      updateVolleyballOptions,
+      volleyballScoringPairAdjustmentMap
+    ) ?? openSkillWinnerProbability,
     0.01,
     0.99
   );
@@ -1245,10 +1706,131 @@ function getVolleyballUpdateMultiplier({
   };
 }
 
+function getMarginSensitiveFinalUpdateMax(pointDiff, volleyballCfg = {}) {
+  if (!Number.isFinite(pointDiff)) {
+    return volleyballCfg.finalUpdateMultiplierMax;
+  }
+
+  if (pointDiff <= 1) return 1.00;
+  if (pointDiff === 2) return 1.05;
+  if (pointDiff <= 3) return 1.10;
+  if (pointDiff <= 5) return 1.20;
+  if (pointDiff <= 8) return 1.40;
+  return volleyballCfg.finalUpdateMultiplierMax;
+}
+
+function getNonNegativeOption(value, fallback = 1) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.max(0, numeric) : fallback;
+}
+
+export function getEvidenceWeight({
+  game,
+  redIds = [],
+  blueIds = [],
+  redTeam = [],
+  blueTeam = [],
+  ratingMap = {},
+  options = {},
+  volleyballAdjusted = false,
+  volleyballOptions = {},
+  volleyballScoringRatingMap = null,
+  volleyballScoringPairAdjustmentMap = null,
+  marginDetails = null,
+  seasonalWeight = 1,
+} = {}) {
+  const cfg = mergeRatingOptions(options);
+  const vbCfg = mergeVolleyballBalanceOptions(volleyballOptions);
+  const resolvedMarginDetails = marginDetails || getScoreMarginDetails(
+    game?.scoreRed,
+    game?.scoreBlue,
+    cfg
+  );
+  const marginFactor = resolvedMarginDetails.marginFactor;
+
+  const adjustment = volleyballAdjusted
+    ? getVolleyballUpdateMultiplier({
+        game,
+        redTeam,
+        blueTeam,
+        ratingMap,
+        options: cfg,
+        volleyballOptions,
+        volleyballScoringRatingMap,
+        volleyballScoringPairAdjustmentMap,
+      })
+    : {
+        multiplier: 1,
+        openSkillWinnerProbability: null,
+        volleyballWinnerProbability: null,
+      };
+
+  // Cap the volatility core (margin x surprise) before applying seasonal weight,
+  // so seasonal taper of old games is preserved. Normal volleyball margins are
+  // noisy, so keep ordinary single-game results from receiving blowout-level movement.
+  const marginSensitiveMax = getMarginSensitiveFinalUpdateMax(
+    resolvedMarginDetails.pointDiff,
+    vbCfg
+  );
+  const volleyballUpdateMultiplier = adjustment.multiplier;
+  const volatilityMultiplier = marginFactor * volleyballUpdateMultiplier;
+  const cappedVolatility = clamp(
+    volatilityMultiplier,
+    vbCfg.finalUpdateMultiplierMin,
+    Math.min(vbCfg.finalUpdateMultiplierMax, marginSensitiveMax)
+  );
+  const leagueUpdateMultiplier = game?.isLeagueGame
+    ? getNonNegativeOption(cfg.leagueUpdateMultiplier, 1)
+    : 1;
+  const evidenceWeight = cappedVolatility * leagueUpdateMultiplier;
+
+  // Per-team size damping: players on teams larger than 6 have less individual impact
+  // per game (more rotations, fewer touches). Damper = 6 / teamSize for teams > 6.
+  const redSizeDamper = LEAGUE_TEAM_SIZE / Math.max(LEAGUE_TEAM_SIZE, redIds.length);
+  const blueSizeDamper = LEAGUE_TEAM_SIZE / Math.max(LEAGUE_TEAM_SIZE, blueIds.length);
+  const redFinalMultiplier = evidenceWeight * seasonalWeight * redSizeDamper;
+  const leagueOpponentUpdateMultiplier = game?.isLeagueGame
+    ? getNonNegativeOption(cfg.leagueOpponentUpdateMultiplier, 1)
+    : 1;
+  const leagueOpponentSeasonalWeight = game?.isLeagueGame && cfg.leagueOpponentSeasonalTaperEnabled === false
+    ? 1
+    : seasonalWeight;
+  const blueFinalMultiplier = evidenceWeight *
+    leagueOpponentSeasonalWeight *
+    blueSizeDamper *
+    leagueOpponentUpdateMultiplier;
+  // Keep finalUpdateMultiplier as the base (pre-size-damping) for display purposes.
+  const finalUpdateMultiplier = evidenceWeight * seasonalWeight;
+
+  return {
+    marginFactor,
+    marginSensitiveMax,
+    volleyballUpdateMultiplier,
+    volatilityMultiplier,
+    cappedVolatility,
+    leagueUpdateMultiplier,
+    evidenceWeight,
+    baseUpdateMultiplier: evidenceWeight,
+    seasonalWeight,
+    redSizeDamper,
+    blueSizeDamper,
+    leagueOpponentUpdateMultiplier,
+    leagueOpponentSeasonalWeight,
+    redFinalMultiplier,
+    blueFinalMultiplier,
+    finalUpdateMultiplier,
+    openSkillWinnerProbability: adjustment.openSkillWinnerProbability,
+    volleyballWinnerProbability: adjustment.volleyballWinnerProbability,
+  };
+}
+
 export function rateSingleGame(game, ratingMap, options = {}) {
   const cfg = mergeRatingOptions(options);
   const volleyballAdjusted = Boolean(options?.volleyballAdjusted);
   const volleyballOptions = options?.volleyballOptions || {};
+  const volleyballScoringRatingMap = options?.volleyballScoringRatingMap || null;
+  const volleyballScoringPairAdjustmentMap = options?.volleyballScoringPairAdjustmentMap || null;
 
   ensureRatingsForGame(ratingMap, game, cfg);
 
@@ -1283,56 +1865,21 @@ export function rateSingleGame(game, ratingMap, options = {}) {
   const seasonalWeight =
     typeof cfg.seasonalWeight === 'number' ? cfg.seasonalWeight : 1;
 
-  const adjustment = volleyballAdjusted
-    ? getVolleyballUpdateMultiplier({
-        game,
-        redTeam,
-        blueTeam,
-        ratingMap,
-        options: cfg,
-        volleyballOptions,
-      })
-    : {
-        multiplier: 1,
-        openSkillWinnerProbability: null,
-        volleyballWinnerProbability: null,
-      };
-
-  const vbCfg = mergeVolleyballBalanceOptions(volleyballOptions);
-  // Cap the volatility core (margin x surprise) before applying seasonal weight,
-  // so seasonal taper of old games is preserved. Normal volleyball margins are
-  // noisy, so keep ordinary single-game results from receiving blowout-level movement.
-  const marginSensitiveMax = Number.isFinite(marginDetails.pointDiff)
-    ? marginDetails.pointDiff <= 1 ? 1.00 :
-      marginDetails.pointDiff === 2 ? 1.05 :
-      marginDetails.pointDiff <= 3 ? 1.10 :
-      marginDetails.pointDiff <= 5 ? 1.20 :
-      marginDetails.pointDiff <= 8 ? 1.40 :
-      vbCfg.finalUpdateMultiplierMax
-    : vbCfg.finalUpdateMultiplierMax;
-  const cappedVolatility = clamp(
-    marginFactor * adjustment.multiplier,
-    vbCfg.finalUpdateMultiplierMin,
-    Math.min(vbCfg.finalUpdateMultiplierMax, marginSensitiveMax)
-  );
-  const leagueUpdateMultiplier = game?.isLeagueGame
-    ? Math.max(0, Number(cfg.leagueUpdateMultiplier) || 1)
-    : 1;
-  const baseUpdateMultiplier = cappedVolatility * seasonalWeight * leagueUpdateMultiplier;
-
-  // Per-team size damping: players on teams larger than 6 have less individual impact
-  // per game (more rotations, fewer touches). Damper = 6 / teamSize for teams > 6.
-  const redSizeDamper = LEAGUE_TEAM_SIZE / Math.max(LEAGUE_TEAM_SIZE, redIds.length);
-  const blueSizeDamper = LEAGUE_TEAM_SIZE / Math.max(LEAGUE_TEAM_SIZE, blueIds.length);
-  const redFinalMultiplier = baseUpdateMultiplier * redSizeDamper;
-  const leagueOpponentUpdateMultiplier = game?.isLeagueGame
-    ? Math.max(0, Number.isFinite(Number(cfg.leagueOpponentUpdateMultiplier))
-      ? Number(cfg.leagueOpponentUpdateMultiplier)
-      : 1)
-    : 1;
-  const blueFinalMultiplier = baseUpdateMultiplier * blueSizeDamper * leagueOpponentUpdateMultiplier;
-  // Keep finalUpdateMultiplier as the base (pre-size-damping) for display purposes
-  const finalUpdateMultiplier = baseUpdateMultiplier;
+  const evidence = getEvidenceWeight({
+    game,
+    redIds,
+    blueIds,
+    redTeam,
+    blueTeam,
+    ratingMap,
+    options: cfg,
+    volleyballAdjusted,
+    volleyballOptions,
+    volleyballScoringRatingMap,
+    volleyballScoringPairAdjustmentMap,
+    marginDetails,
+    seasonalWeight,
+  });
 
   const outcomeScores = game?.winner === 'red'
     ? [1, 0]
@@ -1350,7 +1897,7 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     beforeEntries: redBefore,
     updatedTeam: updatedRedTeam,
     ratingMap,
-    multiplier: redFinalMultiplier,
+    multiplier: evidence.redFinalMultiplier,
     options: cfg,
   });
 
@@ -1359,7 +1906,7 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     beforeEntries: blueBefore,
     updatedTeam: updatedBlueTeam,
     ratingMap,
-    multiplier: blueFinalMultiplier,
+    multiplier: evidence.blueFinalMultiplier,
     options: cfg,
   });
 
@@ -1387,15 +1934,16 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     loserScore: marginDetails.loserScore,
     isCloseOvertime: marginDetails.isCloseOvertime,
     seasonalWeight,
-    redSizeDamper,
-    blueSizeDamper,
-    redFinalMultiplier,
-    blueFinalMultiplier,
+    redSizeDamper: evidence.redSizeDamper,
+    blueSizeDamper: evidence.blueSizeDamper,
+    redFinalMultiplier: evidence.redFinalMultiplier,
+    blueFinalMultiplier: evidence.blueFinalMultiplier,
     volleyballAdjusted,
-    volleyballUpdateMultiplier: adjustment.multiplier,
-    finalUpdateMultiplier,
-    openSkillWinnerProbability: adjustment.openSkillWinnerProbability,
-    volleyballWinnerProbability: adjustment.volleyballWinnerProbability,
+    volleyballUpdateMultiplier: evidence.volleyballUpdateMultiplier,
+    evidenceWeight: evidence.evidenceWeight,
+    finalUpdateMultiplier: evidence.finalUpdateMultiplier,
+    openSkillWinnerProbability: evidence.openSkillWinnerProbability,
+    volleyballWinnerProbability: evidence.volleyballWinnerProbability,
     leagueContext: game?.isLeagueGame ? cloneSimple(getLeagueRatingContext(game, cfg)) : null,
     before: {
       red: redBefore,
@@ -1531,12 +2079,16 @@ function replayRatingMapForLeagueDisplay({
       ? getSeasonalWeight(game?.date, referenceDate, seasonalTaperDays)
       : 1;
 
+    const pregameBayesianLeagueRaw = seedPregameBayesianLeagueOpponent(game, ratingMap, history, cfg);
     const historyEntry = rateSingleGame(game, ratingMap, {
       ...cfg,
       seasonalWeight,
       volleyballAdjusted,
       volleyballOptions,
     });
+    if (Number.isFinite(pregameBayesianLeagueRaw)) {
+      historyEntry.pregameBayesianLeagueRaw = pregameBayesianLeagueRaw;
+    }
 
     const burnInGames = Number(cfg.burnInGames) || 0;
     const burnInMult = Number(cfg.burnInMultiplier) || 1;
@@ -1785,6 +2337,8 @@ export function replayRatings({
   seasonal = false,
   volleyballAdjusted = false,
   volleyballOptions = {},
+  volleyballUpdateUsesBalancerContext = true,
+  volleyballUpdateContextMode = 'pair',
   includeLeagueGames = true,
   _calibratedStarts = null,
 } = {}) {
@@ -1815,20 +2369,64 @@ export function replayRatings({
   const sortedGames = getGamesSortedOldestFirst(includedGames);
   const referenceDate = seasonal ? getMostRecentGameDate(sortedGames) : null;
   const leagueOpponentStatsMap = {};
+  const updateContextMode = volleyballUpdateUsesBalancerContext
+    ? (volleyballUpdateContextMode || 'pair')
+    : 'off';
+  const updateContextUsesEnvironment = updateContextMode === 'full' || updateContextMode === 'silo';
+  const updateContextUsesPair = updateContextMode === 'full' || updateContextMode === 'pair';
+  const updatePairContextMap = volleyballAdjusted && updateContextUsesPair ? new Map() : null;
+  const priorGamesForUpdateContext = [];
 
   sortedGames.forEach(game => {
     const seasonalWeight = seasonal
       ? getSeasonalWeight(game?.date, referenceDate, seasonalTaperDays)
       : 1;
 
+    const pregameBayesianLeagueRaw = seedPregameBayesianLeagueOpponent(game, ratingMap, history, cfg);
+    let volleyballScoringRatingMap = null;
+    let volleyballScoringPairAdjustmentMap = null;
+
+    if (volleyballAdjusted && updateContextUsesEnvironment) {
+      const adjustedRatingMap = buildEnvironmentAdjustedRatingMap({
+        players,
+        games: priorGamesForUpdateContext,
+        baseRatingMap: ratingMap,
+        ratingOptions: cfg,
+        volleyballOptions,
+        teamCount: 2,
+        playerCount: getScoreboardSideSize(game, 'red') + getScoreboardSideSize(game, 'blue'),
+        targetSilo: getEnvironmentSiloForGame(game),
+      });
+      volleyballScoringRatingMap = {
+        ...ratingMap,
+        ...adjustedRatingMap,
+      };
+    }
+    if (volleyballAdjusted && updateContextUsesPair) {
+      volleyballScoringPairAdjustmentMap = new Map(updatePairContextMap);
+      learnPairAdjustmentFromGame({
+        pairMap: updatePairContextMap,
+        game,
+        ratingMap,
+        ratingOptions: cfg,
+        volleyballOptions,
+      });
+    }
+
     const historyEntry = rateSingleGame(game, ratingMap, {
       ...cfg,
       seasonalWeight,
       volleyballAdjusted,
       volleyballOptions,
+      volleyballScoringRatingMap,
+      volleyballScoringPairAdjustmentMap,
     });
+    if (Number.isFinite(pregameBayesianLeagueRaw)) {
+      historyEntry.pregameBayesianLeagueRaw = pregameBayesianLeagueRaw;
+    }
 
     history.push(historyEntry);
+    priorGamesForUpdateContext.push(game);
 
     // Burn-in: players in their first N games get a scaled-up update so they
     // reach their true rating faster. statsMap.games is the pre-game count here.
@@ -2125,6 +2723,7 @@ function getLeagueContextTimelineEntry({
     seasonalWeight: result.seasonalWeight,
     volleyballAdjusted: result.volleyballAdjusted,
     volleyballUpdateMultiplier: result.volleyballUpdateMultiplier,
+    evidenceWeight: result.evidenceWeight,
     finalUpdateMultiplier: result.finalUpdateMultiplier,
     openSkillWinnerProbability: result.openSkillWinnerProbability,
     volleyballWinnerProbability: result.volleyballWinnerProbability,
@@ -2146,6 +2745,8 @@ export function getPlayerRatingTimeline({
   seasonal = false,
   volleyballAdjusted = false,
   volleyballOptions = {},
+  volleyballUpdateUsesBalancerContext = true,
+  volleyballUpdateContextMode = 'pair',
   includeLeagueGames = true,
   _calibratedStarts = null,
 } = {}) {
@@ -2153,6 +2754,7 @@ export function getPlayerRatingTimeline({
   const ratingMap = {};
   const statsMap = {};
   const timeline = [];
+  const history = [];
   const includedGames = getIncludedGames(games, includeLeagueGames, cfg);
   const seasonalTaperDays =
     typeof cfg.seasonalTaperDays === 'number'
@@ -2172,18 +2774,63 @@ export function getPlayerRatingTimeline({
   const sortedGames = getGamesSortedOldestFirst(includedGames);
   const referenceDate = seasonal ? getMostRecentGameDate(sortedGames) : null;
   const leagueOpponentStatsMap = {};
+  const updateContextMode = volleyballUpdateUsesBalancerContext
+    ? (volleyballUpdateContextMode || 'pair')
+    : 'off';
+  const updateContextUsesEnvironment = updateContextMode === 'full' || updateContextMode === 'silo';
+  const updateContextUsesPair = updateContextMode === 'full' || updateContextMode === 'pair';
+  const updatePairContextMap = volleyballAdjusted && updateContextUsesPair ? new Map() : null;
+  const priorGamesForUpdateContext = [];
 
   sortedGames.forEach((game, chronologicalIndex) => {
     const seasonalWeight = seasonal
       ? getSeasonalWeight(game?.date, referenceDate, seasonalTaperDays)
       : 1;
 
+    const pregameBayesianLeagueRaw = seedPregameBayesianLeagueOpponent(game, ratingMap, history, cfg);
+    let volleyballScoringRatingMap = null;
+    let volleyballScoringPairAdjustmentMap = null;
+
+    if (volleyballAdjusted && updateContextUsesEnvironment) {
+      const adjustedRatingMap = buildEnvironmentAdjustedRatingMap({
+        players,
+        games: priorGamesForUpdateContext,
+        baseRatingMap: ratingMap,
+        ratingOptions: cfg,
+        volleyballOptions,
+        teamCount: 2,
+        playerCount: getScoreboardSideSize(game, 'red') + getScoreboardSideSize(game, 'blue'),
+        targetSilo: getEnvironmentSiloForGame(game),
+      });
+      volleyballScoringRatingMap = {
+        ...ratingMap,
+        ...adjustedRatingMap,
+      };
+    }
+    if (volleyballAdjusted && updateContextUsesPair) {
+      volleyballScoringPairAdjustmentMap = new Map(updatePairContextMap);
+      learnPairAdjustmentFromGame({
+        pairMap: updatePairContextMap,
+        game,
+        ratingMap,
+        ratingOptions: cfg,
+        volleyballOptions,
+      });
+    }
+
     const result = rateSingleGame(game, ratingMap, {
       ...cfg,
       seasonalWeight,
       volleyballAdjusted,
       volleyballOptions,
+      volleyballScoringRatingMap,
+      volleyballScoringPairAdjustmentMap,
     });
+    if (Number.isFinite(pregameBayesianLeagueRaw)) {
+      result.pregameBayesianLeagueRaw = pregameBayesianLeagueRaw;
+    }
+    history.push(result);
+    priorGamesForUpdateContext.push(game);
 
     // Burn-in: match replayRatings — amplify updates for players in their first N games.
     const burnInGames = Number(cfg.burnInGames) || 0;
@@ -2325,6 +2972,7 @@ export function getPlayerRatingTimeline({
       seasonalWeight: result.seasonalWeight,
       volleyballAdjusted: result.volleyballAdjusted,
       volleyballUpdateMultiplier: result.volleyballUpdateMultiplier,
+      evidenceWeight: result.evidenceWeight,
       finalUpdateMultiplier: result.finalUpdateMultiplier,
       openSkillWinnerProbability: result.openSkillWinnerProbability,
       volleyballWinnerProbability: result.volleyballWinnerProbability,

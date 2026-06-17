@@ -5,7 +5,7 @@
 //
 // Run: node --import ./register.mjs pair_interactions.mjs
 
-import { readFileSync } from 'node:fs';
+import { loadDatabase } from './database.mjs';
 import {
   DEFAULT_VOLLEYBALL_BALANCE_OPTIONS,
   replayRatings,
@@ -15,10 +15,7 @@ import {
   getGamesSortedOldestFirst,
 } from '../ratings.js';
 
-const DB_PATH = process.env.VBALL_DB || 'C:/Users/rowla/Documents/Volleyball/default_database';
-const db = JSON.parse(readFileSync(DB_PATH, 'utf8'));
-const players = db.players || [];
-const games = db.games || [];
+const { db, players, games, sourceLabel } = await loadDatabase();
 
 const SEASON_MONTHS = 6;
 const seasonalTaperDays = Math.round(SEASON_MONTHS * 30.4375);
@@ -397,7 +394,7 @@ const finalized = results.map(result => finalize(result, baseline));
 const interactionRows = finalized.slice(1);
 
 console.log('\nPair interaction benchmark');
-console.log(`DB: ${DB_PATH}`);
+console.log(`DB: ${sourceLabel}`);
 console.log(`Games analyzed: ${baseline.games} (${baseline.scored} scored)`);
 console.log(`Baseline: acc=${formatPercent(baseline.acc)} brier=${fmt(baseline.brier)} logloss=${fmt(baseline.logLossAvg)} MAE=${fmt(baseline.mae, 2)} within5=${formatPercent(baseline.within5)} blowouts>8=${baseline.blowouts8}`);
 console.log(`Margin model: base=${fmt(marginModel.baseMargin, 2)} slope=${fmt(marginModel.slope, 3)} sample=${marginModel.sampleSize}`);

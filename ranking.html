@@ -406,7 +406,7 @@
       </div>
 
       <div class="equation">
-        Public Ranking is just a mathematical transform that makes scores easier for humans to read (by making them 4 digit numbers normed around 1500) without changing ranking order in the database
+        Public Ranking is a linear transform that maps the adjusted raw ordinal range onto readable 4-digit scores.
       </div>
 
       <p style="margin-top:14px;">
@@ -449,11 +449,11 @@
       </div>
 
       <p>
-        I didn't think that a narrow win such as 26–24 should be treated exactly the same as a lopsided result such as 25–10. At the same time, blowouts should not completely dominate the rankings. The app uses a bounded margin adjustment where larger score differences matter more, but only up to a cap.
+        Narrow and ordinary-margin wins are treated as normal wins. Clear blowouts can add a small capped bonus, but blowouts do not dominate the rankings.
       </p>
 
       <p>
-        In practical terms, that means score margin can influence the ranking change after a game by around 20-30%
+        In practical terms, a 25-10 result moves ratings slightly more than a 25-21 result, while a 26-24 result is treated like an ordinary win.
       </p>
     </div>
 
@@ -464,7 +464,7 @@
       </div>
 
       <p>
-        A player can have a good estimated skill but still have a middling public ranking if the model is not yet very certain. This reduces (but doesn't eliminate) the likelihood that someoone will have an unrealistically high rank when they have only played a few games.
+        A player can have a good estimated skill but still have a slightly lower public ranking if they have only played a few games. Raw ordinal already includes uncertainty through sigma, and the public board adds a small capped low-game penalty so a short lucky streak does not jump too far ahead of longer track records.
       </p>
 
       <p>
@@ -505,7 +505,7 @@
         <li>Historical carry score is currently disabled in balancing, because testing favored not using it.</li>
       </ul>
 
-      <p>The public scoreboard also applies a confidence adjustment so low-game players are not over-ranked too quickly. That display adjustment does not feed back into team balancing or OpenSkill updates.</p>
+      <p>The public scoreboard also applies a small low-game penalty before mapping raw ordinal onto the public rating scale. That display adjustment does not feed back into team balancing or OpenSkill updates.</p>
     </div>
   </div>
 </body>

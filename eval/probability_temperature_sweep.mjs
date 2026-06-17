@@ -9,9 +9,8 @@
 // Or target values:
 //   PROBABILITY_TEMPERATURES=0.6,0.7,0.8 npm run probtemp
 
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { loadDatabase } from './database.mjs';
+import { attachAccIQDeltas, compareAccIQDesc, computeAccIQ } from './metrics.mjs';
 import {
   replayRatings,
   calibrateMarginModel,
@@ -21,11 +20,7 @@ import {
   DEFAULT_VOLLEYBALL_BALANCE_OPTIONS,
 } from '../ratings.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.VBALL_DB || resolve(__dirname, '../default_database');
-const db = JSON.parse(readFileSync(DB_PATH, 'utf8'));
-const players = db.players || [];
-const games = db.games || [];
+const { db, players, games, sourceLabel } = await loadDatabase();
 
 const seasonalTaperDays = Math.round(6 * 30.4375);
 const EPS = 1e-9;
@@ -286,13 +281,6 @@ function evaluateBack(probabilityTemperature) {
   return summarize(stats);
 }
 
-function composite(row) {
-  // Lower is better. Forward probability calibration is primary. Keep a small
-  // check on backward fit and balance-opportunity tie-breaking.
-  return row.forward.brier * 100 + row.forward.logLoss * 4 + row.back.brier * 20 +
-    (row.forward.avgPredictedBestGap ?? 0) * 0.25;
-}
-
 function fmt(value, digits = 3) {
   return value === null || !Number.isFinite(value) ? 'n/a' : value.toFixed(digits);
 }
@@ -313,9 +301,10 @@ function printRows(title, rows, limit = 16) {
     'bAcc'.padStart(6),
     'bBrier'.padStart(8),
     'bLog'.padStart(7),
-    'score'.padStart(8),
+    'AccIQ'.padStart(7),
+    'dIQ'.padStart(7),
   ].join(' '));
-  console.log('-'.repeat(88));
+  console.log('-'.repeat(96));
   rows.slice(0, limit).forEach(row => {
     console.log([
       fmt(row.temperature, 2).padStart(6),
@@ -327,13 +316,14 @@ function printRows(title, rows, limit = 16) {
       pct(row.back.accuracy).padStart(6),
       fmt(row.back.brier).padStart(8),
       fmt(row.back.logLoss).padStart(7),
-      fmt(row.score).padStart(8),
+      fmt(row.accIQ, 2).padStart(7),
+      fmt(row.accIQDelta, 2).padStart(7),
     ].join(' '));
   });
   console.log('');
 }
 
-console.log(`DB: ${DB_PATH}`);
+console.log(`DB: ${sourceLabel}`);
 console.log(`scoredNonLeague=${scoredGames.length} evaluated=${priorSnapshots.length}`);
 console.log('Sweeping probabilityTemperature with current production rating + balancer defaults.');
 console.log('');
@@ -344,14 +334,17 @@ const rows = temperatures.map(temperature => {
     forward: evaluateForward(temperature),
     back: evaluateBack(temperature),
   };
-  row.score = composite(row);
+  row.accIQ = computeAccIQ({ forward: row.forward, back: row.back });
   return row;
 });
 
 const baseline = rows.filter(row =>
   Math.abs(row.temperature - DEFAULT_VOLLEYBALL_BALANCE_OPTIONS.probabilityTemperature) < EPS
 );
-const byComposite = [...rows].sort((a, b) => a.score - b.score);
+attachAccIQDeltas(rows, row =>
+  Math.abs(row.temperature - DEFAULT_VOLLEYBALL_BALANCE_OPTIONS.probabilityTemperature) < EPS
+);
+const byAccIQ = [...rows].sort(compareAccIQDesc);
 const byForwardBrier = [...rows].sort((a, b) =>
   a.forward.brier - b.forward.brier ||
   a.forward.logLoss - b.forward.logLoss
@@ -366,7 +359,7 @@ const byBackBrier = [...rows].sort((a, b) =>
 );
 
 printRows('Baseline', baseline, 1);
-printRows('Best composite candidates', byComposite, 16);
+printRows('Best AccIQ candidates', byAccIQ, 16);
 printRows('Best forward Brier candidates', byForwardBrier, 16);
 printRows('Best forward log-loss candidates', byForwardLogLoss, 16);
 printRows('Best backward Brier candidates', byBackBrier, 16);

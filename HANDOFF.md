@@ -66,33 +66,80 @@ Working doc to resume balancing/algorithm work in a fresh thread. Read this firs
 
 ## 7. How the model works now
 
-- **Strength weights** (`DEFAULT_VOLLEYBALL_BALANCE_OPTIONS`, depth-emphasis):
-  top 0.30, second 0.24, average 0.28, depth 0.10, worst 0.08 (sum 1.0).
-  `worstPlayerWeight` is scaled down in lopsided matchups via `matchCloseness`
-  (flagged as possibly counter to "weak players should drag"; not yet changed).
-- **Win prob**: sigmoid(strengthDiff / probabilityScale), probabilityScale 4.4.
+- **Eval data loading**: eval scripts call `loadDatabase()` from `eval/database.mjs`.
+  By default it fetches Google Drive once, writes `eval/.cache/google_database.json`,
+  and reuses that cache for 15 minutes so sequential harness runs do not repeatedly
+  hit Drive. Use `VBALL_DB_REFRESH=1` to force a fresh Drive pull, or `VBALL_DB=/path`
+  to use a local database file.
+- **Eval metrics**: shared helpers live in `eval/metrics.mjs`.
+  `AccIQ` is 0-100 higher-is-better for rating/prediction regressions: forward
+  prediction quality weighted 65% and backward/explanatory quality 35%; each pass
+  blends winner accuracy, Brier calibration, and margin MAE where available.
+  Because the balancer is trying to make winner prediction less useful, do **not**
+  use AccIQ as the primary optimization metric for team-assignment changes.
+- **BalanceIQ**: balancer/opportunity harnesses use `computeBalanceIQ()` from
+  `eval/metrics.mjs`. It is 0-100 higher-is-better and intentionally excludes
+  winner accuracy: 45% best predicted same-size split gap, 25% selected split
+  predicted <=5 point rate, 20% selected split predicted >8 point avoidance,
+  10% actual-split margin calibration. `dBal` is the BalanceIQ difference from
+  current default. Use BalanceIQ as the primary sweep metric for team-balancing
+  changes, with AccIQ only as a guardrail against rating/model drift.
+- **Strength weights** (`DEFAULT_VOLLEYBALL_BALANCE_OPTIONS`, flat-forward fix):
+  top 0.25, second 0.22, average 0.33, depth 0.12, worst 0.08.
+  Cached `release:compare` runs on `vballstats_2026-06-15.json` showed this
+  beat the prior sharp/weak-link-heavy weighting in both plain and balancer
+  scoring gates. `worstPlayerWeight` is still scaled down in lopsided matchups
+  via `matchCloseness`.
+- **Team-size imbalance bonus**: production uses base-size-specific bonuses:
+  `sizeBonusByBaseSize:{3:2.2, 4:1.4, 5:2.6, 6:0}`. A natural 3v4 applies
+  `2.2` raw ordinal to the larger team and `-2.2` to the smaller team; 4v5 uses
+  `1.4`, 5v6 uses `2.6`, and 6v7+ uses no size bonus because large teams rotate.
+  `sizeBonusPerExtraPlayer:2.2` remains as the global fallback/tuning baseline
+  when `sizeBonusByBaseSizeEnabled:false`.
+- **Weak-link penalty**: current default is `weakLinkPenaltyMode:'avgGap'`,
+  `weakLinkPenaltyScale:0.35`, `weakLinkPenaltyThreshold:2.0`. Post-flat-weight
+  narrow sweep found this best/tied-best; weaker, stronger, off, and
+  `secondWorstGap` variants did not improve combined AccIQ.
+- **Environment silo balancing**: Play-page team assignment uses a blended
+  big/small environment rating when a player has enough silo history:
+  `environmentSiloMode:'blend'`, min 12 games, confidence 6, max blend 0.70,
+  adjustment cap 1.5 raw ordinal, min delta 0.5.
+- **Pairwise balancing**: Play-page team assignment uses a conservative pair
+  residual adjustment from scored non-league games:
+  `pairAdjustmentMode:'blend'`, min 8 shared games, confidence 4, max blend
+  0.75, per-pair cap 0.5, team cap 0.75, min delta 0.1. This was a small
+  AccIQ improvement in older harnesses. Keep pair/environment/Bayesian ideas in
+  the harness as future candidates, but do not ship more complexity without a
+  forward/release-gate signal. Higher count thresholds are the most plausible
+  next evaluation axis for pair/environment systems.
+- **Stats Explanatory Quality**: back-prediction now scores games with balancer
+  context layered on top of full replay ratings: environment silo rating blend
+  plus pair adjustment map. Focused cached harness showed `silo + pair` improved
+  back/explanatory AccIQ from `79.41` to `82.61`. Rating replay itself remains
+  unchanged; this affects explanatory scoring/calibration, not rating updates.
+- **Win prob**: sigmoid(strengthDiff / probabilityScale), probabilityScale 4.2.
 - **Margin model** (`calibrateMarginModel`): fits expected GAP =
   `baseMargin + slope·|strengthDiff|` via OLS on |actualMargin| vs |strengthDiff|
   over scored non-league games. Magnitude form = immune to the winner=red
   convention in 3+-team games. `predictExpectedMargin` returns the gap (≥0).
   Calibrated values on current data: baseMargin ≈ 4.88, slope ≈ 0.148.
 - **Rating update** (`rateSingleGame`): `baseUpdateMultiplier = clamp(marginFactor ·
-  surpriseMultiplier, finalUpdateMultiplierMin, finalUpdateMultiplierMax) · seasonalWeight`,
-  then per-team size damping. Cap is **[0.5, 1.75]** on the margin×surprise core
-  (NOT including seasonalWeight, so seasonal taper is preserved). Surprise =
+  surpriseMultiplier, finalUpdateMultiplierMin, finalUpdateMultiplierMax) · leagueUpdateMultiplier`,
+  then seasonal weight and per-team size damping. Cap is **[0.35, 2.0]** on the margin×surprise core.
+  League player-side updates use `leagueUpdateMultiplier:1.2`; synthetic league-opponent updates
+  do not use seasonal taper by default. Surprise =
   clamp(volleyballSurprise/openSkillSurprise, 0.35, 2.0).
 - **Burn-in / calibration**: `replayRatings` and `getPlayerRatingTimeline` both
   apply burn-in (amplify early-career updates) and a two-pass calibration freeze.
   These are now consistent between the two functions.
-- **League opponent model**: current local trial pools all league games into one
-  synthetic `League Team` (`leagueTeamRatingMode:'pooled'`). Current default uses
+- **League opponent model**: current local trial pools league games by level:
+  `League - Rec` and `League - Intermediate` (`leagueTeamRatingMode:'level'`).
+  Current default uses
   `leagueOpponentUpdateMultiplier:4`, `leagueOpponentBurnInGames:4`,
-  `leagueOpponentBurnInMultiplier:2.25`, chosen from the league-team sweep by the
-  internal weighted quality metric below.
+  `leagueOpponentBurnInMultiplier:2.25`; compare future changes with AccIQ.
 - **League bracket games**: bracket/championship league games can be tagged with
-  `leaguePhase:'bracket'`. The current pooled local trial keeps them in replay
-  and folds them into the same displayed/modelled `League Team` as all other
-  league games.
+  `leaguePhase:'bracket'`. The current level-pooled trial keeps them in replay
+  and folds them into `League - Rec` or `League - Intermediate` by level.
 - **League scoreboard display**: league-team rows can use a Bayesian posterior
   mean internally (`leagueDisplayRatingMode:'bayesian'`). Intervals are
   intentionally not shown in UI. Callers must set
@@ -100,15 +147,37 @@ Working doc to resume balancing/algorithm work in a fresh thread. Read this firs
   false for performance. Stats displays league rows through the same public
   rating scale used for ranking so the visible `Rating` column stays in sort
   order with player rows.
-- **Stats League scoreboard exception**: only the Stats page's League scoreboard
-  uses `leagueTeamRatingMode:'context'` so league opponents are broken out into
-  Rec/Intermediate/Sand/Bracket components. All other pages/modes keep pooled
-  `League Team`.
+- **Stats league display**: there is no separate League scoreboard tab. Composite
+  standings show `League - Rec` and `League - Intermediate` without player-style
+  minimum-game/recent-game restrictions. Big Team and Small Team remain
+  player-focused filtered boards.
 - **Replay caching**: Play and Stats use a shared `sessionStorage` replay-result
   cache keyed by `VERSION`, players, games, season length, league inclusion, and
   replay options. Any new/imported/deleted game changes the key and recalculates.
   Stats also keeps multi-entry public rating scale cache entries and avoids
   rendering hidden standings tab content during `renderAll()`.
+- **Quality dashboard chart**: league games remain included in predictive and
+  explanatory quality analysis, but the point-differential chart uses only
+  non-league scored games because league games are not algorithm assignments.
+- **Awards eligibility/display**: award winners must have at least 5 total games
+  and a game in the last month. Big-team awards include league games when the
+  replayed teams are 5v5+ so they stay consistent with the big-team scoreboard
+  interpretation. Overall-style awards have scoped Big Team and Small Team
+  clones where the category has enough local counters to make the result
+  meaningful.
+- **Season Movers**: Improvement Score includes league and non-league games.
+  It displays/sorts by adjusted model gain after the later of season start or a
+  6-game player baseline. The adjustment is season-local: light volume
+  confidence, sustained-improvement path bonus/settling discount, and a modest
+  higher-rating difficulty bonus.
+- **League opponent seasonal taper**: disabled for the synthetic league opponent
+  by default (`leagueOpponentSeasonalTaperEnabled: false`). Player-side league
+  updates still use seasonal weighting. Narrow eval showed no meaningful
+  accuracy loss, and this better matches the pooled/composite league-team model.
+- **Eval database loading**: eval harnesses use `eval/database.mjs`, which
+  fetches the latest Google Drive stats endpoint by default and falls back to
+  local `default_database` if fetch fails. `VBALL_DB=/path/to/file` remains an
+  explicit local override.
 
 ## 8. Eval harness (`eval/`)
 
@@ -121,13 +190,24 @@ All run as `node --import ./register.mjs <file>` from `eval/`.
 - `blowouts.mjs` — blowout rate by strength-gap tertile.
 - `blowout_features.mjs` — absolute features vs blowout occurrence.
 - `blowout_imbalance.mjs` — between-team imbalance features vs blowout occurrence.
+- `size_effects.mjs` — size-bucket diagnostics for balancing parameters and
+  natural roster imbalances such as 3v4, 4v5, and 5v6.
 - `loader.mjs` / `register.mjs` — CDN→local OpenSkill redirect.
 - `league_team_sweep.mjs` — league opponent identity/update/burn-in sweep. Use
-  `intQ` as the primary internal comparison metric when judging close candidates:
-  predictive score = margin quality 45 + Brier 25 + balanced-rate 20 + winner
-  accuracy 10; back/explanatory score = margin quality 50 + Brier 30 + winner
-  accuracy 20; `intQ` = predictive 60 + back/explanatory 40. Keep the old
-  `score` column as a secondary tie-breaker, not the main decision rule.
+  `AccIQ` / `dIQ` for rating/replay regression checks; raw fwd/back accuracy,
+  Brier, and MAE columns are audit detail.
+- `balancing_quality.mjs` — primary team-assignment opportunity harness. Use
+  `BalanceIQ` / `dBal` for balancer changes. It replays prior ratings, scores
+  the historical split, and exhaustively finds the best same-size split from the
+  same present players. Counterfactual scores are unknowable, so BalanceIQ is
+  predicted opportunity plus calibration, not proof of actual future margins.
+- `balance_iq_sweep.mjs` — focused BalanceIQ sweep for the interaction between
+  `leagueUpdateMultiplier`, `carryScale`, and `carryConfidenceGames`. It always
+  includes the current production baseline values so `dBal` is populated even
+  when the env-provided grid is narrow.
+- `dashboard_baseline_compare.mjs` — compares dashboard baseline-gap definitions
+  between current and `DEPLOY_REF` (default `origin/main`). Use it when the
+  quality dashboard's model intercept looks different from production.
 
 ## 9. Key analytical findings (the important part)
 
@@ -149,25 +229,79 @@ All run as `node --import ./register.mjs <file>` from `eval/`.
     wider outcome distribution). Size×sand is a weaker maybe (~0.18).
 - **within-5 / avg-diff / blowout counts are computed from ACTUAL scores** — they do
   NOT change with any model tuning, only when teams are actually formed differently.
+- **Dashboard baseline gap is a regression intercept, not actual average margin.**
+  Cached comparison on `vballstats_2026-06-15.json`: observed scored mean gap was
+  `5.533` in both current and deployed production. Deploy final/back model was
+  base `4.915`, slope `0.167`; current final/back was base `5.080`, slope `0.121`;
+  current forward-latest was base `5.260`, slope `0.074`. The higher beta
+  "baseline" is mostly the intercept moving toward the actual mean because the
+  strength-gap slope shrank. Dashboard now labels this `Even-team model gap` and
+  separately shows `Observed avg gap`.
+- **BalanceIQ is the balancer target.** Use it when evaluating team-construction
+  weights, size bonuses, carry, weak-link/provisional-player penalties, and
+  probability-scale changes that affect split selection. It is deliberately not
+  a scoreboard-feel metric and does not replace manual sanity checks on public
+  raw ordinal/rank order.
+- **BalanceIQ carry/league follow-up**: focused cached sweep around the first
+  `league x2 + carry 12` signal found a broad peak around league `2.0–2.25`,
+  carry `16–20`, confidence `6–10`. Best run: `leagueUpdateMultiplier:2.25`,
+  `carryScale:18`, `carryConfidenceGames:6`, BalanceIQ `74.73` (`dBal +2.95`)
+  vs current `71.78`; `league x2.0 carry16 conf8` was nearly as good at
+  BalanceIQ `74.67` (`dBal +2.88`). Release guardrail on cached Google data:
+  these remain above deployed AccIQ but give back about `0.4–0.6` AccIQ versus
+  current. Carry-only at current league weight gave only ~`+1.0 dBal` and still
+  gave back AccIQ, so it is not the cleaner ship candidate.
+- **Team-size diagnostics**: `size_effects.mjs` compares the current base-size
+  table against global-size variants and reports natural roster imbalances by
+  bucket. Initial cached run: 3v4 actual margins looked fine but were sometimes
+  flagged high-risk; 5v6 had a high actual margin sample but only n=5.
+- **Base-size size bonus sweep**: `size_bonus_sweep.mjs` is harness-only and
+  simulates size bonuses outside production scoring, including optional uncapped
+  6v7+. Coarse+narrow cached runs on 26 odd-roster games improved from current-cap
+  equivalent `40.20` to best `36.64` when allowing a 6v7+ bonus. A constrained
+  rerun fixed size6+ at `0.0`; best constrained score was `37.45`. Current
+  production uses the practical candidate: size3 `2.2`, size4 `1.4`, size5
+  `2.6`, size6+ `0.0` (score `37.58`). Treat this as sample-limited: 3v4 n=7,
+  4v5 n=11, 5v6 n=5, 6v7+ n=3.
 
 ## 10. Decisions locked in
 
 - Depth-emphasis weights (above). Keep.
-- Volatility cap [0.5, 1.75]. Keep.
+- Volatility cap [0.35, 2.0]. Keep.
 - Intercept gap margin model. Keep.
-- League opponent update/burn-in default: context opponent x4.0 with first 4
-  synthetic-opponent games amplified 2.25x. Chosen because the narrow sweep had
-  the best internal weighted quality score (`intQ 81.84` vs current/default
-  pre-change `81.68`).
+- League opponent update/burn-in default: level-pooled opponent x4.0 with first 4
+  synthetic-opponent games amplified 2.25x. Compare future changes with AccIQ.
 - League bracket games are included in default analysis/replay and currently
-  pooled with all other league games for the local display/model trial.
+  pooled by level for the local display/model trial.
 - **Reframed goals:** primary = avoid blowouts; secondary = even games within
   statistical limits. But data says balancing has little blowout leverage.
+- **Metric rule:** balancer changes should improve or preserve BalanceIQ first,
+  while AccIQ should be treated as a regression guard. Rating-update/display
+  changes should still use AccIQ plus scoreboard audits because BalanceIQ only
+  scores team-split opportunity.
+- **Shipped BalanceIQ candidate**: production now uses the cleaner plateau point
+  `leagueUpdateMultiplier:2.0`, `carryScale:16`, `carryConfidenceGames:8`
+  (`VERSION beta-20260616-18`). Cached confirmation: BalanceIQ `74.67`, up
+  from old baseline `71.78`; selected low-risk split rate moved `80%` -> `90%`
+  with selected high-risk still `0%`. Plain AccIQ guardrail remains above
+  deployed (`73.42` vs `72.45`). Balancer-scoring AccIQ remains above deployed
+  (`73.30` vs `72.45`) but has a small forward-Brier giveback, so the release
+  compare script now labels this an `AccIQ Guardrail` and only fails meaningful
+  predictive collapses.
 - Do NOT build: fragility/shape balancing penalties, a full blowout-risk predictor,
   excessResidual rating coupling — all would overfit ~10 noise events.
 
 ## 11. Open action items / next steps (recommended order)
 
+0. **Next immediate investigation: displayed rating vs raw ordinal drift.**
+   User suspects the public/displayed leaderboard rating is getting too far away
+   from raw OpenSkill ordinal. Test this before more update tuning:
+   compare `rawOrdinal`, `getExperimentalLeaderboardRaw`, `formatPublicDisplayRating`,
+   public scale outputs, confidence adjustment, and rank order across overall /
+   league / big / small boards. Produce a table of largest display-minus-raw
+   deltas and determine whether the issue is confidence scaling, public scale
+   calibration, league Bayesian display, or scoreboard-specific count/rating
+   overrides.
 1. **Instrumentation (foundational, low risk).** Add to new game records in
    `index.html`: `createdAt` (epoch ms; note `id` is already `Date.now()`),
    `assignmentSource` ('algorithm' | 'manual' | 'modified'),
@@ -215,6 +349,29 @@ All run as `node --import ./register.mjs <file>` from `eval/`.
 - Git shows LF→CRLF warnings on Windows — harmless.
 - Margin model immediate value is **measurement** (it doesn't change balancing —
   minimizing predicted gap == minimizing |strengthDiff|, which the balancer already does).
+- Rating-update context test (`npm run update:context`, live Drive
+  `vballstats_2026-06-15.json`): production replay now defaults to pair-context
+  update surprise (`volleyballUpdateUsesBalancerContext: true`,
+  `volleyballUpdateContextMode: 'pair'`). Optimized incremental replay preserved
+  the winning result: `current/plain` AccIQ `79.81`, `current/balancer scoring`
+  `79.99` (+0.18), `full updates + balancer scoring` `80.47` (+0.65),
+  `silo-only` `79.40` (-0.42), and `pair-only` `80.89` (+1.08).
+  Interpretation: pair context is useful for update surprise; environment silo
+  helps display/prediction scoring but is too blunt for rating-update surprise.
+  Follow-up fix: Stats/Play replay callers now explicitly pass
+  `volleyballAdjusted:true`, pair update context mode, and cache keys include the
+  update-context flags. `VERSION` was bumped to invalidate stale browser replay
+  caches; otherwise the change could be invisible in the app.
+- Partial update audit on `vballstats_2026-06-15.json`: current margin bonus is
+  intentionally tiny and mostly rounds to `1.00x`; `npm run margin` showed
+  current tiny convex margin is effectively tied with no score margin, while a
+  stronger `pow1.2 cap25` was only `+0.30 AccIQ`. Corrected league/nonleague
+  split showed current pair-context replay does **not** globally mute league
+  updates: league player-side avg update was ~`1.11x` vs old visible base
+  ~`1.09x`, but median fell ~`1.17x` → ~`1.07x` because expected league results
+  are now damped and surprising results amplified. `npm run league` on the same
+  data currently favors lower player-side league weight / excluding league in
+  AccIQ, so retest league weights after resolving displayed-vs-raw rating drift.
 
 ## 14. The honest strategic summary
 

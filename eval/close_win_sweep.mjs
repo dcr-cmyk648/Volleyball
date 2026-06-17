@@ -6,9 +6,8 @@
 // Run from eval/:
 //   npm run closewin
 
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { loadDatabase } from './database.mjs';
+import { attachAccIQDeltas, compareAccIQDesc, computeAccIQ } from './metrics.mjs';
 import {
   replayRatings,
   calibrateMarginModel,
@@ -19,11 +18,7 @@ import {
   DEFAULT_RATING_OPTIONS,
 } from '../ratings.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.VBALL_DB || resolve(__dirname, '../default_database');
-const db = JSON.parse(readFileSync(DB_PATH, 'utf8'));
-const players = db.players || [];
-const games = db.games || [];
+const { db, players, games, sourceLabel } = await loadDatabase();
 
 const seasonalTaperDays = Math.round(6 * 30.4375);
 
@@ -185,7 +180,7 @@ function evaluate(step, min) {
     factor2523: getScoreMarginDetails(25, 23, options).closeOvertimeDampener,
     factor2725: getScoreMarginDetails(27, 25, options).closeOvertimeDampener,
     factor3028: getScoreMarginDetails(30, 28, options).closeOvertimeDampener,
-    score: forward.brier * 100 + forward.marginMAE * 0.25 + back.brier * 10,
+    accIQ: computeAccIQ({ forward, back }),
   };
 }
 
@@ -210,9 +205,10 @@ function printRows(title, rows, limit = 14) {
     'fwdMAE'.padStart(7),
     'backAcc'.padStart(8),
     'backBrier'.padStart(9),
-    'score'.padStart(7),
+    'AccIQ'.padStart(7),
+    'dIQ'.padStart(7),
   ].join(' '));
-  console.log('-'.repeat(104));
+  console.log('-'.repeat(112));
   rows.slice(0, limit).forEach(row => {
     console.log([
       fmt(row.step, 2).padStart(6),
@@ -225,7 +221,8 @@ function printRows(title, rows, limit = 14) {
       fmt(row.forward.marginMAE).padStart(7),
       pct(row.back.accuracy).padStart(8),
       fmt(row.back.brier).padStart(9),
-      fmt(row.score).padStart(7),
+      fmt(row.accIQ, 2).padStart(7),
+      fmt(row.accIQDelta, 2).padStart(7),
     ].join(' '));
   });
   console.log('');
@@ -238,7 +235,7 @@ const closeTwoPointGames = getGamesSortedOldestFirst(games).filter(game => {
   return details.isCloseOvertime;
 });
 
-console.log(`DB: ${DB_PATH}`);
+console.log(`DB: ${sourceLabel}`);
 console.log(`players=${players.length} games=${games.length} scoredNonLeague=${scoredNonLeagueGames.length} closeTwoPointNonLeague=${closeTwoPointGames.length}`);
 console.log('Sweeping closeOvertimeDampenerStep and closeOvertimeDampenerMin.');
 console.log('');
@@ -254,13 +251,17 @@ const baseline = rows.filter(row =>
   Math.abs(row.step - DEFAULT_RATING_OPTIONS.closeOvertimeDampenerStep) < 1e-9 &&
   Math.abs(row.min - DEFAULT_RATING_OPTIONS.closeOvertimeDampenerMin) < 1e-9
 );
-const byComposite = [...rows].sort((a, b) => a.score - b.score);
+attachAccIQDeltas(rows, row =>
+  Math.abs(row.step - DEFAULT_RATING_OPTIONS.closeOvertimeDampenerStep) < 1e-9 &&
+  Math.abs(row.min - DEFAULT_RATING_OPTIONS.closeOvertimeDampenerMin) < 1e-9
+);
+const byAccIQ = [...rows].sort(compareAccIQDesc);
 const byForwardBrier = [...rows].sort((a, b) => a.forward.brier - b.forward.brier);
 const byForwardMae = [...rows].sort((a, b) => a.forward.marginMAE - b.forward.marginMAE);
 const byBackBrier = [...rows].sort((a, b) => a.back.brier - b.back.brier);
 
 printRows('Baseline', baseline, 1);
-printRows('Best composite candidates', byComposite, 14);
+printRows('Best AccIQ candidates', byAccIQ, 14);
 printRows('Best forward Brier candidates', byForwardBrier, 12);
 printRows('Best forward margin-MAE candidates', byForwardMae, 12);
 printRows('Best backward Brier candidates', byBackBrier, 12);

@@ -11,3 +11,4 @@ broken-*.patch
 
 # Eval harness dependencies
 eval/node_modules/
+eval/.cache/

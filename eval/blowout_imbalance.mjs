@@ -1,11 +1,9 @@
 // Targeted test: does BETWEEN-TEAM imbalance predict blowouts (>8)?
 // Run: node --import ./register.mjs blowout_imbalance.mjs
-import { readFileSync } from 'node:fs';
+import { loadDatabase } from './database.mjs';
 import { replayRatings, scoreVolleyballCandidateSplit, getGamesSortedOldestFirst } from '../ratings.js';
 
-const db = JSON.parse(readFileSync('C:/Users/rowla/Documents/Volleyball/default_database', 'utf8'));
-const players = db.players || [];
-const games = db.games || [];
+const { db, players, games, sourceLabel } = await loadDatabase();
 const replay = replayRatings({ players, games, seasonal: true, volleyballAdjusted: true, includeLeagueGames: true, options: { seasonalTaperDays: Math.round(6 * 30.4375) } });
 const ratingMap = replay.ratingMap, carryMap = replay.carryMap || {};
 

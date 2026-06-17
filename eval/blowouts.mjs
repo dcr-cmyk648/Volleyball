@@ -1,13 +1,11 @@
 // Are blowouts (>8 pt margin) driven by strength MISMATCH (balancing can prevent)
 // or by even-matchup variance (balancing cannot)? Run: node --import ./register.mjs blowouts.mjs
-import { readFileSync } from 'node:fs';
+import { loadDatabase } from './database.mjs';
 import {
   replayRatings, scoreVolleyballCandidateSplit, getGamesSortedOldestFirst,
 } from '../ratings.js';
 
-const db = JSON.parse(readFileSync('C:/Users/rowla/Documents/Volleyball/default_database', 'utf8'));
-const players = db.players || [];
-const games = db.games || [];
+const { db, players, games, sourceLabel } = await loadDatabase();
 
 const replay = replayRatings({
   players, games, seasonal: true, volleyballAdjusted: true, includeLeagueGames: true,

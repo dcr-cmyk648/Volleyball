@@ -475,7 +475,7 @@
       GAME_STORAGE_KEY,
       getPlayerRatingTimeline,
       getLeagueContextById,
-      getLeaderboardRawOrdinal,
+      getOverallStandingsRawOrdinal,
       replayRatings,
       getPublicRatingDisplayScale,
       toPublicDisplayRating,
@@ -486,8 +486,6 @@
     const DEFAULT_SEASON_LENGTH_MONTHS = 6;
 
     const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
-    const OVERALL_STANDINGS_CONFIDENCE_GAMES = 22;
-    const OVERALL_STANDINGS_CONFIDENCE_POWER = 1.35;
 
     const TEAM_COLORS = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'cyan', 'pink'];
     const TEAM_LABELS = {
@@ -763,10 +761,7 @@
     }
 
     function getOverallLeaderboardRaw(rawOrdinal, games) {
-      return getLeaderboardRawOrdinal(rawOrdinal, games, {
-        leaderboardConfidenceGames: OVERALL_STANDINGS_CONFIDENCE_GAMES,
-        leaderboardConfidencePower: OVERALL_STANDINGS_CONFIDENCE_POWER
-      });
+      return getOverallStandingsRawOrdinal(rawOrdinal, games);
     }
 
     function getTimelineRatingBefore(row, timelineIndex) {
@@ -880,7 +875,7 @@
     function getModeText({ seasonLengthMonths }) {
       return [
         `${seasonLengthMonths}-month seasonal ranking`,
-        'Plain replay model',
+        'Volleyball-adjusted pair-context model',
         'League games included',
       ].join(' + ');
     }
@@ -943,6 +938,8 @@
       games,
       seasonLengthMonths,
       volleyballAdjusted,
+      volleyballUpdateUsesBalancerContext,
+      volleyballUpdateContextMode,
       includeLeagueGames
     }) {
       return replayRatings({
@@ -950,6 +947,8 @@
         games,
         seasonal: true,
         volleyballAdjusted,
+        volleyballUpdateUsesBalancerContext,
+        volleyballUpdateContextMode,
         includeLeagueGames,
         options: {
           seasonalTaperDays: Math.round(seasonLengthMonths * 30.4375)
@@ -963,6 +962,8 @@
       playerId,
       seasonLengthMonths,
       volleyballAdjusted,
+      volleyballUpdateUsesBalancerContext,
+      volleyballUpdateContextMode,
       includeLeagueGames
     }) {
       const replay = getReplayResult({
@@ -970,6 +971,8 @@
         games,
         seasonLengthMonths,
         volleyballAdjusted,
+        volleyballUpdateUsesBalancerContext,
+        volleyballUpdateContextMode,
         includeLeagueGames
       });
 
@@ -1210,13 +1213,17 @@
       const isLeagueContext = Boolean(leagueContext);
       const seasonLengthMonths = loadSeasonLengthMonths();
       const seasonal = true;
-      const volleyballAdjusted = false;
+      const volleyballAdjusted = true;
+      const volleyballUpdateUsesBalancerContext = true;
+      const volleyballUpdateContextMode = 'pair';
       const includeLeagueGames = true;
       publicRatingScale = getPublicRatingDisplayScale({
         players,
         games,
         seasonal,
         volleyballAdjusted,
+        volleyballUpdateUsesBalancerContext,
+        volleyballUpdateContextMode,
         includeLeagueGames,
         options: {
           seasonalTaperDays: getSeasonalTaperDays()
@@ -1243,6 +1250,8 @@
         playerId,
         seasonLengthMonths,
         volleyballAdjusted,
+        volleyballUpdateUsesBalancerContext,
+        volleyballUpdateContextMode,
         includeLeagueGames
       });
 
@@ -1252,6 +1261,8 @@
         playerId,
         seasonal,
         volleyballAdjusted,
+        volleyballUpdateUsesBalancerContext,
+        volleyballUpdateContextMode,
         includeLeagueGames,
         _calibratedStarts: calibratedStartMap,
         options: {

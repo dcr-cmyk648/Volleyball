@@ -6,9 +6,8 @@
 // Optional:
 //   VBALL_DB=/path/to/default_database npm run margin
 
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { loadDatabase } from './database.mjs';
+import { attachAccIQDeltas, computeAccIQ } from './metrics.mjs';
 import {
   replayRatings,
   calibrateMarginModel,
@@ -19,11 +18,7 @@ import {
   toDisplayRating,
 } from '../ratings.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.VBALL_DB || resolve(__dirname, '../default_database');
-const db = JSON.parse(readFileSync(DB_PATH, 'utf8'));
-const players = db.players || [];
-const games = db.games || [];
+const { db, players, games, sourceLabel } = await loadDatabase();
 
 const SEASON_MONTHS = 6;
 const seasonalTaperDays = Math.round(SEASON_MONTHS * 30.4375);
@@ -205,7 +200,7 @@ function formatNumber(value, digits = 3) {
   return value === null || !Number.isFinite(value) ? 'n/a' : value.toFixed(digits);
 }
 
-console.log(`DB: ${DB_PATH}`);
+console.log(`DB: ${sourceLabel}`);
 console.log(`players=${players.length} games=${games.length} qualityGames=${games.filter(isQualityGame).length}`);
 console.log('');
 
@@ -234,9 +229,11 @@ console.log(
     'backAcc'.padStart(8),
     'backBrier'.padStart(10),
     'backMAE'.padStart(8),
+    'AccIQ'.padStart(7),
+    'dIQ'.padStart(7),
   ].join(' ')
 );
-console.log('-'.repeat(86));
+console.log('-'.repeat(94));
 
 const rows = variants.map(([label, options]) => ({
   label,
@@ -244,7 +241,11 @@ const rows = variants.map(([label, options]) => ({
   forward: computeForwardQuality(options),
   back: computeBackQuality(options),
   impact: getTargetImpact(options),
+})).map(row => ({
+  ...row,
+  accIQ: computeAccIQ({ forward: row.forward, back: row.back }),
 }));
+attachAccIQDeltas(rows, row => row.label === 'current tiny convex');
 
 rows.forEach(row => {
   console.log(
@@ -256,6 +257,8 @@ rows.forEach(row => {
       formatPercent(row.back.accuracy).padStart(8),
       formatNumber(row.back.brier).padStart(10),
       formatNumber(row.back.marginMAE).padStart(8),
+      formatNumber(row.accIQ, 2).padStart(7),
+      formatNumber(row.accIQDelta, 2).padStart(7),
     ].join(' ')
   );
 });

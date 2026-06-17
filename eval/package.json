@@ -9,12 +9,20 @@
     "margin:grid": "node --no-deprecation --import ./register.mjs margin_grid.mjs",
     "league": "node --no-deprecation --import ./register.mjs league_sweep.mjs",
     "balance": "node --no-deprecation --import ./register.mjs balancing_quality.mjs",
+    "balance:iq": "node --no-deprecation --import ./register.mjs balance_iq_sweep.mjs",
+    "baseline:compare": "node --no-deprecation --import ./register.mjs dashboard_baseline_compare.mjs",
     "balancer:grid": "node --no-deprecation --import ./register.mjs balancer_grid.mjs",
     "probscale": "node --no-deprecation --import ./register.mjs probability_scale_sweep.mjs",
     "carry": "node --no-deprecation --import ./register.mjs carry_sweep.mjs",
     "probtemp": "node --no-deprecation --import ./register.mjs probability_temperature_sweep.mjs",
     "league:team": "node --no-deprecation --import ./register.mjs league_team_sweep.mjs",
-    "closewin": "node --no-deprecation --import ./register.mjs close_win_sweep.mjs"
+    "closewin": "node --no-deprecation --import ./register.mjs close_win_sweep.mjs",
+    "size:effects": "node --no-deprecation --import ./register.mjs size_effects.mjs",
+    "size:bonus": "node --no-deprecation --import ./register.mjs size_bonus_sweep.mjs",
+    "back:balancer": "node --no-deprecation --import ./register.mjs back_explanatory_balancer.mjs",
+    "update:context": "node --no-deprecation --import ./register.mjs update_context_sweep.mjs",
+    "release:compare": "node --no-deprecation --import ./register.mjs release_compare.mjs",
+    "release:compare:balancer": "RELEASE_COMPARE_SCORING=balancer node --no-deprecation --import ./register.mjs release_compare.mjs"
   },
   "dependencies": {
     "openskill": "4.1.1"

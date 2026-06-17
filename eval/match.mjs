@@ -1,13 +1,11 @@
 // Find which replay config reproduces the in-app QC numbers.
-import { readFileSync } from 'node:fs';
+import { loadDatabase } from './database.mjs';
 import {
   replayRatings, calibrateMarginModel, predictExpectedMargin,
   scoreVolleyballCandidateSplit, getGamesSortedOldestFirst,
 } from '../ratings.js';
 
-const db = JSON.parse(readFileSync('C:/Users/rowla/Documents/Volleyball/default_database', 'utf8'));
-const players = db.players || [];
-const games = db.games || [];
+const { db, players, games, sourceLabel } = await loadDatabase();
 
 function run(volleyballAdjusted, includeLeagueGames, months) {
   const replay = replayRatings({

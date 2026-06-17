@@ -7,9 +7,8 @@
 // so they do NOT change with model weights — only acc / MAE / slope do.
 // Those outcome metrics only move when teams are formed differently (forward-looking).
 
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { loadDatabase } from './database.mjs';
+import { attachAccIQDeltas, computeSinglePassAccIQ } from './metrics.mjs';
 import {
   replayRatings,
   calibrateMarginModel,
@@ -18,11 +17,7 @@ import {
   getGamesSortedOldestFirst,
 } from '../ratings.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.VBALL_DB || resolve(__dirname, '../default_database');
-const db = JSON.parse(readFileSync(DB_PATH, 'utf8'));
-const players = db.players || [];
-const games = db.games || [];
+const { db, players, games, sourceLabel } = await loadDatabase();
 
 const SEASON_MONTHS = 6;
 const seasonalTaperDays = Math.round(SEASON_MONTHS * 30.4375);
@@ -74,7 +69,7 @@ function evaluate(label, vbOverrides = {}) {
     }
   }
 
-  return {
+  const result = {
     label,
     n: analyzable.length,
     acc: correct / analyzable.length,
@@ -85,6 +80,12 @@ function evaluate(label, vbOverrides = {}) {
     slope: marginModel.slope,
     baseMargin: marginModel.baseMargin,
   };
+  result.accIQ = computeSinglePassAccIQ({
+    accuracy: result.acc,
+    brier: null,
+    marginMAE: result.mae,
+  });
+  return result;
 }
 
 const w = (t, s, a, d, wr) => ({
@@ -92,7 +93,7 @@ const w = (t, s, a, d, wr) => ({
 });
 
 const sets = [
-  ['current default (.30/.24/.28/.10/.08)', {}],
+  ['current production default', {}],
   ['old top-heavy (.45/.20/.17/.12/.06)', w(.45, .20, .17, .12, .06)],
   ['proportional (.30/.23/.28/.12/.07)', w(.30, .23, .28, .12, .07)],
   ['aggressive (.28/.24/.30/.10/.08)', w(.28, .24, .30, .10, .08)],
@@ -101,14 +102,18 @@ const sets = [
 
 const fmt = (x, d = 2) => (Number.isFinite(x) ? x.toFixed(d) : 'n/a');
 console.log('games analyzed:', evaluate('', {}).n, '\n');
-console.log('set'.padEnd(42), 'acc ', 'MAE ', 'w5% ', 'avgD', 'blow', 'slope');
-console.log('-'.repeat(80));
-for (const [label, ov] of sets) {
-  const r = evaluate(label, ov);
+const rows = sets.map(([label, ov]) => evaluate(label, ov));
+attachAccIQDeltas(rows, row => row.label === 'current production default');
+
+console.log('set'.padEnd(42), 'acc ', 'MAE ', 'AccIQ', 'dIQ  ', 'w5% ', 'avgD', 'blow', 'slope');
+console.log('-'.repeat(96));
+for (const r of rows) {
   console.log(
     r.label.padEnd(42),
     (r.acc * 100).toFixed(0).padStart(3) + '%',
     fmt(r.mae, 2).padStart(4),
+    fmt(r.accIQ, 2).padStart(5),
+    fmt(r.accIQDelta, 2).padStart(5),
     (r.within5 * 100).toFixed(0).padStart(3) + '%',
     fmt(r.avgDiff, 1).padStart(4),
     String(r.blowouts).padStart(4),

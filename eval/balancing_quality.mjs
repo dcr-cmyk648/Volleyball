@@ -11,9 +11,7 @@
 // Run from eval/:
 //   npm run balance
 
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { loadDatabase } from './database.mjs';
 import {
   replayRatings,
   calibrateMarginModel,
@@ -21,18 +19,19 @@ import {
   scoreVolleyballCandidateSplit,
   getGamesSortedOldestFirst,
 } from '../ratings.js';
+import {
+  attachBalanceIQDeltas,
+  compareBalanceIQDesc,
+  computeBalanceIQ,
+} from './metrics.mjs';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.VBALL_DB || resolve(__dirname, '../default_database');
-const db = JSON.parse(readFileSync(DB_PATH, 'utf8'));
-const players = db.players || [];
-const games = db.games || [];
+const { players, games, sourceLabel } = await loadDatabase();
 
 const SEASON_MONTHS = 6;
 const seasonalTaperDays = Math.round(SEASON_MONTHS * 30.4375);
 
 const ratingConfigs = [
-  ['rating: current league x2.3', {}, true],
+  ['rating: current default', {}, true],
   ['rating: exclude league', {}, false],
   ['rating: league x1', { leagueUpdateMultiplier: 1.0 }, true],
   ['rating: league x2', { leagueUpdateMultiplier: 2.0 }, true],
@@ -57,8 +56,8 @@ const balancingConfigs = [
   ['balancer: weak-link-', w(0.33, 0.25, 0.28, 0.10, 0.04)],
   ['balancer: no carry', { carryScale: 0 }],
   ['balancer: carry 12', { carryScale: 12 }],
-  ['balancer: size 0.4', { sizeBonusPerExtraPlayer: 0.4 }],
-  ['balancer: size 1.0', { sizeBonusPerExtraPlayer: 1.0 }],
+  ['balancer: global size 0.4', { sizeBonusByBaseSizeEnabled: false, sizeBonusPerExtraPlayer: 0.4 }],
+  ['balancer: global size 1.0', { sizeBonusByBaseSizeEnabled: false, sizeBonusPerExtraPlayer: 1.0 }],
   ['balancer: probScale 3.8', { probabilityScale: 3.8 }],
   ['balancer: probScale 5.2', { probabilityScale: 5.2 }],
 ];
@@ -287,10 +286,12 @@ function evaluatePair({
     priorGames.push(game);
   });
 
+  const summary = summarize(stats);
   return {
     ratingLabel,
     balancingLabel,
-    ...summarize(stats),
+    ...summary,
+    balanceIQ: computeBalanceIQ(summary),
   };
 }
 
@@ -307,6 +308,8 @@ function printRows(title, rows, limit = 12) {
   console.log([
     'rating'.padEnd(24),
     'balancer'.padEnd(22),
+    'BalIQ'.padStart(6),
+    'dBal'.padStart(6),
     'actMAE'.padStart(6),
     'predAct'.padStart(7),
     'predBest'.padStart(8),
@@ -317,11 +320,13 @@ function printRows(title, rows, limit = 12) {
     'hi->BO'.padStart(7),
     'lo->W5'.padStart(7),
   ].join(' '));
-  console.log('-'.repeat(106));
+  console.log('-'.repeat(120));
   rows.slice(0, limit).forEach(row => {
     console.log([
       row.ratingLabel.slice(0, 24).padEnd(24),
       row.balancingLabel.slice(0, 22).padEnd(22),
+      fmt(row.balanceIQ).padStart(6),
+      fmt(row.balanceIQDelta).padStart(6),
       fmt(row.actualMarginMAE).padStart(6),
       fmt(row.avgPredictedActualGap).padStart(7),
       fmt(row.avgPredictedBestGap).padStart(8),
@@ -336,10 +341,11 @@ function printRows(title, rows, limit = 12) {
   console.log('');
 }
 
-console.log(`DB: ${DB_PATH}`);
+console.log(`DB: ${sourceLabel}`);
 console.log(`players=${players.length} games=${games.length} scoredNonLeague=${games.filter(isScoredNonLeagueGame).length}`);
 console.log('');
-console.log('Metric notes: actMAE is actual split predicted-margin MAE. predBest is the best predicted gap among same-size splits.');
+console.log('Metric notes: BalanceIQ is the primary balancer score: 45% best predicted gap, 25% selected <=5 rate, 20% selected >8 avoidance, 10% actual-split margin calibration.');
+console.log('actMAE is actual split predicted-margin MAE. predBest is the best predicted gap among same-size splits.');
 console.log('selLow/selHigh are rates for the best predicted split. hi->BO and lo->W5 are calibration checks on actual historical splits.');
 console.log('');
 
@@ -368,12 +374,18 @@ const byReduction = [...rows].sort((a, b) =>
   b.avgPredictedGapReduction - a.avgPredictedGapReduction ||
   a.avgPredictedBestGap - b.avgPredictedBestGap
 );
+attachBalanceIQDeltas(rows, row =>
+  row.ratingLabel === 'rating: current default' &&
+  row.balancingLabel === 'balancer: current'
+);
+const byBalanceIQ = [...rows].sort(compareBalanceIQDesc);
 const baselines = rows.filter(row =>
-  row.ratingLabel === 'rating: current league x2.3' &&
+  row.ratingLabel === 'rating: current default' &&
   row.balancingLabel === 'balancer: current'
 );
 
 printRows('Baseline', baselines, 1);
+printRows('Best BalanceIQ candidates', byBalanceIQ, 14);
 printRows('Best predicted balancing closeness', byBestGap, 14);
 printRows('Best actual-split calibration', byActualMae, 14);
 printRows('Largest predicted improvement over actual splits', byReduction, 14);

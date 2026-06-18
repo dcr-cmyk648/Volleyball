@@ -196,6 +196,38 @@ export const DEFAULT_RATING_OPTIONS = {
   // Set to 0 to disable.
   calibrationGames: 10,
 
+  // Eval/modeling knobs for OpenSkill-native update tuning. Defaults preserve
+  // the current behavior: binary win/loss scores, package-default beta, and no tau.
+  openSkillScoreMode: 'binary',
+  openSkillBetaMultiplier: 1,
+  openSkillTau: null,
+  openSkillPreventSigmaIncrease: false,
+  openSkillEvidenceMultiplierMode: 'volleyball',
+
+  // Streak protection: dampen a player's current update when a recent same-sign
+  // run is meaningfully less likely than random ordering of that player's recent
+  // update deltas.
+  streakProtectionEnabled: true,
+  streakProtectionMode: 'deltaShuffle',
+  streakProtectionWindow: 6,
+  streakProtectionMinGames: 14,
+  streakProtectionThresholdRaw: 2,
+  streakProtectionMinMultiplier: 0.25,
+  streakProtectionStrength: 1,
+  streakProtectionShuffleIterations: 20,
+  streakProtectionApplyTo: 'muOnly',
+
+  // Session protection: default-off eval knob for dampening same-day pileups.
+  // Unlike rolling streak protection, this resets when the player reaches a new
+  // session/date, so later good/bad days can still move the rating normally.
+  sessionProtectionEnabled: false,
+  sessionProtectionMinPriorGames: 14,
+  sessionProtectionMinSessionGames: 4,
+  sessionProtectionThresholdRaw: 2,
+  sessionProtectionMinMultiplier: 0.25,
+  sessionProtectionStrength: 1,
+  sessionProtectionApplyTo: 'muOnly',
+
   // Leaderboard-only confidence adjustment.
   // This does NOT affect OpenSkill updates or team balancing.
   //
@@ -1644,6 +1676,467 @@ function applyUpdateMultiplier({
   });
 }
 
+function getOpenSkillOutcomeScores(game, cfg = {}) {
+  const mode = cfg.openSkillScoreMode || 'binary';
+  if (
+    mode === 'rawScore' &&
+    typeof game?.scoreRed === 'number' &&
+    typeof game?.scoreBlue === 'number'
+  ) {
+    return [game.scoreRed, game.scoreBlue];
+  }
+
+  if (
+    mode === 'marginScore' &&
+    typeof game?.scoreRed === 'number' &&
+    typeof game?.scoreBlue === 'number'
+  ) {
+    const redWon = game.winner === 'red';
+    const pointDiff = Math.abs(game.scoreRed - game.scoreBlue);
+    const spread = Math.min(1, pointDiff / 10);
+    return redWon ? [1 + spread, 0] : [0, 1 + spread];
+  }
+
+  return game?.winner === 'red'
+    ? [1, 0]
+    : [0, 1];
+}
+
+function getOpenSkillRateOptions(game, cfg = {}) {
+  const rateOptions = {
+    score: getOpenSkillOutcomeScores(game, cfg),
+  };
+
+  const betaMultiplier = Number(cfg.openSkillBetaMultiplier);
+  if (Number.isFinite(betaMultiplier) && betaMultiplier > 0 && betaMultiplier !== 1) {
+    rateOptions.beta = (Number(cfg.sigma) || DEFAULT_RATING_OPTIONS.sigma) / 2 * betaMultiplier;
+  }
+
+  const tau = Number(cfg.openSkillTau);
+  if (Number.isFinite(tau) && tau > 0) {
+    rateOptions.tau = tau;
+    rateOptions.preventSigmaIncrease = Boolean(cfg.openSkillPreventSigmaIncrease);
+  }
+
+  return rateOptions;
+}
+
+function getEvidenceModeMultiplier(evidence, mode, side = 'red') {
+  if (mode === 'none') return 1;
+  if (mode === 'baseOnly') return evidence.baseUpdateMultiplier ?? evidence.evidenceWeight ?? 1;
+  if (mode === 'seasonalOnly') return evidence.seasonalWeight ?? 1;
+  return side === 'blue'
+    ? evidence.blueFinalMultiplier
+    : evidence.redFinalMultiplier;
+}
+
+function hashStringToSeed(value) {
+  const text = String(value ?? '');
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+function median(values) {
+  const sorted = values
+    .filter(value => Number.isFinite(value))
+    .sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function getEntryForPlayer(historyEntry, id) {
+  const targetId = String(id);
+  const redIndex = (historyEntry.before?.red || []).findIndex(entry => String(entry.id) === targetId);
+  if (redIndex >= 0) {
+    return {
+      side: 'red',
+      before: historyEntry.before.red[redIndex],
+      after: historyEntry.after?.red?.[redIndex],
+    };
+  }
+
+  const blueIndex = (historyEntry.before?.blue || []).findIndex(entry => String(entry.id) === targetId);
+  if (blueIndex >= 0) {
+    return {
+      side: 'blue',
+      before: historyEntry.before.blue[blueIndex],
+      after: historyEntry.after?.blue?.[blueIndex],
+    };
+  }
+
+  return null;
+}
+
+function buildRatingMapFromBeforeEntries(historyEntry, targetId, targetSkill, cfg) {
+  const map = {};
+  [...(historyEntry.before?.red || []), ...(historyEntry.before?.blue || [])].forEach(entry => {
+    map[entry.id] = rating({
+      mu: Number(entry.mu),
+      sigma: clamp(Number(entry.sigma), 1, cfg.sigma),
+    });
+  });
+  map[targetId] = rating({
+    mu: Number(targetSkill.mu),
+    sigma: clamp(Number(targetSkill.sigma), 1, cfg.sigma),
+  });
+  return map;
+}
+
+function simulatePlayerLocalWindow({
+  playerId,
+  entries,
+  startSkill,
+  cfg,
+  volleyballOptions = {},
+}) {
+  let skill = rating({
+    mu: Number(startSkill.mu),
+    sigma: clamp(Number(startSkill.sigma), 1, cfg.sigma),
+  });
+
+  entries.forEach(entry => {
+    const localMap = buildRatingMapFromBeforeEntries(entry, playerId, skill, cfg);
+    rateSingleGame(entry.game, localMap, {
+      ...cfg,
+      seasonalWeight: Number(entry.seasonalWeight) || 1,
+      volleyballAdjusted: Boolean(entry.volleyballAdjusted),
+      volleyballOptions,
+    });
+    if (localMap[playerId]) {
+      skill = localMap[playerId];
+    }
+  });
+
+  return skill;
+}
+
+function getTrailingRunMagnitude(values) {
+  if (!values.length) return 0;
+  const last = Number(values[values.length - 1]) || 0;
+  const direction = Math.sign(last);
+  if (!direction) return 0;
+
+  let total = 0;
+  for (let i = values.length - 1; i >= 0; i -= 1) {
+    const value = Number(values[i]) || 0;
+    if (Math.sign(value) !== direction) break;
+    total += value;
+  }
+  return Math.abs(total);
+}
+
+function getStreakDampeningMultiplier({
+  beforeRaw,
+  afterRaw,
+  excess,
+  minMultiplier,
+  strength,
+}) {
+  const rawDelta = afterRaw - beforeRaw;
+  if (!Number.isFinite(rawDelta) || Math.abs(rawDelta) <= 0.0001) return 1;
+
+  const fullCorrectionMultiplier = clamp((Math.abs(rawDelta) - excess) / Math.abs(rawDelta), 0, 1);
+  const targetMultiplier = 1 - strength * (1 - fullCorrectionMultiplier);
+  return clamp(targetMultiplier, minMultiplier, 1);
+}
+
+function getPlayerReplayStreakMultiplier({
+  id,
+  historyEntry,
+  recentEntryMap,
+  cfg,
+  volleyballOptions = {},
+  windowSize,
+  threshold,
+  minMultiplier,
+  strength,
+}) {
+  if (!recentEntryMap) return 1;
+
+  const priorEntries = recentEntryMap.get(id) || [];
+  const candidateEntries = [...priorEntries, historyEntry].slice(-windowSize);
+  if (candidateEntries.length < windowSize) return 1;
+
+  const firstEntry = getEntryForPlayer(candidateEntries[0], id);
+  const currentEntry = getEntryForPlayer(historyEntry, id);
+  if (!firstEntry?.before || !currentEntry?.before || !currentEntry?.after) return 1;
+
+  const startSkill = rating({
+    mu: Number(firstEntry.before.mu),
+    sigma: clamp(Number(firstEntry.before.sigma), 1, cfg.sigma),
+  });
+  const startRaw = getRawOrdinal(startSkill, cfg);
+  const actualEndRaw = Number(currentEntry.after.rating);
+  const beforeCurrentRaw = Number(currentEntry.before.rating);
+  const currentDelta = actualEndRaw - beforeCurrentRaw;
+  const actualWindowDelta = actualEndRaw - startRaw;
+  if (!Number.isFinite(actualWindowDelta) || Math.abs(currentDelta) <= 0.0001) return 1;
+
+  const iterations = Math.max(5, Number(cfg.streakProtectionShuffleIterations) || 30);
+  const seed = hashStringToSeed(`${id}:${historyEntry.game?.id ?? historyEntry.game?.createdAt ?? ''}:${candidateEntries.length}`);
+  const random = seededRandom(seed);
+  const shuffledDeltas = [];
+
+  for (let i = 0; i < iterations; i += 1) {
+    const shuffledEntries = shuffledCopy(candidateEntries, random);
+    const shuffledSkill = simulatePlayerLocalWindow({
+      playerId: id,
+      entries: shuffledEntries,
+      startSkill,
+      cfg,
+      volleyballOptions,
+    });
+    shuffledDeltas.push(getRawOrdinal(shuffledSkill, cfg) - startRaw);
+  }
+
+  const medianWindowDelta = median(shuffledDeltas);
+  if (!Number.isFinite(medianWindowDelta)) return 1;
+
+  const orderSensitiveDelta = actualWindowDelta - medianWindowDelta;
+  if (Math.abs(orderSensitiveDelta) <= threshold) return 1;
+  if (Math.sign(orderSensitiveDelta) !== Math.sign(currentDelta)) return 1;
+
+  return getStreakDampeningMultiplier({
+    beforeRaw: beforeCurrentRaw,
+    afterRaw: actualEndRaw,
+    excess: Math.abs(orderSensitiveDelta) - threshold,
+    minMultiplier,
+    strength,
+  });
+}
+
+function applyStreakProtectionForEntry({
+  historyEntry,
+  ratingMap,
+  statsMap,
+  recentDeltaMap,
+  recentEntryMap,
+  cfg,
+  volleyballOptions = {},
+} = {}) {
+  if (!cfg.streakProtectionEnabled || !historyEntry || !recentDeltaMap) return;
+
+  const mode = cfg.streakProtectionMode || 'net';
+  const windowSize = Math.max(2, Number(cfg.streakProtectionWindow) || 10);
+  const minGames = Math.max(0, Number(cfg.streakProtectionMinGames) || 0);
+  const threshold = Math.max(0, Number(cfg.streakProtectionThresholdRaw) || 0);
+  const minMultiplier = clamp(Number(cfg.streakProtectionMinMultiplier) || 0, 0, 1);
+  const strength = clamp(Number(cfg.streakProtectionStrength) || 0, 0, 1);
+  const iterations = Math.max(5, Number(cfg.streakProtectionShuffleIterations) || 30);
+  const applyTo = cfg.streakProtectionApplyTo || 'skill';
+
+  if (threshold <= 0 || strength <= 0) return;
+
+  const pairs = [
+    ...((historyEntry.before?.red || []).map((before, index) => ({
+      before,
+      after: historyEntry.after?.red?.[index],
+    }))),
+    ...((historyEntry.before?.blue || []).map((before, index) => ({
+      before,
+      after: historyEntry.after?.blue?.[index],
+    }))),
+  ];
+
+  pairs.forEach(({ before, after }) => {
+    if (!before || !after) return;
+    const id = String(before.id);
+    if (isSyntheticLeagueMemberId(id)) return;
+
+    const priorDeltas = recentDeltaMap.get(id) || [];
+    const rawDelta = Number(after.rating) - Number(before.rating);
+    let finalDelta = Number.isFinite(rawDelta) ? rawDelta : 0;
+
+    const preGameCount = statsMap[id]?.games ?? 0;
+    const candidateWindow = [...priorDeltas, finalDelta].slice(-windowSize);
+    let multiplier = 1;
+    let auditValue = null;
+
+    if (
+      preGameCount >= minGames &&
+      candidateWindow.length >= windowSize &&
+      Math.abs(finalDelta) > 0.0001
+    ) {
+      if (mode === 'deltaShuffle') {
+        const actualTail = getTrailingRunMagnitude(candidateWindow);
+        const seed = hashStringToSeed(`${id}:${historyEntry.game?.id ?? historyEntry.game?.createdAt ?? ''}:delta`);
+        const random = seededRandom(seed);
+        const shuffledTailMagnitudes = [];
+        for (let i = 0; i < iterations; i += 1) {
+          shuffledTailMagnitudes.push(getTrailingRunMagnitude(shuffledCopy(candidateWindow, random)));
+        }
+        const medianTail = median(shuffledTailMagnitudes) ?? 0;
+        auditValue = actualTail - medianTail;
+        if (actualTail > medianTail + threshold) {
+          multiplier = getStreakDampeningMultiplier({
+            beforeRaw: Number(before.rating),
+            afterRaw: Number(after.rating),
+            excess: actualTail - medianTail - threshold,
+            minMultiplier,
+            strength,
+          });
+        }
+      } else if (mode === 'playerReplay') {
+        multiplier = getPlayerReplayStreakMultiplier({
+          id,
+          historyEntry,
+          recentEntryMap,
+          cfg,
+          volleyballOptions,
+          windowSize,
+          threshold,
+          minMultiplier,
+          strength,
+        });
+      } else {
+        const netWindowDelta = candidateWindow.reduce((sum, value) => sum + value, 0);
+        const sameDirection = Math.sign(netWindowDelta) !== 0 && Math.sign(finalDelta) === Math.sign(netWindowDelta);
+        auditValue = netWindowDelta;
+        if (sameDirection && Math.abs(netWindowDelta) > threshold) {
+          multiplier = getStreakDampeningMultiplier({
+            beforeRaw: Number(before.rating),
+            afterRaw: Number(after.rating),
+            excess: Math.abs(netWindowDelta) - threshold,
+            minMultiplier,
+            strength,
+          });
+        }
+      }
+    }
+
+    if (multiplier < 1) {
+      const newMu = Number(before.mu) + (Number(after.mu) - Number(before.mu)) * multiplier;
+      const newSigma = applyTo === 'muOnly'
+        ? Number(after.sigma)
+        : Number(before.sigma) + (Number(after.sigma) - Number(before.sigma)) * multiplier;
+      const adjustedSkill = rating({
+        mu: newMu,
+        sigma: clamp(newSigma, 1, cfg.sigma),
+      });
+      const adjustedRaw = getRawOrdinal(adjustedSkill, cfg);
+
+      ratingMap[id] = adjustedSkill;
+      after.mu = Number(adjustedSkill.mu);
+      after.sigma = Number(adjustedSkill.sigma);
+      after.rating = adjustedRaw;
+      after.streakProtectionMultiplier = multiplier;
+      after.streakProtectionMode = mode;
+      after.streakProtectionApplyTo = applyTo;
+      after.streakProtectionAuditValue = auditValue;
+      finalDelta = adjustedRaw - Number(before.rating);
+    }
+
+    recentDeltaMap.set(id, [...priorDeltas, finalDelta].slice(-windowSize));
+    if (recentEntryMap) {
+      const priorEntries = recentEntryMap.get(id) || [];
+      recentEntryMap.set(id, [...priorEntries, historyEntry].slice(-windowSize));
+    }
+  });
+}
+
+function getSessionKeyForGame(game) {
+  return String(game?.date || game?.createdAt || game?.id || 'unknown-session');
+}
+
+function applySessionProtectionForEntry({
+  historyEntry,
+  ratingMap,
+  statsMap,
+  sessionDeltaMap,
+  cfg,
+} = {}) {
+  if (!cfg.sessionProtectionEnabled || !historyEntry || !sessionDeltaMap) return;
+
+  const minPriorGames = Math.max(0, Number(cfg.sessionProtectionMinPriorGames) || 0);
+  const minSessionGames = Math.max(1, Number(cfg.sessionProtectionMinSessionGames) || 1);
+  const threshold = Math.max(0, Number(cfg.sessionProtectionThresholdRaw) || 0);
+  const minMultiplier = clamp(Number(cfg.sessionProtectionMinMultiplier) || 0, 0, 1);
+  const strength = clamp(Number(cfg.sessionProtectionStrength) || 0, 0, 1);
+  const applyTo = cfg.sessionProtectionApplyTo || 'muOnly';
+  const sessionKey = getSessionKeyForGame(historyEntry.game);
+
+  if (threshold <= 0 || strength <= 0) return;
+
+  const pairs = [
+    ...((historyEntry.before?.red || []).map((before, index) => ({
+      before,
+      after: historyEntry.after?.red?.[index],
+    }))),
+    ...((historyEntry.before?.blue || []).map((before, index) => ({
+      before,
+      after: historyEntry.after?.blue?.[index],
+    }))),
+  ];
+
+  pairs.forEach(({ before, after }) => {
+    if (!before || !after) return;
+    const id = String(before.id);
+    if (isSyntheticLeagueMemberId(id)) return;
+
+    const previousState = sessionDeltaMap.get(id);
+    const priorDeltas = previousState?.sessionKey === sessionKey
+      ? previousState.deltas || []
+      : [];
+
+    const rawDelta = Number(after.rating) - Number(before.rating);
+    let finalDelta = Number.isFinite(rawDelta) ? rawDelta : 0;
+    const preGameCount = statsMap[id]?.games ?? 0;
+    const candidateSession = [...priorDeltas, finalDelta];
+    const netSessionDelta = candidateSession.reduce((sum, value) => sum + value, 0);
+    const sameDirection = Math.sign(netSessionDelta) !== 0 && Math.sign(finalDelta) === Math.sign(netSessionDelta);
+
+    if (
+      preGameCount >= minPriorGames &&
+      candidateSession.length >= minSessionGames &&
+      Math.abs(finalDelta) > 0.0001 &&
+      sameDirection &&
+      Math.abs(netSessionDelta) > threshold
+    ) {
+      const multiplier = getStreakDampeningMultiplier({
+        beforeRaw: Number(before.rating),
+        afterRaw: Number(after.rating),
+        excess: Math.abs(netSessionDelta) - threshold,
+        minMultiplier,
+        strength,
+      });
+
+      if (multiplier < 1) {
+        const newMu = Number(before.mu) + (Number(after.mu) - Number(before.mu)) * multiplier;
+        const newSigma = applyTo === 'muOnly'
+          ? Number(after.sigma)
+          : Number(before.sigma) + (Number(after.sigma) - Number(before.sigma)) * multiplier;
+        const adjustedSkill = rating({
+          mu: newMu,
+          sigma: clamp(newSigma, 1, cfg.sigma),
+        });
+        const adjustedRaw = getRawOrdinal(adjustedSkill, cfg);
+
+        ratingMap[id] = adjustedSkill;
+        after.mu = Number(adjustedSkill.mu);
+        after.sigma = Number(adjustedSkill.sigma);
+        after.rating = adjustedRaw;
+        after.sessionProtectionMultiplier = multiplier;
+        after.sessionProtectionApplyTo = applyTo;
+        after.sessionProtectionNetDelta = netSessionDelta;
+        after.sessionProtectionSessionGames = candidateSession.length;
+        finalDelta = adjustedRaw - Number(before.rating);
+      }
+    }
+
+    sessionDeltaMap.set(id, {
+      sessionKey,
+      deltas: [...priorDeltas, finalDelta],
+    });
+  });
+}
+
 function getVolleyballUpdateMultiplier({
   game,
   redTeam,
@@ -1881,15 +2374,9 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     seasonalWeight,
   });
 
-  const outcomeScores = game?.winner === 'red'
-    ? [1, 0]
-    : [0, 1];
-
   const [updatedRedTeam, updatedBlueTeam] = rate(
     [redTeam, blueTeam],
-    {
-      score: outcomeScores,
-    }
+    getOpenSkillRateOptions(game, cfg)
   );
 
   applyUpdateMultiplier({
@@ -1897,7 +2384,7 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     beforeEntries: redBefore,
     updatedTeam: updatedRedTeam,
     ratingMap,
-    multiplier: evidence.redFinalMultiplier,
+    multiplier: getEvidenceModeMultiplier(evidence, cfg.openSkillEvidenceMultiplierMode, 'red'),
     options: cfg,
   });
 
@@ -1906,7 +2393,7 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     beforeEntries: blueBefore,
     updatedTeam: updatedBlueTeam,
     ratingMap,
-    multiplier: evidence.blueFinalMultiplier,
+    multiplier: getEvidenceModeMultiplier(evidence, cfg.openSkillEvidenceMultiplierMode, 'blue'),
     options: cfg,
   });
 
@@ -2376,6 +2863,9 @@ export function replayRatings({
   const updateContextUsesPair = updateContextMode === 'full' || updateContextMode === 'pair';
   const updatePairContextMap = volleyballAdjusted && updateContextUsesPair ? new Map() : null;
   const priorGamesForUpdateContext = [];
+  const streakRecentDeltaMap = cfg.streakProtectionEnabled ? new Map() : null;
+  const streakRecentEntryMap = cfg.streakProtectionEnabled ? new Map() : null;
+  const sessionDeltaMap = cfg.sessionProtectionEnabled ? new Map() : null;
 
   sortedGames.forEach(game => {
     const seasonalWeight = seasonal
@@ -2487,6 +2977,24 @@ export function replayRatings({
         }
       });
     }
+
+    applyStreakProtectionForEntry({
+      historyEntry,
+      ratingMap,
+      statsMap,
+      recentDeltaMap: streakRecentDeltaMap,
+      recentEntryMap: streakRecentEntryMap,
+      cfg,
+      volleyballOptions,
+    });
+
+    applySessionProtectionForEntry({
+      historyEntry,
+      ratingMap,
+      statsMap,
+      sessionDeltaMap,
+      cfg,
+    });
 
     const redTeam = Array.isArray(game.redTeam) ? game.redTeam : [];
     const blueTeam = Array.isArray(game.blueTeam) ? game.blueTeam : [];
@@ -2781,6 +3289,9 @@ export function getPlayerRatingTimeline({
   const updateContextUsesPair = updateContextMode === 'full' || updateContextMode === 'pair';
   const updatePairContextMap = volleyballAdjusted && updateContextUsesPair ? new Map() : null;
   const priorGamesForUpdateContext = [];
+  const streakRecentDeltaMap = cfg.streakProtectionEnabled ? new Map() : null;
+  const streakRecentEntryMap = cfg.streakProtectionEnabled ? new Map() : null;
+  const sessionDeltaMap = cfg.sessionProtectionEnabled ? new Map() : null;
 
   sortedGames.forEach((game, chronologicalIndex) => {
     const seasonalWeight = seasonal
@@ -2884,6 +3395,24 @@ export function getPlayerRatingTimeline({
       });
     }
 
+    applyStreakProtectionForEntry({
+      historyEntry: result,
+      ratingMap,
+      statsMap,
+      recentDeltaMap: streakRecentDeltaMap,
+      recentEntryMap: streakRecentEntryMap,
+      cfg,
+      volleyballOptions,
+    });
+
+    applySessionProtectionForEntry({
+      historyEntry: result,
+      ratingMap,
+      statsMap,
+      sessionDeltaMap,
+      cfg,
+    });
+
     // Update statsMap game counts (must happen after burn-in/freeze reads pre-game count).
     const redTeam = Array.isArray(game.redTeam) ? game.redTeam : [];
     const blueTeam = Array.isArray(game.blueTeam) ? game.blueTeam : [];
@@ -2974,6 +3503,14 @@ export function getPlayerRatingTimeline({
       volleyballUpdateMultiplier: result.volleyballUpdateMultiplier,
       evidenceWeight: result.evidenceWeight,
       finalUpdateMultiplier: result.finalUpdateMultiplier,
+      streakProtectionMultiplier: after.streakProtectionMultiplier,
+      streakProtectionMode: after.streakProtectionMode,
+      streakProtectionApplyTo: after.streakProtectionApplyTo,
+      streakProtectionAuditValue: after.streakProtectionAuditValue,
+      sessionProtectionMultiplier: after.sessionProtectionMultiplier,
+      sessionProtectionApplyTo: after.sessionProtectionApplyTo,
+      sessionProtectionNetDelta: after.sessionProtectionNetDelta,
+      sessionProtectionSessionGames: after.sessionProtectionSessionGames,
       openSkillWinnerProbability: result.openSkillWinnerProbability,
       volleyballWinnerProbability: result.volleyballWinnerProbability,
       redTeam: Array.isArray(game.redTeam) ? cloneSimple(game.redTeam) : [],

@@ -5176,6 +5176,60 @@
           modeBits.push(`Close overtime dampener: ${entry.closeOvertimeDampener.toFixed(2)}x`);
         }
 
+        const streakAdjustments = [
+          ...((entry.after?.red || []).map(after => ({
+            after,
+            name: (game.redTeam || []).find(player => String(player.id) === String(after.id))?.name || after.id,
+          }))),
+          ...((entry.after?.blue || []).map(after => ({
+            after,
+            name: (game.blueTeam || []).find(player => String(player.id) === String(after.id))?.name || after.id,
+          }))),
+        ].filter(item =>
+          typeof item.after.streakProtectionMultiplier === 'number' &&
+          item.after.streakProtectionMultiplier < 0.999
+        );
+
+        if (streakAdjustments.length) {
+          const minStreakMultiplier = Math.min(
+            ...streakAdjustments.map(item => item.after.streakProtectionMultiplier)
+          );
+          const streakApplyTo = streakAdjustments
+            .map(item => item.after.streakProtectionApplyTo)
+            .find(Boolean);
+          const streakModeLabel = streakApplyTo === 'muOnly' ? 'mu only' : 'skill';
+          modeBits.push(
+            `Streak protection: ${minStreakMultiplier.toFixed(2)}x ${streakModeLabel} (${streakAdjustments.map(item => item.name).join(', ')})`
+          );
+        }
+
+        const sessionAdjustments = [
+          ...((entry.after?.red || []).map(after => ({
+            after,
+            name: (game.redTeam || []).find(player => String(player.id) === String(after.id))?.name || after.id,
+          }))),
+          ...((entry.after?.blue || []).map(after => ({
+            after,
+            name: (game.blueTeam || []).find(player => String(player.id) === String(after.id))?.name || after.id,
+          }))),
+        ].filter(item =>
+          typeof item.after.sessionProtectionMultiplier === 'number' &&
+          item.after.sessionProtectionMultiplier < 0.999
+        );
+
+        if (sessionAdjustments.length) {
+          const minSessionMultiplier = Math.min(
+            ...sessionAdjustments.map(item => item.after.sessionProtectionMultiplier)
+          );
+          const sessionApplyTo = sessionAdjustments
+            .map(item => item.after.sessionProtectionApplyTo)
+            .find(Boolean);
+          const sessionModeLabel = sessionApplyTo === 'muOnly' ? 'mu only' : 'skill';
+          modeBits.push(
+            `Session protection: ${minSessionMultiplier.toFixed(2)}x ${sessionModeLabel} (${sessionAdjustments.map(item => item.name).join(', ')})`
+          );
+        }
+
         const evidenceText = typeof entry.evidenceWeight === 'number'
           ? `Evidence weight: ${entry.evidenceWeight.toFixed(2)}x`
           : '';

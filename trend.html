@@ -477,8 +477,7 @@
       getLeagueContextById,
       getOverallStandingsRawOrdinal,
       replayRatings,
-      getPublicRatingDisplayScale,
-      toPublicDisplayRating,
+      toDisplayRating as toLinearDisplayRating,
       formatMu,
       formatSigma,
     } from './ratings.js';
@@ -517,7 +516,6 @@
     const chartCanvas = document.getElementById('ratingChart');
 
     let chart = null;
-    let publicRatingScale = null;
 
     function loadPlayers() {
       const saved = localStorage.getItem(PLAYER_STORAGE_KEY);
@@ -756,8 +754,32 @@
       return `${value.toFixed(2)}x`;
     }
 
+    function getStreakProtectionText(row) {
+      if (
+        typeof row?.streakProtectionMultiplier !== 'number' ||
+        row.streakProtectionMultiplier >= 0.999
+      ) {
+        return '';
+      }
+
+      const applyTo = row.streakProtectionApplyTo === 'muOnly' ? 'mu only' : 'skill';
+      return `Streak protection ${formatMultiplier(row.streakProtectionMultiplier)} ${applyTo}`;
+    }
+
+    function getSessionProtectionText(row) {
+      if (
+        typeof row?.sessionProtectionMultiplier !== 'number' ||
+        row.sessionProtectionMultiplier >= 0.999
+      ) {
+        return '';
+      }
+
+      const applyTo = row.sessionProtectionApplyTo === 'muOnly' ? 'mu only' : 'skill';
+      return `Session protection ${formatMultiplier(row.sessionProtectionMultiplier)} ${applyTo}`;
+    }
+
     function toDisplayRating(rawOrdinal) {
-      return toPublicDisplayRating(rawOrdinal, publicRatingScale);
+      return toLinearDisplayRating(rawOrdinal);
     }
 
     function getOverallLeaderboardRaw(rawOrdinal, games) {
@@ -916,6 +938,16 @@
 
       if (typeof row.finalUpdateMultiplier === 'number') {
         parts.push(`Final update ${formatMultiplier(row.finalUpdateMultiplier)}`);
+      }
+
+      const streakText = getStreakProtectionText(row);
+      if (streakText) {
+        parts.push(streakText);
+      }
+
+      const sessionText = getSessionProtectionText(row);
+      if (sessionText) {
+        parts.push(sessionText);
       }
 
       if (typeof row.openSkillWinnerProbability === 'number') {
@@ -1091,6 +1123,8 @@
                   const result = row.won ? 'Win' : 'Loss';
                   const score = formatScore(row);
                   const model = getModelCell(row).replaceAll('<br>', ' | ');
+                  const streak = getStreakProtectionText(row);
+                  const session = getSessionProtectionText(row);
 
                   return [
                     `Result: ${result}`,
@@ -1101,6 +1135,8 @@
                     `Mu: ${formatMu(row.muBefore)} → ${formatMu(row.muAfter)}`,
                     `Sigma: ${formatSigma(row.sigmaBefore)} → ${formatSigma(row.sigmaAfter)}`,
                     `Raw ordinal: ${formatRawOrdinal(row.ratingBefore)} → ${formatRawOrdinal(row.ratingAfter)}`,
+                    ...(streak ? [streak] : []),
+                    ...(session ? [session] : []),
                     `Model: ${model}`
                   ];
                 }
@@ -1194,7 +1230,7 @@
           <td>${getContextCell(row)}</td>
           <td>${escapeHtml(formatScore(row))}</td>
           <td>${formatRating(ratingBefore)} → ${formatRating(ratingAfter)}</td>
-          <td>${formatMu(row.muBefore)} → ${formatMu(row.muAfter)}</td>
+          <td>μ ${formatMu(row.muBefore)} → ${formatMu(row.muAfter)}<br>σ ${formatSigma(row.sigmaBefore)} → ${formatSigma(row.sigmaAfter)}</td>
           <td>${formatSignedNumber(ratingChange)}</td>
           <td>${getTeamRosterCell(row)}</td>
         `;
@@ -1217,18 +1253,6 @@
       const volleyballUpdateUsesBalancerContext = true;
       const volleyballUpdateContextMode = 'pair';
       const includeLeagueGames = true;
-      publicRatingScale = getPublicRatingDisplayScale({
-        players,
-        games,
-        seasonal,
-        volleyballAdjusted,
-        volleyballUpdateUsesBalancerContext,
-        volleyballUpdateContextMode,
-        includeLeagueGames,
-        options: {
-          seasonalTaperDays: getSeasonalTaperDays()
-        }
-      });
 
       if (!playerId || !entity) {
         pageTitleEl.textContent = 'Rating Not Found';

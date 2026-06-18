@@ -258,7 +258,7 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260617-19';
+export const VERSION = 'beta-20260618-3';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Flatter team-strength weights. Forward validation favored restoring
@@ -1428,6 +1428,8 @@ export function scoreVolleyballCandidateSplit({
   volleyballOptions = {},
   pairAdjustmentMap = null,
   ignoreSizeAdjustment = false,
+  redStrengthBase: providedRedStrengthBase = null,
+  blueStrengthBase: providedBlueStrengthBase = null,
 } = {}) {
   const ratingCfg = mergeRatingOptions(options);
   const volleyballCfg = mergeVolleyballBalanceOptions(volleyballOptions);
@@ -1435,7 +1437,7 @@ export function scoreVolleyballCandidateSplit({
   redPlayers.forEach(player => ensureRatingEntry(ratingMap, player.id, ratingCfg));
   bluePlayers.forEach(player => ensureRatingEntry(ratingMap, player.id, ratingCfg));
 
-  const redStrengthBase = getVolleyballTeamStrength({
+  const redStrengthBase = providedRedStrengthBase || getVolleyballTeamStrength({
     players: redPlayers,
     ratingMap,
     carryScoreMap,
@@ -1443,7 +1445,7 @@ export function scoreVolleyballCandidateSplit({
     volleyballOptions: volleyballCfg,
   });
 
-  const blueStrengthBase = getVolleyballTeamStrength({
+  const blueStrengthBase = providedBlueStrengthBase || getVolleyballTeamStrength({
     players: bluePlayers,
     ratingMap,
     carryScoreMap,

@@ -3,6 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b1220" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Volleyball" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
   <title>Volleyball Game Tracker</title>
   <style>
     :root {
@@ -710,6 +718,7 @@
       display: flex;
       align-items: center;
       gap: 12px;
+      width: min(360px, calc(100vw - 32px));
       padding: 14px 18px;
       border: 1px solid var(--border);
       border-radius: 14px;
@@ -719,9 +728,47 @@
       font-weight: 700;
     }
 
+    .busy-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .busy-message {
+      display: block;
+      line-height: 1.25;
+    }
+
+    .busy-progress {
+      margin-top: 8px;
+    }
+
+    .busy-progress-track {
+      height: 7px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.22);
+    }
+
+    .busy-progress-fill {
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #22c55e, #60a5fa);
+      transition: width 0.12s ease;
+    }
+
+    .busy-progress-text {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
     .busy-spinner {
       width: 22px;
       height: 22px;
+      flex: 0 0 auto;
       border-radius: 50%;
       border: 3px solid rgba(148, 163, 184, 0.35);
       border-top-color: #93c5fd;
@@ -1084,7 +1131,15 @@
   <div id="busyOverlay" class="busy-overlay hidden" aria-live="polite" aria-busy="true">
     <div class="busy-panel">
       <span class="busy-spinner" aria-hidden="true"></span>
-      <span id="busyMessage">Working...</span>
+      <div class="busy-content">
+        <span id="busyMessage" class="busy-message">Working...</span>
+        <div id="busyProgress" class="busy-progress hidden">
+          <div class="busy-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div id="busyProgressFill" class="busy-progress-fill"></div>
+          </div>
+          <div id="busyProgressText" class="busy-progress-text"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1119,7 +1174,12 @@
 
   const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
   const DEFAULT_DB_SOURCE_PATH = './default_database';
-  const GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwahqGocPhBwCTaB2HjnM3WIjoTOoc-lk94i8JjkRaTfEXf-rT-OXe0pkpQkZk5u0Tm/exec';
+  const IS_LOCAL_SERVER =
+    ['localhost', '127.0.0.1', '::1'].includes(location.hostname) ||
+    location.port === '5173';
+  const GOOGLE_STATS_ENDPOINT = IS_LOCAL_SERVER
+    ? '/api/google-stats'
+    : 'https://script.google.com/macros/s/AKfycbwahqGocPhBwCTaB2HjnM3WIjoTOoc-lk94i8JjkRaTfEXf-rT-OXe0pkpQkZk5u0Tm/exec';
   const DEFAULT_BALANCE_ATTEMPTS = 100;
 
   // Provisional-player balancing: players with fewer than this many career games
@@ -1212,6 +1272,10 @@
   const declineLoadDefaultDatabaseButtonEl = document.getElementById('declineLoadDefaultDatabaseButton');
   const busyOverlayEl = document.getElementById('busyOverlay');
   const busyMessageEl = document.getElementById('busyMessage');
+  const busyProgressEl = document.getElementById('busyProgress');
+  const busyProgressTrackEl = busyProgressEl?.querySelector('[role="progressbar"]');
+  const busyProgressFillEl = document.getElementById('busyProgressFill');
+  const busyProgressTextEl = document.getElementById('busyProgressText');
 
   let players = loadPlayers();
   let games = loadGames();
@@ -1240,25 +1304,65 @@
   let currentAssignmentId = '';
   let currentAssignmentDate = '';
 
-  function showBusy(message = 'Working...') {
+  function showBusy(message = 'Working...', progress = null) {
     busyMessageEl.textContent = message;
+    updateBusyProgress(progress);
     busyOverlayEl.classList.remove('hidden');
   }
 
   function hideBusy() {
     busyOverlayEl.classList.add('hidden');
+    updateBusyProgress(null);
   }
 
   function nextFrame() {
     return new Promise(resolve => requestAnimationFrame(() => resolve()));
   }
 
-  async function runWithBusy(message, action) {
-    showBusy(message);
+  function formatBusyCount(value) {
+    return Math.round(Number(value) || 0).toLocaleString();
+  }
+
+  function updateBusyProgress(progress) {
+    if (
+      !progress ||
+      !Number.isFinite(Number(progress.total)) ||
+      Number(progress.total) <= 0
+    ) {
+      busyProgressEl?.classList.add('hidden');
+      if (busyProgressFillEl) busyProgressFillEl.style.width = '0%';
+      if (busyProgressTextEl) busyProgressTextEl.textContent = '';
+      busyProgressTrackEl?.setAttribute('aria-valuenow', '0');
+      return;
+    }
+
+    const total = Math.max(1, Number(progress.total));
+    const current = Math.max(0, Math.min(total, Number(progress.current) || 0));
+    const percent = Math.max(0, Math.min(100, Math.round((current / total) * 100)));
+
+    busyProgressEl?.classList.remove('hidden');
+    if (busyProgressFillEl) busyProgressFillEl.style.width = `${percent}%`;
+    busyProgressTrackEl?.setAttribute('aria-valuenow', String(percent));
+    if (progress.message) busyMessageEl.textContent = progress.message;
+    if (busyProgressTextEl) {
+      busyProgressTextEl.textContent = progress.detail ||
+        `${formatBusyCount(current)} / ${formatBusyCount(total)} (${percent}%)`;
+    }
+  }
+
+  async function yieldToBrowser() {
+    await nextFrame();
+  }
+
+  async function runWithBusy(message, action, options = {}) {
+    showBusy(message, options.progress || null);
     await nextFrame();
 
     try {
-      return await action();
+      return await action({
+        updateProgress: updateBusyProgress,
+        yieldToBrowser,
+      });
     } finally {
       hideBusy();
     }
@@ -2472,7 +2576,7 @@
     );
   }
 
-  function buildPairMetrics(teamsByColor, colors, ratingMap, carryMap = {}, pairAdjustmentMap = null) {
+  function buildPairMetrics(teamsByColor, colors, ratingMap, carryMap = {}, pairAdjustmentMap = null, breakdownsByColor = null) {
     const pairMetrics = new Map();
 
     for (let i = 0; i < colors.length; i += 1) {
@@ -2489,7 +2593,9 @@
           bluePlayers: teamB,
           ratingMap,
           carryScoreMap: carryMap,
-          pairAdjustmentMap
+          pairAdjustmentMap,
+          redStrengthBase: breakdownsByColor?.[colorA] || null,
+          blueStrengthBase: breakdownsByColor?.[colorB] || null
         });
 
         pairMetrics.set(getPairKey(colorA, colorB), {
@@ -2501,6 +2607,13 @@
     }
 
     return pairMetrics;
+  }
+
+  function getAveragePairMetricFairness(pairMetrics) {
+    const values = [...pairMetrics.values()].map(metric => metric.fairness);
+    return values.length
+      ? values.reduce((sum, value) => sum + value, 0) / values.length
+      : 0;
   }
 
   function getScheduleFromPairs(pairs, unpairedColors, pairMetrics, strengthsByColor) {
@@ -2542,8 +2655,8 @@
     };
   }
 
-  function getScheduledMatchupCandidates(colors, teamsByColor, strengthsByColor, ratingMap, carryMap = {}, pairAdjustmentMap = null) {
-    const pairMetrics = buildPairMetrics(teamsByColor, colors, ratingMap, carryMap, pairAdjustmentMap);
+  function getScheduledMatchupCandidates(colors, teamsByColor, strengthsByColor, ratingMap, carryMap = {}, pairAdjustmentMap = null, pairMetrics = null) {
+    const matchupPairMetrics = pairMetrics || buildPairMetrics(teamsByColor, colors, ratingMap, carryMap, pairAdjustmentMap);
     const candidates = [];
 
     function visit(remainingColors, pairs, unpairedColors) {
@@ -2551,7 +2664,7 @@
         candidates.push(getScheduleFromPairs(
           pairs,
           [...unpairedColors, ...remainingColors],
-          pairMetrics,
+          matchupPairMetrics,
           strengthsByColor
         ));
         return;
@@ -2577,8 +2690,8 @@
     return candidates;
   }
 
-  function getPreferredScheduledMatchups(teamsByColor, colors, strengthsByColor, ratingMap, carryMap = {}, pairAdjustmentMap = null) {
-    const candidates = getScheduledMatchupCandidates(colors, teamsByColor, strengthsByColor, ratingMap, carryMap, pairAdjustmentMap);
+  function getPreferredScheduledMatchups(teamsByColor, colors, strengthsByColor, ratingMap, carryMap = {}, pairAdjustmentMap = null, pairMetrics = null) {
+    const candidates = getScheduledMatchupCandidates(colors, teamsByColor, strengthsByColor, ratingMap, carryMap, pairAdjustmentMap, pairMetrics);
 
     if (!candidates.length) {
       return {
@@ -2709,6 +2822,7 @@
     }
 
     const strengthsByColor = {};
+    const breakdownsByColor = {};
 
     colors.forEach(color => {
       const strength = getVolleyballTeamStrength({
@@ -2718,6 +2832,7 @@
       });
 
       strengthsByColor[color] = strength.strength;
+      breakdownsByColor[color] = strength;
     });
 
     const strengths = colors.map(color => strengthsByColor[color]);
@@ -2725,8 +2840,9 @@
     const minStrength = Math.min(...strengths);
     const spread = maxStrength - minStrength;
     const averagePairwiseDifference = getAveragePairwiseDifference(strengths);
-    const averagePairwiseFairness = getPairwiseFairness(teamsByColor, colors, ratingMap, carryMap, pairAdjustmentMap);
-    const scheduledMatchups = getPreferredScheduledMatchups(teamsByColor, colors, strengthsByColor, ratingMap, carryMap, pairAdjustmentMap);
+    const pairMetrics = buildPairMetrics(teamsByColor, colors, ratingMap, carryMap, pairAdjustmentMap, breakdownsByColor);
+    const averagePairwiseFairness = getAveragePairMetricFairness(pairMetrics);
+    const scheduledMatchups = getPreferredScheduledMatchups(teamsByColor, colors, strengthsByColor, ratingMap, carryMap, pairAdjustmentMap, pairMetrics);
 
     const provCounts = colors.map(color =>
       teamsByColor[color].filter(p => (statsMap[String(p.id)]?.games ?? 0) < PROV_THRESHOLD).length
@@ -2939,10 +3055,15 @@
       return;
     }
 
-    await runWithBusy('Assigning teams...', () => assignBalancedTeams());
+    await runWithBusy('Assigning teams...', ({ updateProgress, yieldToBrowser }) =>
+      assignBalancedTeams({ updateProgress, yieldToBrowser })
+    );
   }
 
-  function assignBalancedTeams() {
+  async function assignBalancedTeams({
+    updateProgress = null,
+    yieldToBrowser = nextFrame,
+  } = {}) {
     clearError();
 
     if (isLeagueGameMode()) {
@@ -2972,12 +3093,26 @@
       ? getCurrentMultiTeamAssignmentForSimilarityConstraint(colors)
       : null;
 
+    updateProgress?.({
+      current: 0,
+      total: 1,
+      detail: 'Checking player-change constraints...'
+    });
+    await yieldToBrowser();
+
     if (!preflightForceTwoChanges(presentPlayers, colors, twoTeamPrevious, multiTeamPrevious)) {
       setError(getForceTwoChangesFailureMessage());
       return;
     }
 
     const attempts = computeAttempts(Number(balanceSliderEl.value), presentPlayers.length, teamCount);
+    updateProgress?.({
+      current: 0,
+      total: attempts,
+      detail: `Preparing ratings for ${presentPlayers.length} players...`
+    });
+    await yieldToBrowser();
+
     const ratingData = getRatingData();
     const balanceRatingMap = getBalanceRatingMap(ratingData);
     const balancePairAdjustmentMap = getBalancePairAdjustmentMap(ratingData);
@@ -2986,9 +3121,30 @@
     let validCandidatesFound = 0;
     let rawAttempts = 0;
     const maxRawAttempts = Math.min(500000, Math.max(500, attempts * 20));
+    const progressChunkSize = Math.max(40, Math.min(250, Math.ceil(maxRawAttempts / 120)));
+    let attemptsSinceYield = 0;
+
+    async function maybeYieldBalanceProgress(force = false) {
+      if (!force && attemptsSinceYield < progressChunkSize) return;
+      attemptsSinceYield = 0;
+      updateProgress?.({
+        current: validCandidatesFound,
+        total: attempts,
+        detail: `${validCandidatesFound.toLocaleString()} / ${attempts.toLocaleString()} valid splits, ${rawAttempts.toLocaleString()} checked`
+      });
+      await yieldToBrowser();
+    }
+
+    updateProgress?.({
+      current: 0,
+      total: attempts,
+      detail: `0 / ${attempts.toLocaleString()} valid splits checked`
+    });
+    await yieldToBrowser();
 
     while (validCandidatesFound < attempts && rawAttempts < maxRawAttempts) {
       rawAttempts += 1;
+      attemptsSinceYield += 1;
 
       const candidate = buildMultiTeamCandidate(
         presentPlayers,
@@ -3000,6 +3156,7 @@
       );
 
       if (candidate.invalid) {
+        await maybeYieldBalanceProgress();
         continue;
       }
 
@@ -3010,9 +3167,11 @@
             blueTeam: candidate.teamsByColor[colors[1]]
           };
           if (twoTeamPrevious && !candidateHasEnoughPlayerChanges(shim, twoTeamPrevious)) {
+            await maybeYieldBalanceProgress();
             continue;
           }
         } else if (multiTeamPrevious && !multiTeamCandidateHasEnoughChanges(candidate.teamsByColor, colors, multiTeamPrevious)) {
+          await maybeYieldBalanceProgress();
           continue;
         }
       }
@@ -3022,7 +3181,11 @@
       if (isBetterMultiTeamCandidate(candidate, bestCandidate)) {
         bestCandidate = candidate;
       }
+
+      await maybeYieldBalanceProgress();
     }
+
+    await maybeYieldBalanceProgress(true);
 
     if (!bestCandidate || validCandidatesFound < attempts) {
       setError(isGroupingActive()
@@ -4319,7 +4482,7 @@
       const fallback = await fetchBundledDefaultDatabase();
 
       return normalizeServerDatabase(fallback, {
-        sourceLabel: (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+        sourceLabel: IS_LOCAL_SERVER
           ? 'local default_database'
           : 'bundled fallback default_database',
         usedFallback: true,

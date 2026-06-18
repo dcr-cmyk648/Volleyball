@@ -3,6 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b1220" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Volleyball" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
   <title>Volleyball Stats</title>
   <style>
     :root {
@@ -959,6 +967,51 @@
 
     .hidden { display: none !important; }
 
+    .busy-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(15, 23, 42, 0.58);
+      backdrop-filter: blur(2px);
+    }
+
+    .busy-panel {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: min(360px, calc(100vw - 32px));
+      padding: 14px 18px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--card);
+      color: var(--text);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+      font-weight: 700;
+    }
+
+    .busy-spinner {
+      width: 22px;
+      height: 22px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      border: 3px solid rgba(148, 163, 184, 0.35);
+      border-top-color: #93c5fd;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .busy-message {
+      display: block;
+      min-width: 0;
+      line-height: 1.25;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
     dialog {
       border: 1px solid var(--border);
       border-radius: 18px;
@@ -1415,6 +1468,13 @@
     </div>
   </dialog>
 
+  <div id="busyOverlay" class="busy-overlay hidden" aria-live="polite" aria-busy="true">
+    <div class="busy-panel">
+      <span class="busy-spinner" aria-hidden="true"></span>
+      <span id="busyMessage" class="busy-message">Working...</span>
+    </div>
+  </div>
+
   <script type="module">
     import {
       VERSION,
@@ -1437,7 +1497,12 @@
     const GAME_STORAGE_KEY = 'gameDayGames';
     const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
     const DEFAULT_DB_SOURCE_PATH = './default_database';
-    const GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwahqGocPhBwCTaB2HjnM3WIjoTOoc-lk94i8JjkRaTfEXf-rT-OXe0pkpQkZk5u0Tm/exec';
+    const IS_LOCAL_SERVER =
+      ['localhost', '127.0.0.1', '::1'].includes(location.hostname) ||
+      location.port === '5173';
+    const GOOGLE_STATS_ENDPOINT = IS_LOCAL_SERVER
+      ? '/api/google-stats'
+      : 'https://script.google.com/macros/s/AKfycbwahqGocPhBwCTaB2HjnM3WIjoTOoc-lk94i8JjkRaTfEXf-rT-OXe0pkpQkZk5u0Tm/exec';
     const DEFAULT_SERVER_DATABASE_BUTTON_TEXT = 'download database from server';
     const NEW_SERVER_GAMES_BUTTON_TEXT = 'new games are available to sync';
     const UP_TO_DATE_SERVER_DATABASE_BUTTON_TEXT = 'you are up to date';
@@ -1552,6 +1617,8 @@
     const defaultDatabaseStatusEl = document.getElementById('defaultDatabaseStatus');
     const confirmLoadDefaultDatabaseButtonEl = document.getElementById('confirmLoadDefaultDatabaseButton');
     const declineLoadDefaultDatabaseButtonEl = document.getElementById('declineLoadDefaultDatabaseButton');
+    const busyOverlayEl = document.getElementById('busyOverlay');
+    const busyMessageEl = document.getElementById('busyMessage');
 
     let pendingDeleteGameId = null;
     let defaultDatabaseMeta = null;
@@ -1565,6 +1632,37 @@
     let activeSortBy = null;
     let activeOverallScoreboardMode = 'composite';
     let activeSeasonStartDate = '';
+
+    function showBusy(message = 'Working...') {
+      if (busyMessageEl) busyMessageEl.textContent = message;
+      busyOverlayEl?.classList.remove('hidden');
+    }
+
+    function updateBusyMessage(message) {
+      if (busyMessageEl && message) busyMessageEl.textContent = message;
+    }
+
+    function hideBusy() {
+      busyOverlayEl?.classList.add('hidden');
+    }
+
+    function nextFrame() {
+      return new Promise(resolve => requestAnimationFrame(() => resolve()));
+    }
+
+    async function runWithBusy(message, action) {
+      showBusy(message);
+      await nextFrame();
+
+      try {
+        return await action({
+          updateBusyMessage,
+          yieldToBrowser: nextFrame,
+        });
+      } finally {
+        hideBusy();
+      }
+    }
 
     const SORT_CONFIGS = {
       rating:     { field: 'experimentalLeaderboardRaw', dir: 'desc', header: 'Rating' },
@@ -2034,7 +2132,7 @@
       return '';
     }
 
-    function setStatsTab(tabName) {
+    function setStatsTab(tabName, { render = true } = {}) {
       activeStatsTab = ['overall', 'seasonMovers', 'awards'].includes(tabName)
         ? tabName
         : 'seasonMovers';
@@ -2046,6 +2144,8 @@
       overallStandingsPanelEl.classList.toggle('hidden', activeStatsTab !== 'overall');
       seasonMoversPanelEl.classList.toggle('hidden', activeStatsTab !== 'seasonMovers');
       awardsPanelEl.classList.toggle('hidden', activeStatsTab !== 'awards');
+
+      if (!render) return;
 
       if (activeStatsTab === 'overall') {
         renderStats();
@@ -6481,7 +6581,7 @@
       } catch (googleError) {
         console.warn('Google Drive stats failed, falling back to bundled default_database:', googleError);
         parsed = await fetchJsonFromBundledDefaultDatabase();
-        sourceLabel = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+        sourceLabel = IS_LOCAL_SERVER
           ? 'local default_database'
           : 'bundled default_database';
       }
@@ -6626,8 +6726,17 @@
       }
     }
 
-    async function loadDefaultDatabaseIntoStorage() {
+    async function loadDefaultDatabaseIntoStorage({
+      updateBusyMessage = null,
+      yieldToBrowser = nextFrame,
+    } = {}) {
+      updateBusyMessage?.('Downloading newest stats from server...');
+      await yieldToBrowser();
+
       const meta = await prepareDefaultDatabaseMeta({ forceRefresh: true });
+
+      updateBusyMessage?.('Saving newest stats locally...');
+      await yieldToBrowser();
 
       savePlayers(meta.players);
       saveGames(meta.games);
@@ -6636,18 +6745,28 @@
         saveSeasonStartDate(meta.seasonStartDate);
       }
 
+      updateBusyMessage?.('Updating stats...');
+      await yieldToBrowser();
       renderAll();
       updateServerStatsDate(meta);
 
       setDatabaseStatus(`Loaded newest stats from server with ${meta.players.length} players and ${meta.games.length} games. Season start date: ${getSeasonStartDate()}.`);
     }
 
-    overallStandingsTabButtonEl.addEventListener('click', () => setStatsTab('overall'));
-    seasonMoversTabButtonEl.addEventListener('click', () => setStatsTab('seasonMovers'));
-    awardsTabButtonEl.addEventListener('click', () => setStatsTab('awards'));
+    overallStandingsTabButtonEl.addEventListener('click', async () => {
+      await runWithBusy('Loading standings...', async () => setStatsTab('overall'));
+    });
+    seasonMoversTabButtonEl.addEventListener('click', async () => {
+      await runWithBusy('Loading season movers...', async () => setStatsTab('seasonMovers'));
+    });
+    awardsTabButtonEl.addEventListener('click', async () => {
+      await runWithBusy('Loading awards...', async () => setStatsTab('awards'));
+    });
 
     Object.entries(overallScoreboardModeButtons).forEach(([mode, button]) => {
-      button?.addEventListener('click', () => setOverallScoreboardMode(mode));
+      button?.addEventListener('click', async () => {
+        await runWithBusy('Updating standings...', async () => setOverallScoreboardMode(mode));
+      });
     });
 
     applySeasonStartDateButtonEl.addEventListener('click', () => {
@@ -6708,7 +6827,9 @@
 
     document.getElementById('exportDatabaseButton')?.addEventListener('click', exportDatabase);
     document.getElementById('importDatabaseLinkButton')?.addEventListener('click', () => importFileInput.click());
-    loadDefaultDatabaseButtonEl.addEventListener('click', openManualDefaultDatabaseDialog);
+    loadDefaultDatabaseButtonEl.addEventListener('click', async () => {
+      await runWithBusy('Checking server stats...', () => openManualDefaultDatabaseDialog());
+    });
 
     importFileInput.addEventListener('change', (event) => {
       const file = event.target.files[0];
@@ -6727,7 +6848,7 @@
       try {
         confirmLoadDefaultDatabaseButtonEl.disabled = true;
         defaultDatabaseStatusEl.textContent = 'Loading newest stats from server...';
-        await loadDefaultDatabaseIntoStorage();
+        await runWithBusy('Loading newest stats from server...', loadDefaultDatabaseIntoStorage);
         setPromptChoice('loaded');
         defaultDatabaseDialog.close();
       } catch {
@@ -6746,7 +6867,9 @@
     });
 
     algorithmQualityCardEl.addEventListener('toggle', () => {
-      if (algorithmQualityCardEl.open) renderQuality();
+      if (algorithmQualityCardEl.open) {
+        runWithBusy('Loading quality overview...', async () => renderQuality());
+      }
     });
 
     if (overallPlayerLookupInputEl) {
@@ -6777,9 +6900,11 @@
       ? _tabParam
       : '';
     const _savedTab = sessionStorage.getItem('statsActiveTab') || 'seasonMovers';
-    setStatsTab(_sortByParam ? 'overall' : (_urlTab || _savedTab));
+    setStatsTab(_sortByParam ? 'overall' : (_urlTab || _savedTab), { render: false });
 
-    renderAll();
+    await runWithBusy('Loading stats...', async () => {
+      renderAll();
+    });
 
     prepareDefaultDatabaseMeta().catch(() => {
       if (serverStatsDateEl) serverStatsDateEl.textContent = 'Server date unavailable';

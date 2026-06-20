@@ -979,8 +979,8 @@
     }
 
     .busy-panel {
-      display: flex;
-      align-items: center;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
       gap: 12px;
       width: min(360px, calc(100vw - 32px));
       padding: 14px 18px;
@@ -1008,8 +1008,31 @@
       line-height: 1.25;
     }
 
+    .busy-progress {
+      grid-column: 1 / -1;
+      height: 6px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.2);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+    }
+
+    .busy-progress-bar {
+      width: 42%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #60a5fa, #22d3ee);
+      animation: busy-progress 1.05s ease-in-out infinite;
+    }
+
     @keyframes spin {
       to { transform: rotate(360deg); }
+    }
+
+    @keyframes busy-progress {
+      0% { transform: translateX(-110%); }
+      55% { transform: translateX(95%); }
+      100% { transform: translateX(240%); }
     }
 
     dialog {
@@ -1330,7 +1353,7 @@
         <div class="small hidden" id="modelHelpText"></div>
 
         <div class="scoreboard-mode-row" role="tablist" aria-label="Overall scoreboard type">
-          <button id="overallCompositeModeButton" class="scoreboard-mode-button active" type="button">Composite</button>
+          <button id="overallCompositeModeButton" class="scoreboard-mode-button active" type="button">All Games</button>
           <button id="overallBigTeamModeButton" class="scoreboard-mode-button" type="button">Big Team</button>
           <button id="overallSmallTeamModeButton" class="scoreboard-mode-button" type="button">Small Team</button>
         </div>
@@ -1472,6 +1495,9 @@
     <div class="busy-panel">
       <span class="busy-spinner" aria-hidden="true"></span>
       <span id="busyMessage" class="busy-message">Working...</span>
+      <div class="busy-progress" aria-hidden="true">
+        <div class="busy-progress-bar"></div>
+      </div>
     </div>
   </div>
 
@@ -1485,9 +1511,11 @@
       predictExpectedMargin,
       getGamesSortedOldestFirst,
       formatDisplayedRating,
+      toDisplayRating,
       getOverallStandingsRawOrdinal,
       getLeagueContext,
       getLeagueRatingContext,
+      isLeagueContextId,
       LEAGUE_TEAM_ID,
       LEAGUE_TEAM_NAME,
       LEAGUE_TEAM_MEMBER_COUNT,
@@ -1497,12 +1525,14 @@
     const GAME_STORAGE_KEY = 'gameDayGames';
     const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
     const DEFAULT_DB_SOURCE_PATH = './default_database';
+    const DIRECT_GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwahqGocPhBwCTaB2HjnM3WIjoTOoc-lk94i8JjkRaTfEXf-rT-OXe0pkpQkZk5u0Tm/exec';
     const IS_LOCAL_SERVER =
       ['localhost', '127.0.0.1', '::1'].includes(location.hostname) ||
       location.port === '5173';
-    const GOOGLE_STATS_ENDPOINT = IS_LOCAL_SERVER
-      ? '/api/google-stats'
-      : 'https://script.google.com/macros/s/AKfycbwahqGocPhBwCTaB2HjnM3WIjoTOoc-lk94i8JjkRaTfEXf-rT-OXe0pkpQkZk5u0Tm/exec';
+    const GOOGLE_STATS_ENDPOINTS = [
+      ...(location.protocol === 'http:' || location.protocol === 'https:' ? ['/api/google-stats'] : []),
+      DIRECT_GOOGLE_STATS_ENDPOINT
+    ].filter((endpoint, index, endpoints) => endpoints.indexOf(endpoint) === index);
     const DEFAULT_SERVER_DATABASE_BUTTON_TEXT = 'download database from server';
     const NEW_SERVER_GAMES_BUTTON_TEXT = 'new games are available to sync';
     const UP_TO_DATE_SERVER_DATABASE_BUTTON_TEXT = 'you are up to date';
@@ -1535,16 +1565,16 @@
     const OVERALL_STANDINGS_MIN_GAMES = 5;
     const OVERALL_SCOREBOARD_MODES = {
       composite: {
-        label: 'Composite',
+        label: 'All Games',
         description: 'All games.'
       },
       bigTeam: {
         label: 'Big Team',
-        description: 'Counts each player only in games where their own team had 5 or 6 players.'
+        description: 'Counts each player only in games where their own team had 5 or 6 players, including league games.'
       },
       smallTeam: {
         label: 'Small Team',
-        description: 'Counts each player only in games where their own team had 3 or 4 players.'
+        description: 'Counts each player only in games where their own team had 3 or 4 players, including league games.'
       }
     };
 
@@ -1947,15 +1977,6 @@
         }
       };
 
-      const addContextDate = (context, date) => {
-        if (!context?.id || !isValidDateString(date) || date < cutoffDate) return;
-        const key = String(context.id);
-        const previous = map.get(key) || '';
-        if (!previous || date > previous) {
-          map.set(key, date);
-        }
-      };
-
       (Array.isArray(games) ? games : []).forEach(game => {
         if (!game) return;
         const date = getGameDateValue(game);
@@ -1974,10 +1995,6 @@
 
         if (blueQualifies) {
           (Array.isArray(game.blueTeam) ? game.blueTeam : []).forEach(player => addPlayerDate(player, date));
-        }
-
-        if (game.isLeagueGame && ['composite', 'league'].includes(mode)) {
-          addContextDate(getLeagueRatingContext(game, getLeagueScoreboardRatingOptions(mode)), date);
         }
       });
 
@@ -2037,7 +2054,29 @@
       ratingOptions = {},
       displayScale = null
     ) {
-      return formatDisplayedRating(getExperimentalLeaderboardRaw(player));
+      const raw = Number.isFinite(Number(player?.experimentalLeaderboardRaw))
+        ? Number(player.experimentalLeaderboardRaw)
+        : getExperimentalLeaderboardRaw(player, player?.scoreboardMaxGames);
+      return formatDisplayedRating(raw);
+    }
+
+    const SCOREBOARD_MISSING_GAME_PENALTY_POINTS = 5;
+    const SCOREBOARD_MISSING_GAME_PENALTY_MAX_GAMES = 50;
+
+    function getDisplayPointsPerRawOrdinal() {
+      const zero = toDisplayRating(0);
+      const one = toDisplayRating(1);
+      const scale = one - zero;
+      return Number.isFinite(scale) && scale > 0 ? scale : 1;
+    }
+
+    function getScoreboardMissingGamePenaltyRaw(maxGames, playerGames) {
+      const cappedMaxGames = Math.min(
+        SCOREBOARD_MISSING_GAME_PENALTY_MAX_GAMES,
+        Math.max(0, Number(maxGames) || 0)
+      );
+      const missingGames = Math.max(0, cappedMaxGames - (Number(playerGames) || 0));
+      return (missingGames * SCOREBOARD_MISSING_GAME_PENALTY_POINTS) / getDisplayPointsPerRawOrdinal();
     }
 
     function clamp(value, min, max) {
@@ -2157,15 +2196,20 @@
     }
 
 
-    function getExperimentalLeaderboardRaw(player) {
+    function getExperimentalLeaderboardRaw(player, scoreboardMaxGames = null) {
       const rawOrdinal =
         typeof player.rawOrdinal === 'number'
           ? player.rawOrdinal
           : typeof player.rating === 'number'
             ? player.rating
             : 0;
+      if (player?.isLeagueContext || isLeagueContextId(player?.id)) {
+        return rawOrdinal;
+      }
       const games = Math.max(0, Number(player.games) || 0);
-      return getOverallStandingsRawOrdinal(rawOrdinal, games);
+      const base = getOverallStandingsRawOrdinal(rawOrdinal, games);
+      if (!Number.isFinite(Number(scoreboardMaxGames))) return base;
+      return base - getScoreboardMissingGamePenaltyRaw(scoreboardMaxGames, games);
     }
 
     function isOverallStandingsEligible(
@@ -2173,8 +2217,8 @@
       mode = getOverallScoreboardMode(),
       recencyMap = null
     ) {
-      if (Boolean(player?.isLeagueContext) && ['composite', 'league'].includes(mode)) {
-        return Number(player?.games) > 0;
+      if (Boolean(player?.isLeagueContext) || isLeagueContextId(player?.id)) {
+        return false;
       }
 
       const id = String(player?.id ?? '');
@@ -2182,15 +2226,26 @@
         Boolean(recencyMap?.has(id));
     }
 
+    function getScoreboardMaxGamesForRows(rows = []) {
+      return (rows || []).reduce(
+        (max, player) => Math.max(max, Number(player.games) || 0),
+        0
+      );
+    }
+
     function getSortedStandingsRows(result, mode = getOverallScoreboardMode(), games = loadGames()) {
       const cfg = SORT_CONFIGS[activeSortBy] || null;
       const recencyMap = createOverallStandingsRecencyMap(games, mode);
 
-      return result.standings
-        .filter(player => isOverallStandingsEligible(player, mode, recencyMap))
+      const eligibleRows = (result.standings || [])
+        .filter(player => isOverallStandingsEligible(player, mode, recencyMap));
+      const scoreboardMaxGames = getScoreboardMaxGamesForRows(eligibleRows);
+
+      return eligibleRows
         .map(player => ({
           ...player,
-          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player)
+          scoreboardMaxGames,
+          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player, scoreboardMaxGames)
         }))
         .sort((a, b) => {
           if (cfg) {
@@ -2224,6 +2279,9 @@
         return formatOverallRatingDisplay(player, ratingGames, ratingScope, ratingOptions, displayScale);
       }
       const val = player[cfg.field];
+      if (activeSortBy === 'rating') {
+        return formatOverallRatingDisplay(player, ratingGames, ratingScope, ratingOptions, displayScale);
+      }
       if (activeSortBy === 'winrate') return `${Math.round((Number(val) || 0) * 100)}%`;
       if (activeSortBy === 'mu' || activeSortBy === 'sigma' || activeSortBy === 'rawOrdinal') {
         return Number(val).toFixed(2);
@@ -2258,14 +2316,23 @@
     }
 
     function getLeagueScoreboardRatingOptions(mode = getOverallScoreboardMode()) {
-      return {};
+      return {
+        leagueUpdateMultiplier: 1.5,
+        leagueMuUpdateMultiplier: 1,
+        leagueSigmaUpdateMultiplier: 0.8
+      };
+    }
+
+    function shouldIncludeLeagueGamesForScoreboard(mode = getOverallScoreboardMode()) {
+      return mode === 'composite' || mode === 'bigTeam' || mode === 'smallTeam';
     }
 
     function getOverallReplayResult({ games = loadGames(), mode = getOverallScoreboardMode() } = {}) {
       const scoreboardGames = getOverallScoreboardGames(games, mode);
       const ratingOptions = getLeagueScoreboardRatingOptions(mode);
       const replay = getReplayResultForGames(scoreboardGames, {
-        includeLeagueDisplayEstimate: true,
+        includeLeagueDisplayEstimate: false,
+        includeLeagueGames: shouldIncludeLeagueGamesForScoreboard(mode),
         persist: true,
         ratingOptions,
       });
@@ -2280,6 +2347,7 @@
 
     function getReplayResultForGames(games, {
       includeLeagueDisplayEstimate = false,
+      includeLeagueGames = true,
       persist = false,
       ratingOptions = {},
     } = {}) {
@@ -2292,7 +2360,7 @@
         volleyballAdjusted: true,
         volleyballUpdateUsesBalancerContext: true,
         volleyballUpdateContextMode: 'pair',
-        includeLeagueGames: isIncludeLeagueGamesMode(),
+        includeLeagueGames,
         options: {
           seasonalTaperDays: getSeasonalTaperDays(),
           leagueDisplayEstimateEnabled: includeLeagueDisplayEstimate,
@@ -2354,9 +2422,15 @@
     // Ranks players by the leaderboard formula (always rating-based, ignores activeSortBy).
     function getRatingBasedRankMap(result, mode = getOverallScoreboardMode(), games = loadGames()) {
       const recencyMap = createOverallStandingsRecencyMap(games, mode);
-      const rows = result.standings
-        .filter(player => isOverallStandingsEligible(player, mode, recencyMap))
-        .map(p => ({ ...p, experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(p) }))
+      const eligibleRows = result.standings
+        .filter(player => isOverallStandingsEligible(player, mode, recencyMap));
+      const scoreboardMaxGames = getScoreboardMaxGamesForRows(eligibleRows);
+      const rows = eligibleRows
+        .map(p => ({
+          ...p,
+          scoreboardMaxGames,
+          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(p, scoreboardMaxGames)
+        }))
         .sort((a, b) => {
           if (b.experimentalLeaderboardRaw !== a.experimentalLeaderboardRaw)
             return b.experimentalLeaderboardRaw - a.experimentalLeaderboardRaw;
@@ -3723,14 +3797,17 @@
       const priorResult = getLeaderboardSnapshotExcludingGames(recentSessionGames, games);
       const priorRawMap = new Map(priorResult.standings.map(player => [String(player.id), Number(player.rawOrdinal)]));
       const overallRecencyMap = createOverallStandingsRecencyMap(games, 'composite');
-      const topRankedPlayer = (data.result.standings || [])
+      const topRankedEligibleRows = (data.result.standings || [])
         .filter(player =>
           playerMap.has(String(player.id)) &&
           isOverallStandingsEligible(player, 'composite', overallRecencyMap)
-        )
+        );
+      const topRankedScoreboardMaxGames = getScoreboardMaxGamesForRows(topRankedEligibleRows);
+      const topRankedPlayer = topRankedEligibleRows
         .map(player => ({
           ...player,
-          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player)
+          scoreboardMaxGames: topRankedScoreboardMaxGames,
+          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player, topRankedScoreboardMaxGames)
         }))
         .sort((a, b) => {
           if (b.experimentalLeaderboardRaw !== a.experimentalLeaderboardRaw) {
@@ -4720,6 +4797,7 @@
       params.set('id', player.id);
       params.set('seasonal', '1');
       params.set('seasonMonths', String(getSeasonLengthMonths()));
+      params.set('mode', getOverallScoreboardMode());
 
       if (isIncludeLeagueGamesMode()) {
         params.set('includeLeagueGames', '1');
@@ -4759,16 +4837,17 @@
       return getHistoryLeagueContext(game, entry)?.id || null;
     }
 
-    function getLeagueContextMemberIds(contextId) {
+    function getLeagueContextMemberIds(contextId, count = LEAGUE_TEAM_MEMBER_COUNT) {
       if (!contextId) return [];
+      const safeCount = Math.max(1, Number(count) || LEAGUE_TEAM_MEMBER_COUNT);
       return Array.from(
-        { length: LEAGUE_TEAM_MEMBER_COUNT },
+        { length: safeCount },
         (_, i) => `${contextId}_${i + 1}`
       );
     }
 
-    function getLeagueAggregateRawOrdinal(memberRawById, contextId) {
-      const memberIds = getLeagueContextMemberIds(contextId);
+    function getLeagueAggregateRawOrdinal(memberRawById, contextId, count = LEAGUE_TEAM_MEMBER_COUNT) {
+      const memberIds = getLeagueContextMemberIds(contextId, count);
       if (!memberIds.length) return 0;
 
       const total = memberIds.reduce((sum, id) => {
@@ -4782,6 +4861,7 @@
     function getHistoryLeagueRatingMap(history) {
       const memberRawById = {};
       const contextGameCounts = {};
+      const contextMemberCounts = {};
       const ratingMap = new Map();
 
       history.forEach(entry => {
@@ -4790,6 +4870,13 @@
 
         const contextId = getHistoryLeagueContextId(game, entry);
         if (!contextId) return;
+        const activeCount = Math.max(
+          contextMemberCounts[contextId] || 0,
+          entry.before?.blue?.length || 0,
+          entry.after?.blue?.length || 0,
+          1
+        );
+        contextMemberCounts[contextId] = activeCount;
 
         const setMemberRaw = player => {
           const raw = Number(player?.rating);
@@ -4801,12 +4888,12 @@
         (entry.before.blue || []).forEach(setMemberRaw);
 
         const beforeGames = contextGameCounts[contextId] || 0;
-        const beforeRaw = getLeagueAggregateRawOrdinal(memberRawById, contextId);
+        const beforeRaw = getLeagueAggregateRawOrdinal(memberRawById, contextId, activeCount);
 
         (entry.after.blue || []).forEach(setMemberRaw);
 
         const afterGames = beforeGames + 1;
-        const afterRaw = getLeagueAggregateRawOrdinal(memberRawById, contextId);
+        const afterRaw = getLeagueAggregateRawOrdinal(memberRawById, contextId, activeCount);
 
         ratingMap.set(entry, {
           beforeRaw,
@@ -4877,6 +4964,123 @@
     function averageRawOrdinal(entries) {
       if (!entries.length) return 0;
       return entries.reduce((sum, p) => sum + Number(p.rating), 0) / entries.length;
+    }
+
+    function cloneHistoryValue(value) {
+      return JSON.parse(JSON.stringify(value));
+    }
+
+    function getRatingEntryAverageDelta(beforeEntries = [], afterEntries = []) {
+      const deltas = beforeEntries.map((before, index) => {
+        const after = afterEntries[index];
+        return Number(after?.rating) - Number(before?.rating);
+      }).filter(Number.isFinite);
+
+      if (!deltas.length) return 0;
+      return deltas.reduce((sum, delta) => sum + delta, 0) / deltas.length;
+    }
+
+    function getLeagueSeriesDisplayWeights(entry) {
+      const seriesGames = Array.isArray(entry?.game?.leagueSeriesGames)
+        ? entry.game.leagueSeriesGames
+        : [];
+
+      if (seriesGames.length <= 1) return [];
+
+      const aggregateDelta = getRatingEntryAverageDelta(entry.before?.red || [], entry.after?.red || []);
+      const aggregateDirection = aggregateDelta < 0 ? -1 : 1;
+      const relativeWeights = seriesGames.map(game => {
+        const pointDiff = Number.isFinite(Number(game?.scoreRed)) && Number.isFinite(Number(game?.scoreBlue))
+          ? Math.abs(Number(game.scoreRed) - Number(game.scoreBlue))
+          : 0;
+        const magnitude = Math.max(1, 1 + Math.min(pointDiff, 12) / 40);
+        const redResultSign = game?.winner === 'blue' ? -1 : 1;
+        return redResultSign * aggregateDirection * magnitude;
+      });
+
+      const positiveWeights = relativeWeights.filter(value => value > 0);
+      const negativeWeights = relativeWeights.filter(value => value < 0);
+
+      if (positiveWeights.length && negativeWeights.length) {
+        const positiveTotal = positiveWeights.reduce((sum, value) => sum + value, 0);
+        const negativeTotal = negativeWeights.reduce((sum, value) => sum + Math.abs(value), 0);
+        const targetPositiveTotal = 1 + negativeTotal;
+        return relativeWeights.map(value => {
+          if (value > 0) return (value / positiveTotal) * targetPositiveTotal;
+          return value;
+        });
+      }
+
+      const absoluteWeights = relativeWeights.map(value => Math.abs(value));
+      const total = absoluteWeights.reduce((sum, value) => sum + value, 0) || absoluteWeights.length || 1;
+      return absoluteWeights.map(value => value / total);
+    }
+
+    function interpolateHistoryRatingEntries(beforeEntries = [], afterEntries = [], fraction = 0) {
+      return beforeEntries.map((before, index) => {
+        const after = afterEntries[index] || before;
+        const interpolated = {
+          ...before,
+          mu: Number(before.mu) + (Number(after.mu) - Number(before.mu)) * fraction,
+          sigma: Number(before.sigma) + (Number(after.sigma) - Number(before.sigma)) * fraction,
+          rating: Number(before.rating) + (Number(after.rating) - Number(before.rating)) * fraction,
+        };
+
+        return interpolated;
+      });
+    }
+
+    function interpolateHistoryEntry(entry, game, startFraction, endFraction, index, count, weight) {
+      return {
+        ...cloneHistoryValue(entry),
+        game: {
+          ...cloneHistoryValue(game),
+          leagueSeriesDisplayIndex: index + 1,
+          leagueSeriesDisplayCount: count,
+          leagueSeriesAggregateGameId: entry.game?.id || null,
+          leagueSeriesDisplayWeight: weight,
+        },
+        before: {
+          red: interpolateHistoryRatingEntries(entry.before?.red || [], entry.after?.red || [], startFraction),
+          blue: interpolateHistoryRatingEntries(entry.before?.blue || [], entry.after?.blue || [], startFraction),
+        },
+        after: {
+          red: interpolateHistoryRatingEntries(entry.before?.red || [], entry.after?.red || [], endFraction),
+          blue: interpolateHistoryRatingEntries(entry.before?.blue || [], entry.after?.blue || [], endFraction),
+        },
+        leagueSeriesDisplayIndex: index + 1,
+        leagueSeriesDisplayCount: count,
+        leagueSeriesDisplayWeight: weight,
+      };
+    }
+
+    function expandLeagueSeriesHistory(history) {
+      return (history || []).flatMap(entry => {
+        const seriesGames = Array.isArray(entry?.game?.leagueSeriesGames)
+          ? entry.game.leagueSeriesGames
+          : [];
+
+        if (!entry?.game?.isLeagueGame || seriesGames.length <= 1) return [entry];
+
+        const weights = getLeagueSeriesDisplayWeights(entry);
+        if (weights.length !== seriesGames.length) return [entry];
+
+        let cursor = 0;
+        return seriesGames.map((game, index) => {
+          const startFraction = cursor;
+          cursor += weights[index];
+          const endFraction = index === seriesGames.length - 1 ? 1 : cursor;
+          return interpolateHistoryEntry(
+            entry,
+            game,
+            startFraction,
+            endFraction,
+            index,
+            seriesGames.length,
+            weights[index]
+          );
+        });
+      });
     }
 
     function formatHistoryPlayerRating(rawOrdinal, games) {
@@ -5091,10 +5295,15 @@
 
       if (!query) return;
 
-      const rows = (result?.standings || [])
+      const sourceRows = result?.standings || [];
+      const eligibleRows = sourceRows
+        .filter(player => isOverallStandingsEligible(player, getOverallScoreboardMode(), recencyMap));
+      const scoreboardMaxGames = getScoreboardMaxGamesForRows(eligibleRows);
+      const rows = sourceRows
         .map(player => ({
           ...player,
-          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player)
+          scoreboardMaxGames,
+          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player, scoreboardMaxGames)
         }));
 
       const match = findOverallLookupPlayer(rows, query);
@@ -5156,7 +5365,10 @@
         !recentSessionGames.some(recentGame => recentGame?.id === game?.id)
       );
       const priorResult = applyOverallScoreboardPlayerCounts(
-        getReplayResultForGames(priorGames, { ratingOptions }),
+        getReplayResultForGames(priorGames, {
+          includeLeagueGames: shouldIncludeLeagueGamesForScoreboard(mode),
+          ratingOptions,
+        }),
         priorGames,
         mode
       );
@@ -5178,11 +5390,18 @@
     }
 
     function renderHistory() {
-      const result = getReplayResult();
-      const historyData = [...result.history].reverse();
-      const powerMap = getHistoryPowerMap(result.history);
-      const gameCountMap = getHistoryGameCountMap(result.history);
-      const leagueRatingMap = getHistoryLeagueRatingMap(result.history);
+      const mode = getOverallScoreboardMode();
+      const scoreboardGames = getOverallScoreboardGames(loadGames(), mode);
+      const ratingOptions = getLeagueScoreboardRatingOptions(mode);
+      const result = getReplayResultForGames(scoreboardGames, {
+        includeLeagueGames: shouldIncludeLeagueGamesForScoreboard(mode),
+        ratingOptions,
+      });
+      const displayHistory = expandLeagueSeriesHistory(result.history);
+      const historyData = [...displayHistory].reverse();
+      const powerMap = getHistoryPowerMap(displayHistory);
+      const gameCountMap = getHistoryGameCountMap(displayHistory);
+      const leagueRatingMap = getHistoryLeagueRatingMap(displayHistory);
 
       historyList.innerHTML = '';
 
@@ -5244,7 +5463,7 @@
                 ? leagueRatings.afterGames
                 : counts.after;
 
-              return `${leagueContextName} (${formatHistoryPlayerRating(beforeRaw, beforeGames)} → ${formatHistoryPlayerRating(afterRaw, afterGames)})`;
+              return `${leagueContextName} (${formatDisplayedRating(beforeRaw)} → ${formatDisplayedRating(afterRaw)})`;
             })()
           : entry.before.blue.map((p, i) => {
               const after = entry.after.blue[i];
@@ -5255,6 +5474,16 @@
             }).join(', ') || '(none)';
 
         const modeBits = [];
+
+        if (game.isLeagueGame && Number(game.leagueSeriesDisplayCount) > 1) {
+          modeBits.push(
+            `League series game ${Number(game.leagueSeriesDisplayIndex) || 1}/${Number(game.leagueSeriesDisplayCount)}`
+          );
+          if (Number.isFinite(Number(game.leagueSeriesDisplayWeight))) {
+            const share = Number(game.leagueSeriesDisplayWeight);
+            modeBits.push(`Display share: ${share >= 0 ? '+' : ''}${share.toFixed(2)}x`);
+          }
+        }
 
         if (typeof entry.marginFactor === 'number') {
           modeBits.push(formatMarginBonusText(entry.marginFactor));
@@ -6540,24 +6769,41 @@
       return true;
     }
 
-    async function fetchJsonFromGoogleStatsEndpoint() {
-      const response = await fetch(GOOGLE_STATS_ENDPOINT, { cache: 'no-store' });
+    async function fetchJsonFromGoogleStatsEndpoint({
+      updateBusyMessage = null,
+      yieldToBrowser = nextFrame,
+    } = {}) {
+      const errors = [];
 
-      if (!response.ok) {
-        throw new Error('Could not load Google Drive stats.');
+      for (const endpoint of GOOGLE_STATS_ENDPOINTS) {
+        try {
+          updateBusyMessage?.('Downloading Google Drive stats...');
+          await yieldToBrowser();
+          const response = await fetch(endpoint, { cache: 'no-store' });
+
+          if (!response.ok) {
+            throw new Error(`${endpoint} returned HTTP ${response.status}.`);
+          }
+
+          updateBusyMessage?.('Reading Google Drive stats...');
+          await yieldToBrowser();
+          const parsed = await response.json();
+
+          if (!parsed || typeof parsed !== 'object') {
+            throw new Error(`${endpoint} response was invalid.`);
+          }
+
+          if (parsed.ok === false) {
+            throw new Error(parsed.error || `${endpoint} returned an error.`);
+          }
+
+          return parsed;
+        } catch (error) {
+          errors.push(String(error && error.message ? error.message : error));
+        }
       }
 
-      const parsed = await response.json();
-
-      if (!parsed || typeof parsed !== 'object') {
-        throw new Error('Google Drive stats response was invalid.');
-      }
-
-      if (parsed.ok === false) {
-        throw new Error(parsed.error || 'Google Drive stats response returned an error.');
-      }
-
-      return parsed;
+      throw new Error(`Google Drive stats failed: ${errors.join(' | ')}`);
     }
 
     async function fetchJsonFromBundledDefaultDatabase() {
@@ -6570,16 +6816,21 @@
       return response.json();
     }
 
-    async function fetchDefaultDatabase() {
+    async function fetchDefaultDatabase({
+      updateBusyMessage = null,
+      yieldToBrowser = nextFrame,
+    } = {}) {
       let parsed;
       let sourceLabel = 'Google Drive';
       let sourceFileName = '';
 
       try {
-        parsed = await fetchJsonFromGoogleStatsEndpoint();
+        parsed = await fetchJsonFromGoogleStatsEndpoint({ updateBusyMessage, yieldToBrowser });
         sourceFileName = parsed.source?.fileName || '';
       } catch (googleError) {
         console.warn('Google Drive stats failed, falling back to bundled default_database:', googleError);
+        updateBusyMessage?.('Loading bundled stats fallback...');
+        await yieldToBrowser();
         parsed = await fetchJsonFromBundledDefaultDatabase();
         sourceLabel = IS_LOCAL_SERVER
           ? 'local default_database'
@@ -6589,6 +6840,9 @@
       if (!parsed || typeof parsed !== 'object') {
         throw new Error('Server stats file is invalid.');
       }
+
+      updateBusyMessage?.('Preparing player and game data...');
+      await yieldToBrowser();
 
       const normalizedPlayers = normalizeImportedPlayers(
         Array.isArray(parsed.players) ? parsed.players : []
@@ -6611,7 +6865,11 @@
       };
     }
 
-    async function prepareDefaultDatabaseMeta({ forceRefresh = false } = {}) {
+    async function prepareDefaultDatabaseMeta({
+      forceRefresh = false,
+      updateBusyMessage = null,
+      yieldToBrowser = nextFrame,
+    } = {}) {
       if (forceRefresh) {
         defaultDatabaseMeta = null;
       }
@@ -6621,7 +6879,7 @@
         return defaultDatabaseMeta;
       }
 
-      defaultDatabaseMeta = await fetchDefaultDatabase();
+      defaultDatabaseMeta = await fetchDefaultDatabase({ updateBusyMessage, yieldToBrowser });
       const seasonDateChanged = maybeSyncSeasonStartDateFromServerMeta(defaultDatabaseMeta);
       updateServerStatsDate(defaultDatabaseMeta);
       if (seasonDateChanged) {
@@ -6702,16 +6960,25 @@
       }
     }
 
-    async function openManualDefaultDatabaseDialog() {
+    async function openManualDefaultDatabaseDialog({
+      updateBusyMessage = null,
+      yieldToBrowser = nextFrame,
+    } = {}) {
       if (defaultDatabaseDialog.open || defaultDatabaseDialogRequestInFlight || isLoadingDefaultDatabase) return;
 
       defaultDatabaseDialogMode = 'manual';
       defaultDatabaseDialogRequestInFlight = true;
 
       try {
+        updateBusyMessage?.('Checking server stats...');
+        await yieldToBrowser();
         defaultDatabaseStatusEl.textContent = 'Checking server stats...';
         confirmLoadDefaultDatabaseButtonEl.disabled = true;
-        const meta = await prepareDefaultDatabaseMeta({ forceRefresh: true });
+        const meta = await prepareDefaultDatabaseMeta({
+          forceRefresh: true,
+          updateBusyMessage,
+          yieldToBrowser,
+        });
         openDefaultDatabaseDialog(meta, 'manual');
       } catch {
         defaultDatabaseTextEl.textContent = 'A server stats file is available.';
@@ -6733,7 +7000,11 @@
       updateBusyMessage?.('Downloading newest stats from server...');
       await yieldToBrowser();
 
-      const meta = await prepareDefaultDatabaseMeta({ forceRefresh: true });
+      const meta = await prepareDefaultDatabaseMeta({
+        forceRefresh: true,
+        updateBusyMessage,
+        yieldToBrowser,
+      });
 
       updateBusyMessage?.('Saving newest stats locally...');
       await yieldToBrowser();
@@ -6828,7 +7099,7 @@
     document.getElementById('exportDatabaseButton')?.addEventListener('click', exportDatabase);
     document.getElementById('importDatabaseLinkButton')?.addEventListener('click', () => importFileInput.click());
     loadDefaultDatabaseButtonEl.addEventListener('click', async () => {
-      await runWithBusy('Checking server stats...', () => openManualDefaultDatabaseDialog());
+      await runWithBusy('Checking server stats...', openManualDefaultDatabaseDialog);
     });
 
     importFileInput.addEventListener('change', (event) => {
@@ -6882,15 +7153,16 @@
 
     setSeasonStartDateValue(loadSeasonStartDate());
     updateSeasonStartDateStatus();
-    activeOverallScoreboardMode = OVERALL_SCOREBOARD_MODES[
-      localStorage.getItem(OVERALL_SCOREBOARD_MODE_STORAGE_KEY)
-    ]
-      ? localStorage.getItem(OVERALL_SCOREBOARD_MODE_STORAGE_KEY)
-      : 'composite';
-    updateOverallScoreboardModeControls();
-
     // Read URL params — sortBy forces the overall tab and sets the sort field
     const _initParams = new URLSearchParams(window.location.search);
+    const _modeParam = _initParams.get('mode');
+    activeOverallScoreboardMode = OVERALL_SCOREBOARD_MODES[_modeParam]
+      ? _modeParam
+      : OVERALL_SCOREBOARD_MODES[localStorage.getItem(OVERALL_SCOREBOARD_MODE_STORAGE_KEY)]
+        ? localStorage.getItem(OVERALL_SCOREBOARD_MODE_STORAGE_KEY)
+        : 'composite';
+    updateOverallScoreboardModeControls();
+
     const _sortByParam = _initParams.get('sortBy');
     if (_sortByParam && SORT_CONFIGS[_sortByParam]) {
       activeSortBy = _sortByParam;

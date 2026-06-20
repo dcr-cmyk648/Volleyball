@@ -28,6 +28,7 @@
     "expected:outliers": "node --no-deprecation --import ./register.mjs expected_range_outliers.mjs",
     "uncertainty:audit": "node --no-deprecation --import ./register.mjs player_uncertainty_audit.mjs",
     "openskill:native": "node --no-deprecation --import ./register.mjs openskill_native_sweep.mjs",
+    "rating:backfit": "node --no-deprecation --import ./register.mjs rating_backfit_sweep.mjs",
     "streak": "OPEN_SKILL_NATIVE_SWEEP=streak node --no-deprecation --import ./register.mjs openskill_native_sweep.mjs",
     "session": "OPEN_SKILL_NATIVE_SWEEP=session node --no-deprecation --import ./register.mjs openskill_native_sweep.mjs",
     "release:compare": "node --no-deprecation --import ./register.mjs release_compare.mjs",

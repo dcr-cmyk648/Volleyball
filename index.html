@@ -1174,12 +1174,14 @@
 
   const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
   const DEFAULT_DB_SOURCE_PATH = './default_database';
+  const DIRECT_GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwahqGocPhBwCTaB2HjnM3WIjoTOoc-lk94i8JjkRaTfEXf-rT-OXe0pkpQkZk5u0Tm/exec';
   const IS_LOCAL_SERVER =
     ['localhost', '127.0.0.1', '::1'].includes(location.hostname) ||
     location.port === '5173';
-  const GOOGLE_STATS_ENDPOINT = IS_LOCAL_SERVER
-    ? '/api/google-stats'
-    : 'https://script.google.com/macros/s/AKfycbwahqGocPhBwCTaB2HjnM3WIjoTOoc-lk94i8JjkRaTfEXf-rT-OXe0pkpQkZk5u0Tm/exec';
+  const GOOGLE_STATS_ENDPOINTS = [
+    ...(location.protocol === 'http:' || location.protocol === 'https:' ? ['/api/google-stats'] : []),
+    DIRECT_GOOGLE_STATS_ENDPOINT
+  ].filter((endpoint, index, endpoints) => endpoints.indexOf(endpoint) === index);
   const DEFAULT_BALANCE_ATTEMPTS = 100;
 
   // Provisional-player balancing: players with fewer than this many career games
@@ -1485,7 +1487,7 @@
   }
 
   function loadIncludeLeagueGamesEnabled() {
-    return true;
+    return isLeagueGameMode();
   }
 
   function hashString(value) {
@@ -4401,31 +4403,41 @@
   }
 
   async function fetchGoogleDriveStats() {
-    if (!GOOGLE_STATS_ENDPOINT || GOOGLE_STATS_ENDPOINT.includes('PASTE_')) {
+    if (!GOOGLE_STATS_ENDPOINTS.length) {
       throw new Error('Google Drive stats endpoint is not configured.');
     }
 
-    const response = await fetch(GOOGLE_STATS_ENDPOINT, { cache: 'no-store' });
+    const errors = [];
 
-    if (!response.ok) {
-      throw new Error(`Google Drive stats request failed with HTTP ${response.status}.`);
+    for (const endpoint of GOOGLE_STATS_ENDPOINTS) {
+      try {
+        const response = await fetch(endpoint, { cache: 'no-store' });
+
+        if (!response.ok) {
+          throw new Error(`${endpoint} returned HTTP ${response.status}.`);
+        }
+
+        const parsed = await response.json();
+
+        if (!parsed || typeof parsed !== 'object') {
+          throw new Error(`${endpoint} response was not valid JSON.`);
+        }
+
+        if (parsed.ok === false) {
+          throw new Error(parsed.error || `${endpoint} returned an error.`);
+        }
+
+        if (!Array.isArray(parsed.players) || !Array.isArray(parsed.games)) {
+          throw new Error(`${endpoint} response must include players[] and games[].`);
+        }
+
+        return parsed;
+      } catch (error) {
+        errors.push(String(error && error.message ? error.message : error));
+      }
     }
 
-    const parsed = await response.json();
-
-    if (!parsed || typeof parsed !== 'object') {
-      throw new Error('Google Drive stats response was not valid JSON.');
-    }
-
-    if (parsed.ok === false) {
-      throw new Error(parsed.error || 'Google Drive stats endpoint returned an error.');
-    }
-
-    if (!Array.isArray(parsed.players) || !Array.isArray(parsed.games)) {
-      throw new Error('Google Drive stats response must include players[] and games[].');
-    }
-
-    return parsed;
+    throw new Error(`Google Drive stats failed: ${errors.join(' | ')}`);
   }
 
   async function fetchBundledDefaultDatabase() {

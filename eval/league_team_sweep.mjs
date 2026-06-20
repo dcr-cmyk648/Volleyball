@@ -8,7 +8,13 @@
 //   npm run league:team
 
 import { loadDatabase } from './database.mjs';
-import { attachAccIQDeltas, compareAccIQDesc, computeAccIQ } from './metrics.mjs';
+import {
+  attachAccIQDeltas,
+  compareAccIQDesc,
+  computeAccIQ,
+  computeBackAccIQ,
+  computeFwdAccIQ,
+} from './metrics.mjs';
 import {
   replayRatings,
   calibrateMarginModel,
@@ -43,6 +49,34 @@ function parseModesEnv(fallback) {
     .split(',')
     .map(value => value.trim())
     .filter(value => value === 'context' || value === 'pooled' || value === 'level');
+
+  return values.length > 0 ? values : fallback;
+}
+
+function parseDayOffsetGroupingsEnv(fallback) {
+  const raw = process.env.LEAGUE_DAY_OFFSET_GROUPINGS;
+  if (!raw) return fallback;
+
+  const values = raw
+    .split(',')
+    .map(value => value.trim())
+    .filter(value => (
+      value === 'dateLevel' ||
+      value === 'dateLevelCourt' ||
+      value === 'dateContext'
+    ));
+
+  return values.length > 0 ? values : fallback;
+}
+
+function parsePregameBayesianModesEnv(fallback) {
+  const raw = process.env.LEAGUE_PREGAME_BAYESIAN_MODES;
+  if (!raw) return fallback;
+
+  const values = raw
+    .split(',')
+    .map(value => value.trim())
+    .filter(value => value === 'history' || value === 'incrementalGrid');
 
   return values.length > 0 ? values : fallback;
 }
@@ -311,6 +345,8 @@ function evaluate(label, options = {}, includeLeagueGames = true) {
     includeLeagueGames,
     forward,
     back,
+    fwdAccIQ: computeFwdAccIQ(forward),
+    backAccIQ: computeBackAccIQ(back),
     accIQ: computeAccIQ({ forward, back }),
   };
 }
@@ -324,28 +360,37 @@ function pct(value) {
 }
 
 function printRows(title, rows, limit = rows.length) {
+  const labelWidth = 54;
   console.log(title);
   console.log([
-    'label'.padEnd(32),
+    'label'.padEnd(labelWidth),
     'fwdAcc'.padStart(7),
     'fwdBrier'.padStart(9),
     'fwdMAE'.padStart(7),
     'backAcc'.padStart(8),
     'backBrier'.padStart(9),
     'backMAE'.padStart(7),
+    'FwdIQ'.padStart(7),
+    'dFwd'.padStart(7),
+    'BackIQ'.padStart(7),
+    'dBack'.padStart(7),
     'AccIQ'.padStart(7),
     'dIQ'.padStart(7),
   ].join(' '));
-  console.log('-'.repeat(100));
+  console.log('-'.repeat(labelWidth + 96));
   rows.slice(0, limit).forEach(row => {
     console.log([
-      row.label.slice(0, 32).padEnd(32),
+      row.label.slice(0, labelWidth).padEnd(labelWidth),
       pct(row.forward.accuracy).padStart(7),
       fmt(row.forward.brier).padStart(9),
       fmt(row.forward.marginMAE).padStart(7),
       pct(row.back.accuracy).padStart(8),
       fmt(row.back.brier).padStart(9),
       fmt(row.back.marginMAE).padStart(7),
+      fmt(row.fwdAccIQ, 2).padStart(7),
+      fmt(row.fwdAccIQDelta, 2).padStart(7),
+      fmt(row.backAccIQ, 2).padStart(7),
+      fmt(row.backAccIQDelta, 2).padStart(7),
       fmt(row.accIQ, 2).padStart(7),
       fmt(row.accIQDelta, 2).padStart(7),
     ].join(' '));
@@ -358,7 +403,7 @@ const scoredNonLeagueGames = games.filter(isScoredNonLeagueGame);
 
 console.log(`DB: ${sourceLabel}`);
 console.log(`players=${players.length} games=${games.length} leagueGames=${leagueGames.length} scoredNonLeague=${scoredNonLeagueGames.length}`);
-console.log('Sweeping leagueTeamRatingMode, leagueOpponentUpdateMultiplier, and league opponent burn-in.');
+console.log('Sweeping league team identity, update rate, pregame shrinkage/sigma, and same-session freeze.');
 console.log('');
 
 const candidates = [];
@@ -398,39 +443,292 @@ const pregameBayesianSigmas = parseListEnv(
   'LEAGUE_PREGAME_BAYESIAN_SIGMAS',
   [1, 2, 4]
 );
+const pregameBayesianModes = parsePregameBayesianModesEnv(['incrementalGrid']);
 const pregameBayesianGridStep = Number(process.env.LEAGUE_PREGAME_BAYESIAN_GRID_STEP) || DEFAULT_RATING_OPTIONS.leagueBayesianGridStep;
+const leagueUpdateMultipliers = parseListEnv(
+  'LEAGUE_UPDATE_MULTIPLIERS',
+  [DEFAULT_RATING_OPTIONS.leagueUpdateMultiplier]
+);
+const matchedLeagueUpdateMultipliers = parseListEnv(
+  'MATCHED_LEAGUE_UPDATE_MULTIPLIERS',
+  leagueUpdateMultipliers
+);
+const matchedOffsetRawValues = parseListEnv(
+  'MATCHED_LEAGUE_OFFSET_RAWS',
+  [0]
+);
+const dayOffsetLeagueUpdateMultipliers = parseListEnv(
+  'DAY_OFFSET_LEAGUE_UPDATE_MULTIPLIERS',
+  matchedLeagueUpdateMultipliers
+);
+const dayOffsetTrustValues = parseListEnv(
+  'LEAGUE_DAY_OFFSET_TRUSTS',
+  [0.25, 0.5, 0.75, 1]
+);
+const dayOffsetGroupings = parseDayOffsetGroupingsEnv(['dateLevel']);
+const seriesLeagueUpdateMultipliers = parseListEnv(
+  'SERIES_LEAGUE_UPDATE_MULTIPLIERS',
+  []
+);
+const splitLeagueUpdateMultipliers = parseListEnv(
+  'SPLIT_LEAGUE_UPDATE_MULTIPLIERS',
+  []
+);
+const leagueMuUpdateMultipliers = parseListEnv(
+  'LEAGUE_MU_UPDATE_MULTIPLIERS',
+  [1]
+);
+const leagueSigmaUpdateMultipliers = parseListEnv(
+  'LEAGUE_SIGMA_UPDATE_MULTIPLIERS',
+  [1]
+);
+const shrinkGamesValues = parseListEnv(
+  'LEAGUE_PREGAME_SHRINK_GAMES',
+  [4, 8, 12, 20]
+);
+const shrinkPowerValues = parseListEnv(
+  'LEAGUE_PREGAME_SHRINK_POWERS',
+  [0.75, 1, 1.25]
+);
+const sigmaFloorValues = parseListEnv(
+  'LEAGUE_PREGAME_SIGMA_FLOORS',
+  [DEFAULT_RATING_OPTIONS.sigma, DEFAULT_RATING_OPTIONS.sigma * 1.5, DEFAULT_RATING_OPTIONS.sigma * 2]
+);
+
+matchedLeagueUpdateMultipliers.forEach(leagueUpdateMultiplier => {
+  matchedOffsetRawValues.forEach(offsetRaw => {
+    const label = leagueUpdateMultiplier === DEFAULT_RATING_OPTIONS.leagueUpdateMultiplier
+      ? `matched league opponent off ${offsetRaw.toFixed(2)}`
+      : `matched league opponent lu${leagueUpdateMultiplier.toFixed(2)} off ${offsetRaw.toFixed(2)}`;
+    addCandidate(label, {
+      leagueOpponentModel: 'matched',
+      leagueUpdateMultiplier,
+      leagueMatchedOpponentOffsetRaw: offsetRaw,
+    }, true);
+  });
+});
+
+dayOffsetLeagueUpdateMultipliers.forEach(leagueUpdateMultiplier => {
+  dayOffsetGroupings.forEach(grouping => {
+    dayOffsetTrustValues.forEach(trust => {
+      const groupingLabel = grouping === 'dateLevel' ? '' : ` ${grouping}`;
+      const label = `day offset${groupingLabel} lu${leagueUpdateMultiplier.toFixed(2)} trust ${trust.toFixed(2)}`;
+      addCandidate(label, {
+        leagueOpponentModel: 'dayMatchedOffset',
+        leagueUpdateMultiplier,
+        leagueDayOffsetTrust: trust,
+        leagueDayOffsetGrouping: grouping,
+      }, true);
+    });
+  });
+});
+
+seriesLeagueUpdateMultipliers.forEach(leagueUpdateMultiplier => {
+  addCandidate(`series aggregate lu${leagueUpdateMultiplier.toFixed(2)}`, {
+    leagueSeriesAggregationEnabled: true,
+    leagueUpdateMultiplier,
+  }, true);
+
+  addCandidate(`series aggregate matched lu${leagueUpdateMultiplier.toFixed(2)}`, {
+    leagueSeriesAggregationEnabled: true,
+    leagueOpponentModel: 'matched',
+    leagueUpdateMultiplier,
+  }, true);
+
+  pregameBayesianSigmas.forEach(sigma => {
+    pregameBayesianModes.forEach(bayesMode => {
+      addCandidate(`series bayes ${bayesMode} lu${leagueUpdateMultiplier.toFixed(2)} seed ${sigma.toFixed(2)}`, {
+        leagueSeriesAggregationEnabled: true,
+        leagueTeamRatingMode: 'level',
+        leaguePregameBayesianEnabled: true,
+        leaguePregameBayesianMode: bayesMode,
+        leaguePregameBayesianSigma: sigma,
+        leagueBayesianGridStep: pregameBayesianGridStep,
+        leagueUpdateMultiplier,
+      }, true);
+    });
+  });
+
+  leagueMuUpdateMultipliers.forEach(muMultiplier => {
+    leagueSigmaUpdateMultipliers.forEach(sigmaMultiplier => {
+      addCandidate(
+        `series split lu${leagueUpdateMultiplier.toFixed(2)} mu${muMultiplier.toFixed(2)} sig${sigmaMultiplier.toFixed(2)}`,
+        {
+          leagueSeriesAggregationEnabled: true,
+          leagueUpdateMultiplier,
+          leagueMuUpdateMultiplier: muMultiplier,
+          leagueSigmaUpdateMultiplier: sigmaMultiplier,
+        },
+        true
+      );
+      pregameBayesianSigmas.forEach(sigma => {
+        pregameBayesianModes.forEach(bayesMode => {
+          addCandidate(
+            `series bayes ${bayesMode} split lu${leagueUpdateMultiplier.toFixed(2)} mu${muMultiplier.toFixed(2)} sig${sigmaMultiplier.toFixed(2)} seed ${sigma.toFixed(2)}`,
+            {
+              leagueSeriesAggregationEnabled: true,
+              leagueTeamRatingMode: 'level',
+              leaguePregameBayesianEnabled: true,
+              leaguePregameBayesianMode: bayesMode,
+              leaguePregameBayesianSigma: sigma,
+              leagueBayesianGridStep: pregameBayesianGridStep,
+              leagueUpdateMultiplier,
+              leagueMuUpdateMultiplier: muMultiplier,
+              leagueSigmaUpdateMultiplier: sigmaMultiplier,
+            },
+            true
+          );
+        });
+      });
+      addCandidate(
+        `series split matched lu${leagueUpdateMultiplier.toFixed(2)} mu${muMultiplier.toFixed(2)} sig${sigmaMultiplier.toFixed(2)}`,
+        {
+          leagueSeriesAggregationEnabled: true,
+          leagueOpponentModel: 'matched',
+          leagueUpdateMultiplier,
+          leagueMuUpdateMultiplier: muMultiplier,
+          leagueSigmaUpdateMultiplier: sigmaMultiplier,
+        },
+        true
+      );
+    });
+  });
+});
+
+splitLeagueUpdateMultipliers.forEach(leagueUpdateMultiplier => {
+  leagueMuUpdateMultipliers.forEach(muMultiplier => {
+    leagueSigmaUpdateMultipliers.forEach(sigmaMultiplier => {
+      addCandidate(
+        `split lu${leagueUpdateMultiplier.toFixed(2)} mu${muMultiplier.toFixed(2)} sig${sigmaMultiplier.toFixed(2)}`,
+        {
+          leagueUpdateMultiplier,
+          leagueMuUpdateMultiplier: muMultiplier,
+          leagueSigmaUpdateMultiplier: sigmaMultiplier,
+        },
+        true
+      );
+      addCandidate(
+        `split matched lu${leagueUpdateMultiplier.toFixed(2)} mu${muMultiplier.toFixed(2)} sig${sigmaMultiplier.toFixed(2)}`,
+        {
+          leagueOpponentModel: 'matched',
+          leagueUpdateMultiplier,
+          leagueMuUpdateMultiplier: muMultiplier,
+          leagueSigmaUpdateMultiplier: sigmaMultiplier,
+        },
+        true
+      );
+    });
+  });
+});
+
+function addLeaguePregameCandidates({
+  mode,
+  leagueUpdateMultiplier,
+  multiplier,
+  burnInGames,
+  burnInMultiplier,
+  burnLabel,
+}) {
+  const baseOptions = {
+    leagueTeamRatingMode: mode,
+    leagueOpponentUpdateMultiplier: multiplier,
+    leagueOpponentBurnInGames: burnInGames,
+    leagueOpponentBurnInMultiplier: burnInMultiplier,
+    leagueUpdateMultiplier,
+  };
+
+  shrinkGamesValues.forEach(shrinkGames => {
+    shrinkPowerValues.forEach(power => {
+      addCandidate(`${mode} shrink g${shrinkGames} p${power.toFixed(2)} x${multiplier.toFixed(2)}${burnLabel}`, {
+        ...baseOptions,
+        leaguePregameShrinkEnabled: true,
+        leaguePregameShrinkGames: shrinkGames,
+        leaguePregameShrinkPower: power,
+      });
+    });
+  });
+
+  sigmaFloorValues.forEach(sigmaFloor => {
+    addCandidate(`${mode} sigma floor ${sigmaFloor.toFixed(2)} x${multiplier.toFixed(2)}${burnLabel}`, {
+      ...baseOptions,
+      leaguePregameSigmaEnabled: true,
+      leaguePregameSigmaFloor: sigmaFloor,
+    });
+  });
+
+  addCandidate(`${mode} session freeze x${multiplier.toFixed(2)}${burnLabel}`, {
+    ...baseOptions,
+    leagueSessionFreezeEnabled: true,
+  });
+
+  shrinkGamesValues.forEach(shrinkGames => {
+    addCandidate(`${mode} shrink+freeze g${shrinkGames} x${multiplier.toFixed(2)}${burnLabel}`, {
+      ...baseOptions,
+      leaguePregameShrinkEnabled: true,
+      leaguePregameShrinkGames: shrinkGames,
+      leaguePregameShrinkPower: 1,
+      leagueSessionFreezeEnabled: true,
+    });
+  });
+
+  sigmaFloorValues.forEach(sigmaFloor => {
+    addCandidate(`${mode} sigma+freeze ${sigmaFloor.toFixed(2)} x${multiplier.toFixed(2)}${burnLabel}`, {
+      ...baseOptions,
+      leaguePregameSigmaEnabled: true,
+      leaguePregameSigmaFloor: sigmaFloor,
+      leagueSessionFreezeEnabled: true,
+    });
+  });
+}
 
 for (const mode of modes) {
-  for (const multiplier of multipliers) {
-    for (const burnInGames of burnInGamesValues) {
-      for (const burnInMultiplier of burnInMultipliers) {
-        if (burnInGames === 0 && burnInMultiplier !== 1) continue;
-        if (burnInGames > 0 && burnInMultiplier === 1) continue;
+  for (const leagueUpdateMultiplier of leagueUpdateMultipliers) {
+    for (const multiplier of multipliers) {
+      for (const burnInGames of burnInGamesValues) {
+        for (const burnInMultiplier of burnInMultipliers) {
+          if (burnInGames === 0 && burnInMultiplier !== 1) continue;
+          if (burnInGames > 0 && burnInMultiplier === 1) continue;
 
-        const burnLabel = burnInGames > 0
-          ? ` burn ${burnInGames}x${burnInMultiplier.toFixed(2)}`
-          : '';
+          const leagueLabel = leagueUpdateMultiplier === DEFAULT_RATING_OPTIONS.leagueUpdateMultiplier
+            ? ''
+            : ` lu${leagueUpdateMultiplier.toFixed(2)}`;
+          const burnLabel = burnInGames > 0
+            ? ` burn ${burnInGames}x${burnInMultiplier.toFixed(2)}`
+            : '';
 
-        addCandidate(`${mode} opp x${multiplier.toFixed(2)}${burnLabel}`, {
-          leagueTeamRatingMode: mode,
-          leagueOpponentUpdateMultiplier: multiplier,
-          leagueOpponentBurnInGames: burnInGames,
-          leagueOpponentBurnInMultiplier: burnInMultiplier,
-          leagueUpdateMultiplier: DEFAULT_RATING_OPTIONS.leagueUpdateMultiplier,
-        });
-
-        pregameBayesianSigmas.forEach(sigma => {
-          addCandidate(`${mode} bayes seed s${sigma.toFixed(2)} x${multiplier.toFixed(2)}${burnLabel}`, {
+          addCandidate(`${mode}${leagueLabel} opp x${multiplier.toFixed(2)}${burnLabel}`, {
             leagueTeamRatingMode: mode,
             leagueOpponentUpdateMultiplier: multiplier,
             leagueOpponentBurnInGames: burnInGames,
             leagueOpponentBurnInMultiplier: burnInMultiplier,
-            leagueUpdateMultiplier: DEFAULT_RATING_OPTIONS.leagueUpdateMultiplier,
-            leaguePregameBayesianEnabled: true,
-            leaguePregameBayesianSigma: sigma,
-            leagueBayesianGridStep: pregameBayesianGridStep,
+            leagueUpdateMultiplier,
           });
-        });
+
+          pregameBayesianSigmas.forEach(sigma => {
+            pregameBayesianModes.forEach(bayesMode => {
+              addCandidate(`${mode}${leagueLabel} bayes ${bayesMode} seed s${sigma.toFixed(2)} x${multiplier.toFixed(2)}${burnLabel}`, {
+                leagueTeamRatingMode: mode,
+                leagueOpponentUpdateMultiplier: multiplier,
+                leagueOpponentBurnInGames: burnInGames,
+                leagueOpponentBurnInMultiplier: burnInMultiplier,
+                leagueUpdateMultiplier,
+                leaguePregameBayesianEnabled: true,
+                leaguePregameBayesianMode: bayesMode,
+                leaguePregameBayesianSigma: sigma,
+                leagueBayesianGridStep: pregameBayesianGridStep,
+              });
+            });
+          });
+
+          addLeaguePregameCandidates({
+            mode,
+            leagueUpdateMultiplier,
+            multiplier,
+            burnInGames,
+            burnInMultiplier,
+            burnLabel: `${leagueLabel}${burnLabel}`,
+          });
+        }
       }
     }
   }
@@ -447,14 +745,19 @@ const uniqueRows = candidates.map((candidate, index) => {
 
 attachAccIQDeltas(uniqueRows, row => row.label === 'current default');
 const byAccIQ = [...uniqueRows].sort(compareAccIQDesc);
+const byFwdAccIQ = [...uniqueRows].sort((a, b) => (Number(b.fwdAccIQ) || -Infinity) - (Number(a.fwdAccIQ) || -Infinity));
+const byBackAccIQ = [...uniqueRows].sort((a, b) => (Number(b.backAccIQ) || -Infinity) - (Number(a.backAccIQ) || -Infinity));
 const byForwardBrier = [...uniqueRows].sort((a, b) => a.forward.brier - b.forward.brier);
 const byForwardMae = [...uniqueRows].sort((a, b) => a.forward.marginMAE - b.forward.marginMAE);
+const printLimit = Math.max(1, Number(process.env.LEAGUE_SWEEP_PRINT_LIMIT) || 14);
 const baselines = uniqueRows.filter(row =>
   row.label === 'exclude league games' ||
   row.label === 'current default'
 );
 
 printRows('Baselines', baselines);
-printRows('Best AccIQ candidates', byAccIQ, 14);
-printRows('Best forward Brier candidates', byForwardBrier, 12);
-printRows('Best forward margin-MAE candidates', byForwardMae, 12);
+printRows('Best AccIQ candidates', byAccIQ, printLimit);
+printRows('Best FwdAccIQ candidates', byFwdAccIQ, printLimit);
+printRows('Best BackAccIQ candidates', byBackAccIQ, printLimit);
+printRows('Best forward Brier candidates', byForwardBrier, printLimit);
+printRows('Best forward margin-MAE candidates', byForwardMae, printLimit);

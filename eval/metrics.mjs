@@ -70,10 +70,18 @@ export function computeSinglePassAccIQ(summary) {
   ]);
 }
 
+export function computeFwdAccIQ(forward) {
+  return computeSinglePassAccIQ(forward);
+}
+
+export function computeBackAccIQ(back) {
+  return computeSinglePassAccIQ(back);
+}
+
 export function computeAccIQ({ forward, back }) {
   return weightedMean([
-    { value: computeSinglePassAccIQ(forward), weight: 65 },
-    { value: computeSinglePassAccIQ(back), weight: 35 },
+    { value: computeFwdAccIQ(forward), weight: 65 },
+    { value: computeBackAccIQ(back), weight: 35 },
   ]);
 }
 
@@ -88,9 +96,17 @@ export function compareBalanceIQDesc(a, b) {
 export function attachAccIQDeltas(rows, baselinePredicate) {
   const baseline = rows.find(baselinePredicate);
   const baselineAccIQ = Number(baseline?.accIQ);
+  const baselineFwdAccIQ = Number(baseline?.fwdAccIQ);
+  const baselineBackAccIQ = Number(baseline?.backAccIQ);
   rows.forEach(row => {
     row.accIQDelta = Number.isFinite(baselineAccIQ) && Number.isFinite(Number(row.accIQ))
       ? Number(row.accIQ) - baselineAccIQ
+      : null;
+    row.fwdAccIQDelta = Number.isFinite(baselineFwdAccIQ) && Number.isFinite(Number(row.fwdAccIQ))
+      ? Number(row.fwdAccIQ) - baselineFwdAccIQ
+      : null;
+    row.backAccIQDelta = Number.isFinite(baselineBackAccIQ) && Number.isFinite(Number(row.backAccIQ))
+      ? Number(row.backAccIQ) - baselineBackAccIQ
       : null;
   });
   return rows;

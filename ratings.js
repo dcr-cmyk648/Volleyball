@@ -140,17 +140,26 @@ export const DEFAULT_RATING_OPTIONS = {
 
   useScoreMargin: true,
 
-  // League games are stronger evidence than casual mixed games because they
-  // reuse a fixed external opponent context. This scales only league-game
-  // rating updates; non-league games stay at 1.0x.
-  leagueUpdateMultiplier: 2.0,
-  // Eval/modeling knobs for synthetic league opponents. The database still
-  // records exact league context metadata; this controls only rating identity
-  // and how quickly the synthetic opponent rating reacts.
+  // League games use a matched external opponent: the league team is modeled as
+  // equal to the real team before each game, then the result is counted as
+  // slightly stronger evidence than a mixed casual game.
+  leagueUpdateMultiplier: 1.25,
+  // Eval/modeling knobs for league opponents. The database still records exact
+  // league context metadata; this controls only rating identity/modeling.
   leagueTeamRatingMode: 'level',
-  leagueOpponentUpdateMultiplier: 4,
-  leagueOpponentBurnInGames: 4,
-  leagueOpponentBurnInMultiplier: 2.25,
+  leagueOpponentModel: 'matched',
+  leagueMatchedOpponentOffsetRaw: 0,
+  leagueDayOffsetGrouping: 'dateLevel',
+  leagueDayOffsetTrust: 1,
+  leagueDayOffsetMaxRaw: 6,
+  leagueDayOffsetGridStep: 0.25,
+  leagueDayOffsetPriorSd: 3,
+  leagueSeriesAggregationEnabled: true,
+  leagueMuUpdateMultiplier: 0,
+  leagueSigmaUpdateMultiplier: 0.4,
+  leagueOpponentUpdateMultiplier: 1,
+  leagueOpponentBurnInGames: 0,
+  leagueOpponentBurnInMultiplier: 1,
   includeLeagueBracketGames: true,
   leagueDisplayRatingMode: 'bayesian',
   leagueDisplayShuffleIterations: 60,
@@ -158,7 +167,14 @@ export const DEFAULT_RATING_OPTIONS = {
   leagueBayesianPriorSd: 4,
   leagueBayesianGridStep: 0.1,
   leaguePregameBayesianEnabled: false,
+  leaguePregameBayesianMode: 'incrementalGrid',
   leaguePregameBayesianSigma: 2,
+  leaguePregameShrinkEnabled: false,
+  leaguePregameShrinkGames: 12,
+  leaguePregameShrinkPower: 1,
+  leaguePregameSigmaEnabled: false,
+  leaguePregameSigmaFloor: 25 / 3,
+  leagueSessionFreezeEnabled: false,
   leagueOpponentSeasonalTaperEnabled: false,
 
   // Blowout bonus — delayed logistic point-differential bonus. This keeps ordinary
@@ -577,6 +593,10 @@ export function getLeaderboardDisplayRatingFromSkill(skill, games = 0, options =
   return toDisplayRating(getLeaderboardRawOrdinalFromSkill(skill, games, options));
 }
 
+function getLeagueLeaderboardRawOrdinal(rawOrdinal) {
+  return Number.isFinite(Number(rawOrdinal)) ? Number(rawOrdinal) : 0;
+}
+
 export function formatDisplayedRating(rawOrdinal) {
   return `${Math.round(toDisplayRating(rawOrdinal))}`;
 }
@@ -648,6 +668,17 @@ function getLeagueTeamMemberIdsForContext(context, count = LEAGUE_TEAM_SIZE) {
     { length: safeCount },
     (_, i) => `${context.id}_${i + 1}`
   );
+}
+
+function getLeagueTeamMemberCountForContext(context, gamesList = []) {
+  const matchingCounts = (Array.isArray(gamesList) ? gamesList : [])
+    .filter(game => gameMatchesLeagueContext(game, context))
+    .map(game => Array.isArray(game?.redTeam) ? game.redTeam.length : 0)
+    .filter(count => count > 0);
+
+  return matchingCounts.length
+    ? Math.max(...matchingCounts)
+    : LEAGUE_TEAM_SIZE;
 }
 
 export function getLeagueRatingContext(game, options = {}) {
@@ -915,13 +946,15 @@ function getSkillFromRawOrdinal(rawOrdinal, cfg, sigmaOverride = null) {
   });
 }
 
-function seedPregameBayesianLeagueOpponent(game, ratingMap, history, cfg) {
+function seedPregameBayesianLeagueOpponent(game, ratingMap, history, cfg, posteriorMap = null) {
   if (cfg.leaguePregameBayesianEnabled !== true || !game?.isLeagueGame) {
     return null;
   }
 
   const context = getLeagueRatingContext(game, cfg);
-  const rawOrdinal = getBayesianLeagueRawFromHistory({ context, history, cfg });
+  const rawOrdinal = cfg.leaguePregameBayesianMode === 'incrementalGrid'
+    ? getIncrementalBayesianLeagueRaw({ context, posteriorMap, cfg })
+    : getBayesianLeagueRawFromHistory({ context, history, cfg });
   if (!Number.isFinite(rawOrdinal)) return null;
 
   const skill = getSkillFromRawOrdinal(rawOrdinal, cfg, cfg.leaguePregameBayesianSigma);
@@ -930,6 +963,111 @@ function seedPregameBayesianLeagueOpponent(game, ratingMap, history, cfg) {
   });
 
   return rawOrdinal;
+}
+
+function getLeagueOpponentPregameGameCount(ids, leagueOpponentStatsMap = {}) {
+  const counts = ids
+    .map(id => Number(leagueOpponentStatsMap[String(id)]?.games) || 0)
+    .filter(count => Number.isFinite(count));
+
+  return counts.length ? Math.max(...counts) : 0;
+}
+
+function applyPregameLeagueOpponentAdjustment(game, ratingMap, leagueOpponentStatsMap, cfg) {
+  if (!game?.isLeagueGame) return;
+  if (cfg.leaguePregameShrinkEnabled !== true && cfg.leaguePregameSigmaEnabled !== true) return;
+
+  const ids = getBlueTeamIds(game, cfg);
+  const gamesPlayed = getLeagueOpponentPregameGameCount(ids, leagueOpponentStatsMap);
+  const shrinkGames = Math.max(0, Number(cfg.leaguePregameShrinkGames) || 0);
+  const shrinkPower = Math.max(0.1, Number(cfg.leaguePregameShrinkPower) || 1);
+  const confidence = shrinkGames > 0
+    ? Math.pow(gamesPlayed / (gamesPlayed + shrinkGames), shrinkPower)
+    : 1;
+  const sigmaFloor = Math.max(0.1, Number(cfg.leaguePregameSigmaFloor) || cfg.sigma);
+
+  ids.forEach(id => {
+    const current = ratingMap[id] ?? makeInitialRating(cfg);
+    let raw = getRawOrdinal(current, cfg);
+    let sigma = Number(current.sigma);
+
+    if (cfg.leaguePregameShrinkEnabled === true) {
+      raw *= confidence;
+    }
+    if (cfg.leaguePregameSigmaEnabled === true) {
+      sigma = Math.max(sigma, sigmaFloor);
+    }
+
+    ratingMap[id] = getSkillFromRawOrdinal(raw, cfg, sigma);
+  });
+}
+
+function getLeagueSessionFreezeKey(game, cfg) {
+  if (!game?.isLeagueGame || cfg.leagueSessionFreezeEnabled !== true) return null;
+  const context = getLeagueRatingContext(game, cfg);
+  return `${context.id}:${game.date || game.createdAt || game.id || ''}`;
+}
+
+function cloneRatingSkill(skill, cfg) {
+  return rating({
+    mu: Number(skill?.mu ?? cfg.mu),
+    sigma: clamp(Number(skill?.sigma ?? cfg.sigma), 1, cfg.sigma),
+  });
+}
+
+function applyLeagueSessionPregameFreeze(game, ratingMap, sessionMap, cfg) {
+  const key = getLeagueSessionFreezeKey(game, cfg);
+  if (!key || !sessionMap) return null;
+
+  const ids = getBlueTeamIds(game, cfg);
+  let state = sessionMap.get(key);
+  if (!state) {
+    state = {
+      baseline: new Map(),
+      accumulated: new Map(),
+    };
+    ids.forEach(id => {
+      state.baseline.set(String(id), cloneRatingSkill(ratingMap[id] ?? makeInitialRating(cfg), cfg));
+      state.accumulated.set(String(id), { mu: 0, sigma: 0 });
+    });
+    sessionMap.set(key, state);
+  }
+
+  ids.forEach(id => {
+    const baseline = state.baseline.get(String(id)) ?? makeInitialRating(cfg);
+    ratingMap[id] = cloneRatingSkill(baseline, cfg);
+  });
+
+  return { key, ids, state };
+}
+
+function finalizeLeagueSessionFreeze(freeze, result, ratingMap, cfg) {
+  if (!freeze || !result?.before?.blue || !result?.after?.blue) return;
+
+  freeze.ids.forEach((id, index) => {
+    const before = result.before.blue[index];
+    const after = result.after.blue[index];
+    if (!before || !after) return;
+
+    const key = String(id);
+    const currentAccum = freeze.state.accumulated.get(key) || { mu: 0, sigma: 0 };
+    const nextAccum = {
+      mu: currentAccum.mu + (Number(after.mu) - Number(before.mu)),
+      sigma: currentAccum.sigma + (Number(after.sigma) - Number(before.sigma)),
+    };
+    freeze.state.accumulated.set(key, nextAccum);
+
+    const baseline = freeze.state.baseline.get(key) ?? makeInitialRating(cfg);
+    const nextSkill = rating({
+      mu: Number(baseline.mu) + nextAccum.mu,
+      sigma: clamp(Number(baseline.sigma) + nextAccum.sigma, 1, cfg.sigma),
+    });
+    ratingMap[id] = nextSkill;
+
+    after.mu = Number(nextSkill.mu);
+    after.sigma = Number(nextSkill.sigma);
+    after.rating = getRawOrdinal(nextSkill, cfg);
+  });
 }
 
 function buildTeamObjectsFromIds(ids, ratingMap) {
@@ -1011,6 +1149,123 @@ function updateCarryScore(carryMap, id, isWinner, teamWinProb) {
 
 function cloneSkill(skill) {
   return skill ? { mu: Number(skill.mu), sigma: Number(skill.sigma) } : null;
+}
+
+function cloneRatingForRate(skill, cfg = {}) {
+  return rating({
+    mu: Number(skill?.mu ?? cfg.mu),
+    sigma: clamp(Number(skill?.sigma ?? cfg.sigma), 1, cfg.sigma),
+  });
+}
+
+function shiftSkillRawOrdinal(skill, rawOffset, cfg = {}) {
+  const sigma = clamp(Number(skill?.sigma ?? cfg.sigma), 1, cfg.sigma);
+  const raw = getRawOrdinal(skill, cfg);
+  return rating({
+    mu: raw + Number(rawOffset || 0) + Number(cfg.ordinalSigmaMultiplier) * sigma,
+    sigma,
+  });
+}
+
+function isMatchedLeagueOpponentModel(cfg = {}) {
+  return cfg.leagueOpponentModel === 'matched' ||
+    cfg.leagueOpponentModel === 'dayMatchedOffset';
+}
+
+function getLeagueDayOffsetKey(game, cfg = {}) {
+  if (!game?.isLeagueGame) return null;
+  const date = game.date || 'unknown-date';
+  const level = getLeagueLevel(game) || LEAGUE_LEVEL_REC;
+  if (cfg.leagueDayOffsetGrouping === 'dateLevelCourt') {
+    return `${date}:${level}:${getCourtType(game)}`;
+  }
+  if (cfg.leagueDayOffsetGrouping === 'dateContext') {
+    return `${date}:${getLeagueContextKey(game) || level}`;
+  }
+  return `${date}:${level}`;
+}
+
+function getLeagueMatchedRawOffset(game, cfg = {}) {
+  const fixedOffset = Number(cfg.leagueMatchedOpponentOffsetRaw);
+  if (Number.isFinite(fixedOffset)) return fixedOffset;
+
+  if (cfg.leagueOpponentModel !== 'dayMatchedOffset') return 0;
+  const key = getLeagueDayOffsetKey(game, cfg);
+  const map = cfg._leagueDayMatchedOffsetRawMap;
+  const value = key && map?.get ? map.get(key) : null;
+  return Number.isFinite(Number(value)) ? Number(value) : 0;
+}
+
+function getShiftedMatchedLeagueTeam(redTeam, rawOffset, cfg = {}) {
+  return redTeam.map(skill => shiftSkillRawOrdinal(skill, rawOffset, cfg));
+}
+
+function estimateLeagueDayMatchedOffset({
+  games = [],
+  ratingMap = {},
+  cfg = {},
+} = {}) {
+  const leagueGames = (Array.isArray(games) ? games : []).filter(game =>
+    game?.isLeagueGame &&
+    Array.isArray(game.redTeam) &&
+    game.redTeam.length > 0 &&
+    (game.winner === 'red' || game.winner === 'blue')
+  );
+  if (!leagueGames.length) return 0;
+
+  const maxRaw = Math.max(0, Number(cfg.leagueDayOffsetMaxRaw) || 0);
+  const step = clamp(Number(cfg.leagueDayOffsetGridStep) || 0.25, 0.05, Math.max(0.05, maxRaw || 0.05));
+  const priorSd = Math.max(0.1, Number(cfg.leagueDayOffsetPriorSd) || 3);
+  const trust = clamp(Number(cfg.leagueDayOffsetTrust), 0, 1);
+  let bestOffset = 0;
+  let bestLogLikelihood = -Infinity;
+
+  for (let offset = -maxRaw; offset <= maxRaw + 0.0001; offset += step) {
+    let logLikelihood = -0.5 * (offset / priorSd) ** 2;
+
+    leagueGames.forEach(game => {
+      const redTeam = getRedTeamIds(game).map(id =>
+        cloneRatingForRate(ratingMap[id] ?? makeInitialRating(cfg), cfg)
+      );
+      const blueTeam = getShiftedMatchedLeagueTeam(redTeam, offset, cfg);
+      const redWinProbability = clamp(predictWin([redTeam, blueTeam])?.[0] ?? 0.5, 0.001, 0.999);
+      logLikelihood += game.winner === 'red'
+        ? Math.log(redWinProbability)
+        : Math.log(1 - redWinProbability);
+    });
+
+    if (logLikelihood > bestLogLikelihood) {
+      bestLogLikelihood = logLikelihood;
+      bestOffset = offset;
+    }
+  }
+
+  return bestOffset * trust;
+}
+
+function ensureLeagueDayMatchedOffset({
+  game,
+  sortedGames = [],
+  ratingMap = {},
+  offsetMap = null,
+  cfg = {},
+} = {}) {
+  if (cfg.leagueOpponentModel !== 'dayMatchedOffset' || !game?.isLeagueGame || !offsetMap) {
+    return;
+  }
+
+  const key = getLeagueDayOffsetKey(game, cfg);
+  if (!key || offsetMap.has(key)) return;
+
+  const dayGames = sortedGames.filter(candidate =>
+    candidate?.isLeagueGame &&
+    getLeagueDayOffsetKey(candidate, cfg) === key
+  );
+  offsetMap.set(key, estimateLeagueDayMatchedOffset({
+    games: dayGames,
+    ratingMap,
+    cfg,
+  }));
 }
 
 function getScoreboardSideSize(game, side) {
@@ -1252,7 +1507,10 @@ export function buildPairAdjustmentMap({
   });
 
   const includedGames = getIncludedGames(games, true, ratingCfg);
-  const sortedGames = getGamesSortedOldestFirst(includedGames);
+  const sortedGames = aggregateLeagueSeriesGames(
+    getGamesSortedOldestFirst(includedGames),
+    ratingCfg
+  );
   const seasonalTaperDays =
     typeof ratingCfg.seasonalTaperDays === 'number'
       ? ratingCfg.seasonalTaperDays
@@ -1660,6 +1918,8 @@ function applyUpdateMultiplier({
   updatedTeam,
   ratingMap,
   multiplier,
+  muMultiplier = 1,
+  sigmaMultiplier = 1,
   options = {},
 }) {
   const cfg = mergeRatingOptions(options);
@@ -1668,14 +1928,86 @@ function applyUpdateMultiplier({
     const before = beforeEntries[index];
     const after = updatedTeam[index];
 
-    const nextMu = before.mu + (Number(after.mu) - before.mu) * multiplier;
-    const nextSigma = before.sigma + (Number(after.sigma) - before.sigma) * multiplier;
+    const nextMu = before.mu + (Number(after.mu) - before.mu) * multiplier * muMultiplier;
+    const nextSigma = before.sigma + (Number(after.sigma) - before.sigma) * multiplier * sigmaMultiplier;
 
     ratingMap[id] = rating({
       mu: nextMu,
       sigma: clamp(nextSigma, 1, cfg.sigma),
     });
   });
+}
+
+function getLeagueSeriesAggregationKey(game) {
+  if (!game?.isLeagueGame) return null;
+  const rosterKey = getRedTeamIds(game).map(String).sort().join('|');
+  return [
+    game.date || 'unknown-date',
+    getLeagueContextKey(game) || getLeagueLevel(game) || 'league',
+    rosterKey,
+  ].join('::');
+}
+
+function aggregateLeagueSeriesGames(sortedGames = [], cfg = {}) {
+  if (cfg.leagueSeriesAggregationEnabled !== true) return sortedGames;
+
+  const groups = new Map();
+  sortedGames.forEach((game, index) => {
+    const key = getLeagueSeriesAggregationKey(game);
+    if (!key) return;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ game, index });
+  });
+
+  const aggregateByFirstIndex = new Map();
+  const skipIndexes = new Set();
+
+  groups.forEach(entries => {
+    if (entries.length <= 1) return;
+
+    const first = entries[0].game;
+    let redWins = 0;
+    let blueWins = 0;
+    let scoreRed = 0;
+    let scoreBlue = 0;
+    let hasScores = false;
+
+    entries.forEach(({ game }) => {
+      if (game.winner === 'red') redWins += 1;
+      if (game.winner === 'blue') blueWins += 1;
+      if (typeof game.scoreRed === 'number' && typeof game.scoreBlue === 'number') {
+        scoreRed += game.scoreRed;
+        scoreBlue += game.scoreBlue;
+        hasScores = true;
+      }
+    });
+
+    let winner = redWins > blueWins ? 'red' : blueWins > redWins ? 'blue' : null;
+    if (!winner && hasScores && scoreRed !== scoreBlue) {
+      winner = scoreRed > scoreBlue ? 'red' : 'blue';
+    }
+    if (!winner) return;
+
+    const aggregate = {
+      ...first,
+      id: `${first.id || first.createdAt || entries[0].index}_league_series_${entries.length}`,
+      createdAt: first.createdAt ?? entries[0].index,
+      winner,
+      scoreRed: hasScores ? scoreRed : undefined,
+      scoreBlue: hasScores ? scoreBlue : undefined,
+      leagueSeriesGameCount: entries.length,
+      leagueSeriesRedWins: redWins,
+      leagueSeriesBlueWins: blueWins,
+      leagueSeriesGames: entries.map(({ game }) => cloneSimple(game)),
+    };
+
+    aggregateByFirstIndex.set(entries[0].index, aggregate);
+    entries.slice(1).forEach(entry => skipIndexes.add(entry.index));
+  });
+
+  return sortedGames
+    .map((game, index) => aggregateByFirstIndex.get(index) || game)
+    .filter((_, index) => !skipIndexes.has(index));
 }
 
 function getOpenSkillOutcomeScores(game, cfg = {}) {
@@ -2326,6 +2658,12 @@ export function rateSingleGame(game, ratingMap, options = {}) {
   const volleyballOptions = options?.volleyballOptions || {};
   const volleyballScoringRatingMap = options?.volleyballScoringRatingMap || null;
   const volleyballScoringPairAdjustmentMap = options?.volleyballScoringPairAdjustmentMap || null;
+  const useMatchedLeagueOpponent = Boolean(
+    game?.isLeagueGame && isMatchedLeagueOpponentModel(cfg)
+  );
+  const matchedLeagueRawOffset = useMatchedLeagueOpponent
+    ? getLeagueMatchedRawOffset(game, cfg)
+    : 0;
 
   ensureRatingsForGame(ratingMap, game, cfg);
 
@@ -2339,15 +2677,22 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     rating: getRawOrdinal(ratingMap[id], cfg),
   }));
 
-  const blueBefore = blueIds.map(id => ({
-    id,
-    mu: Number(ratingMap[id].mu),
-    sigma: Number(ratingMap[id].sigma),
-    rating: getRawOrdinal(ratingMap[id], cfg),
-  }));
-
   const redTeam = buildTeamObjectsFromIds(redIds, ratingMap);
-  const blueTeam = buildTeamObjectsFromIds(blueIds, ratingMap);
+  const blueTeam = useMatchedLeagueOpponent
+    ? getShiftedMatchedLeagueTeam(redTeam, matchedLeagueRawOffset, cfg)
+    : buildTeamObjectsFromIds(blueIds, ratingMap);
+
+  const blueBefore = blueIds.map((id, index) => {
+    const skill = useMatchedLeagueOpponent
+      ? blueTeam[index] ?? makeInitialRating(cfg)
+      : ratingMap[id];
+    return {
+      id,
+      mu: Number(skill.mu),
+      sigma: Number(skill.sigma),
+      rating: getRawOrdinal(skill, cfg),
+    };
+  });
 
   const marginDetails = getScoreMarginDetails(
     game?.scoreRed,
@@ -2380,6 +2725,12 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     [redTeam, blueTeam],
     getOpenSkillRateOptions(game, cfg)
   );
+  const leagueMuUpdateMultiplier = game?.isLeagueGame
+    ? getNonNegativeOption(cfg.leagueMuUpdateMultiplier, 1)
+    : 1;
+  const leagueSigmaUpdateMultiplier = game?.isLeagueGame
+    ? getNonNegativeOption(cfg.leagueSigmaUpdateMultiplier, 1)
+    : 1;
 
   applyUpdateMultiplier({
     ids: redIds,
@@ -2387,17 +2738,23 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     updatedTeam: updatedRedTeam,
     ratingMap,
     multiplier: getEvidenceModeMultiplier(evidence, cfg.openSkillEvidenceMultiplierMode, 'red'),
+    muMultiplier: leagueMuUpdateMultiplier,
+    sigmaMultiplier: leagueSigmaUpdateMultiplier,
     options: cfg,
   });
 
-  applyUpdateMultiplier({
-    ids: blueIds,
-    beforeEntries: blueBefore,
-    updatedTeam: updatedBlueTeam,
-    ratingMap,
-    multiplier: getEvidenceModeMultiplier(evidence, cfg.openSkillEvidenceMultiplierMode, 'blue'),
-    options: cfg,
-  });
+  if (!useMatchedLeagueOpponent) {
+    applyUpdateMultiplier({
+      ids: blueIds,
+      beforeEntries: blueBefore,
+      updatedTeam: updatedBlueTeam,
+      ratingMap,
+      multiplier: getEvidenceModeMultiplier(evidence, cfg.openSkillEvidenceMultiplierMode, 'blue'),
+      muMultiplier: leagueMuUpdateMultiplier,
+      sigmaMultiplier: leagueSigmaUpdateMultiplier,
+      options: cfg,
+    });
+  }
 
   const redAfter = redIds.map(id => ({
     id,
@@ -2406,12 +2763,41 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     rating: getRawOrdinal(ratingMap[id], cfg),
   }));
 
-  const blueAfter = blueIds.map(id => ({
-    id,
-    mu: Number(ratingMap[id].mu),
-    sigma: Number(ratingMap[id].sigma),
-    rating: getRawOrdinal(ratingMap[id], cfg),
-  }));
+  const blueAfter = blueIds.map((id, index) => {
+    if (useMatchedLeagueOpponent) {
+      const before = blueBefore[index] || {
+        mu: cfg.mu,
+        sigma: cfg.sigma,
+        rating: getRawOrdinal(makeInitialRating(cfg), cfg),
+      };
+      const after = updatedBlueTeam[index] || before;
+      const multiplier = getEvidenceModeMultiplier(
+        evidence,
+        cfg.openSkillEvidenceMultiplierMode,
+        'blue'
+      );
+      const mu = before.mu + (Number(after.mu) - before.mu) * multiplier * leagueMuUpdateMultiplier;
+      const sigma = clamp(
+        before.sigma + (Number(after.sigma) - before.sigma) * multiplier * leagueSigmaUpdateMultiplier,
+        1,
+        cfg.sigma
+      );
+      const skill = rating({ mu, sigma });
+      return {
+        id,
+        mu,
+        sigma,
+        rating: getRawOrdinal(skill, cfg),
+      };
+    }
+
+    return {
+      id,
+      mu: Number(ratingMap[id].mu),
+      sigma: Number(ratingMap[id].sigma),
+      rating: getRawOrdinal(ratingMap[id], cfg),
+    };
+  });
 
   return {
     game: cloneSimple(game),
@@ -2433,6 +2819,8 @@ export function rateSingleGame(game, ratingMap, options = {}) {
     finalUpdateMultiplier: evidence.finalUpdateMultiplier,
     openSkillWinnerProbability: evidence.openSkillWinnerProbability,
     volleyballWinnerProbability: evidence.volleyballWinnerProbability,
+    leagueOpponentModel: useMatchedLeagueOpponent ? cfg.leagueOpponentModel : 'synthetic',
+    leagueMatchedRawOffset: matchedLeagueRawOffset,
     leagueContext: game?.isLeagueGame ? cloneSimple(getLeagueRatingContext(game, cfg)) : null,
     before: {
       red: redBefore,
@@ -2446,7 +2834,10 @@ export function rateSingleGame(game, ratingMap, options = {}) {
 }
 
 function buildLeagueTeamFromContext(context, ratingMap, cfg, includedGames) {
-  const memberIds = getLeagueTeamMemberIdsForContext(context, LEAGUE_TEAM_MEMBER_COUNT);
+  const memberIds = getLeagueTeamMemberIdsForContext(
+    context,
+    getLeagueTeamMemberCountForContext(context, includedGames)
+  );
   const members = memberIds.map(id => ratingMap[id] ?? makeInitialRating(cfg));
 
   const leagueMu =
@@ -2483,7 +2874,7 @@ function buildLeagueTeamFromContext(context, ratingMap, cfg, includedGames) {
   });
 
   leagueTeam.winrate = leagueTeam.games > 0 ? leagueTeam.wins / leagueTeam.games : 0.5;
-  leagueTeam.leaderboardRawOrdinal = getLeaderboardRawOrdinal(leagueTeam.rawOrdinal, leagueTeam.games, cfg);
+  leagueTeam.leaderboardRawOrdinal = getLeagueLeaderboardRawOrdinal(leagueTeam.rawOrdinal);
   leagueTeam.leaderboardRating = toDisplayRating(leagueTeam.leaderboardRawOrdinal);
   leagueTeam.rating = leagueTeam.leaderboardRawOrdinal;
 
@@ -2552,6 +2943,9 @@ function replayRatingMapForLeagueDisplay({
   const ratingMap = {};
   const statsMap = {};
   const leagueOpponentStatsMap = {};
+  const history = [];
+  const leagueSessionFreezeMap = cfg.leagueSessionFreezeEnabled ? new Map() : null;
+  const leagueBayesianPosteriorMap = cfg.leaguePregameBayesianMode === 'incrementalGrid' ? new Map() : null;
   const referenceDate = seasonal ? getMostRecentGameDate(sortedGames) : null;
   const seasonalTaperDays =
     typeof cfg.seasonalTaperDays === 'number'
@@ -2568,7 +2962,15 @@ function replayRatingMapForLeagueDisplay({
       ? getSeasonalWeight(game?.date, referenceDate, seasonalTaperDays)
       : 1;
 
-    const pregameBayesianLeagueRaw = seedPregameBayesianLeagueOpponent(game, ratingMap, history, cfg);
+    const pregameBayesianLeagueRaw = seedPregameBayesianLeagueOpponent(
+      game,
+      ratingMap,
+      history,
+      cfg,
+      leagueBayesianPosteriorMap
+    );
+    applyPregameLeagueOpponentAdjustment(game, ratingMap, leagueOpponentStatsMap, cfg);
+    const leagueSessionFreeze = applyLeagueSessionPregameFreeze(game, ratingMap, leagueSessionFreezeMap, cfg);
     const historyEntry = rateSingleGame(game, ratingMap, {
       ...cfg,
       seasonalWeight,
@@ -2578,6 +2980,8 @@ function replayRatingMapForLeagueDisplay({
     if (Number.isFinite(pregameBayesianLeagueRaw)) {
       historyEntry.pregameBayesianLeagueRaw = pregameBayesianLeagueRaw;
     }
+    history.push(historyEntry);
+    updateIncrementalBayesianLeaguePosterior(historyEntry, leagueBayesianPosteriorMap, cfg);
 
     const burnInGames = Number(cfg.burnInGames) || 0;
     const burnInMult = Number(cfg.burnInMultiplier) || 1;
@@ -2605,6 +3009,8 @@ function replayRatingMapForLeagueDisplay({
         }
       });
     }
+
+    finalizeLeagueSessionFreeze(leagueSessionFreeze, historyEntry, ratingMap, cfg);
 
     (Array.isArray(game.redTeam) ? game.redTeam : []).forEach(player => {
       if (!statsMap[player.id]) statsMap[player.id] = { games: 0 };
@@ -2655,7 +3061,10 @@ function applyShuffledPooledLeagueDisplay({
     return leagueTeam;
   }
 
-  const sortedGames = getGamesSortedOldestFirst(includedGames);
+  const sortedGames = aggregateLeagueSeriesGames(
+    getGamesSortedOldestFirst(includedGames),
+    cfg
+  );
   const leagueGameCount = sortedGames.filter(game => game?.isLeagueGame).length;
   const iterations = Math.max(1, Math.min(250, Math.round(Number(cfg.leagueDisplayShuffleIterations) || 1)));
 
@@ -2689,7 +3098,7 @@ function applyShuffledPooledLeagueDisplay({
     sigma: totalSigma / samples,
   };
   const rawOrdinal = getRawOrdinal(displaySkill, cfg);
-  const leaderboardRawOrdinal = getLeaderboardRawOrdinal(rawOrdinal, leagueTeam.games, cfg);
+  const leaderboardRawOrdinal = getLeagueLeaderboardRawOrdinal(rawOrdinal);
 
   return {
     ...leagueTeam,
@@ -2755,13 +3164,7 @@ function getLogSumExp(values) {
   return max + Math.log(values.reduce((sum, value) => sum + Math.exp(value - max), 0));
 }
 
-function getBayesianLeagueRawFromHistory({ context, history, cfg }) {
-  const observations = (Array.isArray(history) ? history : [])
-    .filter(entry => gameMatchesLeagueContext(entry?.game, context));
-
-  if (!observations.length) return null;
-
-  const priorSd = Math.max(0.1, Number(cfg.leagueBayesianPriorSd) || 4);
+function getLeagueBayesianGrid(cfg) {
   const step = Math.max(0.02, Math.min(1, Number(cfg.leagueBayesianGridStep) || 0.1));
   const grid = [];
 
@@ -2769,8 +3172,33 @@ function getBayesianLeagueRawFromHistory({ context, history, cfg }) {
     grid.push(Number(raw.toFixed(4)));
   }
 
+  return grid;
+}
+
+function getLeagueBayesianPriorLogPosterior(grid, cfg) {
+  const priorSd = Math.max(0.1, Number(cfg.leagueBayesianPriorSd) || 4);
+  return grid.map(raw => -0.5 * (raw / priorSd) ** 2);
+}
+
+function getLeagueBayesianPosteriorMean(grid, logPosterior) {
+  const normalizer = getLogSumExp(logPosterior);
+  if (!Number.isFinite(normalizer)) return null;
+
+  return grid.reduce((sum, raw, index) =>
+    sum + raw * Math.exp(logPosterior[index] - normalizer),
+    0
+  );
+}
+
+function getBayesianLeagueRawFromHistory({ context, history, cfg }) {
+  const observations = (Array.isArray(history) ? history : [])
+    .filter(entry => gameMatchesLeagueContext(entry?.game, context));
+
+  if (!observations.length) return null;
+
+  const grid = getLeagueBayesianGrid(cfg);
   const logPosterior = grid.map(raw => {
-    let logp = -0.5 * (raw / priorSd) ** 2;
+    let logp = getLeagueBayesianPriorLogPosterior([raw], cfg)[0];
 
     observations.forEach(entry => {
       const pRed = clamp(
@@ -2785,16 +3213,64 @@ function getBayesianLeagueRawFromHistory({ context, history, cfg }) {
     return logp;
   });
 
-  const normalizer = getLogSumExp(logPosterior);
-  if (!Number.isFinite(normalizer)) return null;
-
-  return grid.reduce((sum, raw, index) =>
-    sum + raw * Math.exp(logPosterior[index] - normalizer),
-    0
-  );
+  return getLeagueBayesianPosteriorMean(grid, logPosterior);
 }
 
-function applyBayesianLeagueDisplay({ leagueTeam, context, history, cfg }) {
+function getIncrementalBayesianState(context, posteriorMap, cfg) {
+  if (!posteriorMap || !context?.id) return null;
+  const key = String(context.id);
+  let state = posteriorMap.get(key);
+
+  if (!state) {
+    const grid = getLeagueBayesianGrid(cfg);
+    state = {
+      grid,
+      logPosterior: getLeagueBayesianPriorLogPosterior(grid, cfg),
+      observations: 0,
+      rawOrdinal: null,
+    };
+    posteriorMap.set(key, state);
+  }
+
+  return state;
+}
+
+function getIncrementalBayesianLeagueRaw({ context, posteriorMap, cfg }) {
+  const state = getIncrementalBayesianState(context, posteriorMap, cfg);
+  if (!state || state.observations <= 0) return null;
+  if (Number.isFinite(state.rawOrdinal)) return state.rawOrdinal;
+  state.rawOrdinal = getLeagueBayesianPosteriorMean(state.grid, state.logPosterior);
+  return state.rawOrdinal;
+}
+
+function updateIncrementalBayesianLeaguePosterior(entry, posteriorMap, cfg) {
+  if (
+    cfg.leaguePregameBayesianEnabled !== true ||
+    cfg.leaguePregameBayesianMode !== 'incrementalGrid' ||
+    !entry?.game?.isLeagueGame
+  ) {
+    return null;
+  }
+
+  const context = getLeagueRatingContext(entry.game, cfg);
+  const state = getIncrementalBayesianState(context, posteriorMap, cfg);
+  if (!state) return null;
+
+  const yRed = entry.game.winner === 'red' ? 1 : 0;
+  state.logPosterior = state.logPosterior.map((logp, index) => {
+    const pRed = clamp(
+      getHistoryRedWinProbabilityForLeagueRaw(entry, state.grid[index], cfg),
+      0.001,
+      0.999
+    );
+    return logp + (yRed ? Math.log(pRed) : Math.log(1 - pRed));
+  });
+  state.observations += 1;
+  state.rawOrdinal = getLeagueBayesianPosteriorMean(state.grid, state.logPosterior);
+  return state.rawOrdinal;
+}
+
+function applyBayesianLeagueDisplay({ leagueTeam, context, history, cfg, posteriorMap = null }) {
   if (
     !leagueTeam ||
     cfg.leagueDisplayEstimateEnabled !== true ||
@@ -2803,10 +3279,12 @@ function applyBayesianLeagueDisplay({ leagueTeam, context, history, cfg }) {
     return leagueTeam;
   }
 
-  const rawOrdinal = getBayesianLeagueRawFromHistory({ context, history, cfg });
+  const rawOrdinal = cfg.leaguePregameBayesianMode === 'incrementalGrid'
+    ? getIncrementalBayesianLeagueRaw({ context, posteriorMap, cfg })
+    : getBayesianLeagueRawFromHistory({ context, history, cfg });
   if (!Number.isFinite(rawOrdinal)) return leagueTeam;
 
-  const leaderboardRawOrdinal = getLeaderboardRawOrdinal(rawOrdinal, leagueTeam.games, cfg);
+  const leaderboardRawOrdinal = getLeagueLeaderboardRawOrdinal(rawOrdinal);
 
   return {
     ...leagueTeam,
@@ -2855,7 +3333,10 @@ export function replayRatings({
     };
   });
 
-  const sortedGames = getGamesSortedOldestFirst(includedGames);
+  const sortedGames = aggregateLeagueSeriesGames(
+    getGamesSortedOldestFirst(includedGames),
+    cfg
+  );
   const referenceDate = seasonal ? getMostRecentGameDate(sortedGames) : null;
   const leagueOpponentStatsMap = {};
   const updateContextMode = volleyballUpdateUsesBalancerContext
@@ -2868,13 +3349,31 @@ export function replayRatings({
   const streakRecentDeltaMap = cfg.streakProtectionEnabled ? new Map() : null;
   const streakRecentEntryMap = cfg.streakProtectionEnabled ? new Map() : null;
   const sessionDeltaMap = cfg.sessionProtectionEnabled ? new Map() : null;
+  const leagueSessionFreezeMap = cfg.leagueSessionFreezeEnabled ? new Map() : null;
+  const leagueDayMatchedOffsetRawMap = cfg.leagueOpponentModel === 'dayMatchedOffset' ? new Map() : null;
+  const leagueBayesianPosteriorMap = cfg.leaguePregameBayesianMode === 'incrementalGrid' ? new Map() : null;
 
   sortedGames.forEach(game => {
     const seasonalWeight = seasonal
       ? getSeasonalWeight(game?.date, referenceDate, seasonalTaperDays)
       : 1;
 
-    const pregameBayesianLeagueRaw = seedPregameBayesianLeagueOpponent(game, ratingMap, history, cfg);
+    ensureLeagueDayMatchedOffset({
+      game,
+      sortedGames,
+      ratingMap,
+      offsetMap: leagueDayMatchedOffsetRawMap,
+      cfg,
+    });
+    const pregameBayesianLeagueRaw = seedPregameBayesianLeagueOpponent(
+      game,
+      ratingMap,
+      history,
+      cfg,
+      leagueBayesianPosteriorMap
+    );
+    applyPregameLeagueOpponentAdjustment(game, ratingMap, leagueOpponentStatsMap, cfg);
+    const leagueSessionFreeze = applyLeagueSessionPregameFreeze(game, ratingMap, leagueSessionFreezeMap, cfg);
     let volleyballScoringRatingMap = null;
     let volleyballScoringPairAdjustmentMap = null;
 
@@ -2907,6 +3406,7 @@ export function replayRatings({
 
     const historyEntry = rateSingleGame(game, ratingMap, {
       ...cfg,
+      _leagueDayMatchedOffsetRawMap: leagueDayMatchedOffsetRawMap,
       seasonalWeight,
       volleyballAdjusted,
       volleyballOptions,
@@ -2918,6 +3418,7 @@ export function replayRatings({
     }
 
     history.push(historyEntry);
+    updateIncrementalBayesianLeaguePosterior(historyEntry, leagueBayesianPosteriorMap, cfg);
     priorGamesForUpdateContext.push(game);
 
     // Burn-in: players in their first N games get a scaled-up update so they
@@ -2959,6 +3460,8 @@ export function replayRatings({
       applyBurnIn(historyEntry.before.red, historyEntry.after.red);
       applyBurnIn(historyEntry.before.blue, historyEntry.after.blue);
     }
+
+    finalizeLeagueSessionFreeze(leagueSessionFreeze, historyEntry, ratingMap, cfg);
 
     // Pass 2: freeze calibrated players within their calibration window.
     // Their calibrated seed was used as input so opponents get correctly re-rated,
@@ -3118,6 +3621,7 @@ export function replayRatings({
       context,
       history,
       cfg,
+      posteriorMap: leagueBayesianPosteriorMap,
     })
   );
 
@@ -3273,6 +3777,89 @@ export function getPlayerRatingTimeline({
 
   const leagueContext = getLeagueContextById(playerId);
 
+  if (leagueContext) {
+    const replay = replayRatings({
+      players,
+      games,
+      options: cfg,
+      seasonal,
+      volleyballAdjusted,
+      volleyballOptions,
+      volleyballUpdateUsesBalancerContext,
+      volleyballUpdateContextMode,
+      includeLeagueGames,
+      _calibratedStarts,
+    });
+
+    const memberSkillById = {};
+    let memberCount = 0;
+
+    const getAggregateSkill = () => {
+      const count = Math.max(1, memberCount || LEAGUE_TEAM_SIZE);
+      const memberIds = getLeagueTeamMemberIdsForContext(leagueContext, count);
+      const members = memberIds.map(id => memberSkillById[id] ?? makeInitialRating(cfg));
+      return {
+        mu: members.reduce((sum, skill) => sum + Number(skill.mu), 0) / members.length,
+        sigma: members.reduce((sum, skill) => sum + Number(skill.sigma), 0) / members.length,
+      };
+    };
+
+    const syncMembers = entries => {
+      (Array.isArray(entries) ? entries : []).forEach(entry => {
+        if (!entry?.id) return;
+        memberSkillById[String(entry.id)] = rating({
+          mu: Number(entry.mu),
+          sigma: clamp(Number(entry.sigma), 1, cfg.sigma),
+        });
+      });
+    };
+
+    const timeline = [];
+    replay.history.forEach((result, chronologicalIndex) => {
+      const game = result?.game;
+      if (!game?.isLeagueGame || !gameMatchesLeagueContext(game, leagueContext)) {
+        return;
+      }
+
+      memberCount = Math.max(
+        memberCount,
+        result.before?.blue?.length || 0,
+        result.after?.blue?.length || 0,
+        1
+      );
+
+      syncMembers(result.before?.blue);
+      const beforeSkill = getAggregateSkill();
+      const beforeRating = getRawOrdinal(beforeSkill, cfg);
+
+      syncMembers(result.after?.blue);
+      const afterSkill = getAggregateSkill();
+      const afterRating = getRawOrdinal(afterSkill, cfg);
+
+      const entry = getLeagueContextTimelineEntry({
+        game,
+        context: leagueContext,
+        chronologicalIndex,
+        result,
+      });
+      if (!entry) return;
+
+      timeline.push({
+        ...entry,
+        ratingBefore: beforeRating,
+        ratingAfter: afterRating,
+        displayRatingBefore: toDisplayRating(beforeRating),
+        displayRatingAfter: toDisplayRating(afterRating),
+        muBefore: beforeSkill.mu,
+        muAfter: afterSkill.mu,
+        sigmaBefore: beforeSkill.sigma,
+        sigmaAfter: afterSkill.sigma,
+      });
+    });
+
+    return timeline;
+  }
+
   players.forEach(player => {
     const calibrated = _calibratedStarts?.[player.id];
     ratingMap[player.id] = calibrated
@@ -3281,7 +3868,10 @@ export function getPlayerRatingTimeline({
     statsMap[player.id] = { id: player.id, name: player.name, games: 0 };
   });
 
-  const sortedGames = getGamesSortedOldestFirst(includedGames);
+  const sortedGames = aggregateLeagueSeriesGames(
+    getGamesSortedOldestFirst(includedGames),
+    cfg
+  );
   const referenceDate = seasonal ? getMostRecentGameDate(sortedGames) : null;
   const leagueOpponentStatsMap = {};
   const updateContextMode = volleyballUpdateUsesBalancerContext
@@ -3294,13 +3884,23 @@ export function getPlayerRatingTimeline({
   const streakRecentDeltaMap = cfg.streakProtectionEnabled ? new Map() : null;
   const streakRecentEntryMap = cfg.streakProtectionEnabled ? new Map() : null;
   const sessionDeltaMap = cfg.sessionProtectionEnabled ? new Map() : null;
+  const leagueSessionFreezeMap = cfg.leagueSessionFreezeEnabled ? new Map() : null;
+  const leagueBayesianPosteriorMap = cfg.leaguePregameBayesianMode === 'incrementalGrid' ? new Map() : null;
 
   sortedGames.forEach((game, chronologicalIndex) => {
     const seasonalWeight = seasonal
       ? getSeasonalWeight(game?.date, referenceDate, seasonalTaperDays)
       : 1;
 
-    const pregameBayesianLeagueRaw = seedPregameBayesianLeagueOpponent(game, ratingMap, history, cfg);
+    const pregameBayesianLeagueRaw = seedPregameBayesianLeagueOpponent(
+      game,
+      ratingMap,
+      history,
+      cfg,
+      leagueBayesianPosteriorMap
+    );
+    applyPregameLeagueOpponentAdjustment(game, ratingMap, leagueOpponentStatsMap, cfg);
+    const leagueSessionFreeze = applyLeagueSessionPregameFreeze(game, ratingMap, leagueSessionFreezeMap, cfg);
     let volleyballScoringRatingMap = null;
     let volleyballScoringPairAdjustmentMap = null;
 
@@ -3343,6 +3943,7 @@ export function getPlayerRatingTimeline({
       result.pregameBayesianLeagueRaw = pregameBayesianLeagueRaw;
     }
     history.push(result);
+    updateIncrementalBayesianLeaguePosterior(result, leagueBayesianPosteriorMap, cfg);
     priorGamesForUpdateContext.push(game);
 
     // Burn-in: match replayRatings — amplify updates for players in their first N games.
@@ -3382,6 +3983,8 @@ export function getPlayerRatingTimeline({
       applyBurnIn(result.before.red, result.after.red);
       applyBurnIn(result.before.blue, result.after.blue);
     }
+
+    finalizeLeagueSessionFreeze(leagueSessionFreeze, result, ratingMap, cfg);
 
     // Calibration freeze: match replayRatings — restore seeded rating within calibration window.
     if (_calibratedStarts !== null) {

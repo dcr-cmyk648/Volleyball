@@ -265,7 +265,7 @@ function buildReplay({ mod, players, games, variant }) {
       volleyballAdjusted: true,
       volleyballUpdateUsesBalancerContext: variant.updateContext !== false,
       volleyballUpdateContextMode: variant.updateMode || 'pair',
-      includeLeagueGames: true,
+      includeLeagueGames: variant.includeLeagueGames !== false,
       options: ratingOptions,
       volleyballOptions: variant.volleyballOptions || {},
     }),
@@ -439,6 +439,7 @@ const scoredQualityGames = qualityGames.filter(isScored);
 const deployVariant = { label: `deploy ${deployRef}` };
 const currentVariants = [
   { label: 'current' },
+  { label: 'current exclude league', includeLeagueGames: false },
   { label: 'prior sharp weights', volleyballOptions: PRIOR_SHARP_WEIGHTS },
   { label: 'context off', updateContext: false },
   { label: 'league x0.80', ratingOptions: { leagueUpdateMultiplier: 0.8 } },

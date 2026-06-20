@@ -229,12 +229,42 @@ console.log(`DB: ${sourceLabel}`);
 console.log(`players=${players.length} games=${games.length} leagueGames=${leagueGames.length} scoredNonLeague=${scoredNonLeagueGames.length}`);
 console.log('');
 
-const leagueMultipliers = [
+function parseListEnv(name, fallback) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+
+  const values = raw
+    .split(',')
+    .map(value => Number(value.trim()))
+    .filter(value => Number.isFinite(value) && value >= 0);
+
+  return values.length ? values : fallback;
+}
+
+function parseStringListEnv(name, fallback, allowedValues = null) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+
+  const values = raw
+    .split(',')
+    .map(value => value.trim())
+    .filter(value => value && (!allowedValues || allowedValues.includes(value)));
+
+  return values.length ? values : fallback;
+}
+
+const leagueMultipliers = parseListEnv('LEAGUE_MULTIPLIERS', [
   0, 0.15, 0.25, 0.35, 0.5, 0.65, 0.8,
   1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0,
-];
+]);
+const updateModeNames = parseStringListEnv(
+  'LEAGUE_UPDATE_MODES',
+  ['global', 'surprise plain', 'surprise pair', 'surprise full'],
+  ['global', 'surprise plain', 'surprise pair', 'surprise full']
+);
+const extraMultipliers = parseListEnv('LEAGUE_EXTRA_MULTIPLIERS', [2.25, 2.75, 3.25]);
 
-const updateModes = [
+const allUpdateModes = [
   {
     prefix: 'global',
     replayConfig: {},
@@ -263,6 +293,7 @@ const updateModes = [
     },
   },
 ];
+const updateModes = allUpdateModes.filter(mode => updateModeNames.includes(mode.prefix));
 
 const candidates = [
   { label: 'exclude league games', options: {}, includeLeagueGames: false, replayConfig: {} },
@@ -281,13 +312,16 @@ for (const mode of updateModes) {
   }
 }
 
-for (const multiplier of [2.25, 2.75, 3.25]) {
-  candidates.push({
-    label: `surprise full league x${multiplier.toFixed(2)}`,
-    options: { leagueUpdateMultiplier: multiplier },
-    includeLeagueGames: true,
-    replayConfig: updateModes[3].replayConfig,
-  });
+const surpriseFullMode = allUpdateModes.find(mode => mode.prefix === 'surprise full');
+if (updateModeNames.includes('surprise full') && surpriseFullMode) {
+  for (const multiplier of extraMultipliers) {
+    candidates.push({
+      label: `surprise full league x${multiplier.toFixed(2)}`,
+      options: { leagueUpdateMultiplier: multiplier },
+      includeLeagueGames: true,
+      replayConfig: surpriseFullMode.replayConfig,
+    });
+  }
 }
 
 const uniqueCandidates = [];

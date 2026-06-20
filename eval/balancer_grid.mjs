@@ -105,7 +105,7 @@ function replayFor(priorGames) {
     games: priorGames,
     seasonal: true,
     volleyballAdjusted: false,
-    includeLeagueGames: true,
+    includeLeagueGames: false,
     options: { seasonalTaperDays },
   });
 }

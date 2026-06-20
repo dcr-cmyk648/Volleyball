@@ -74,7 +74,7 @@ function replayFor({ priorGames, leagueUpdateMultiplier }) {
     games: priorGames,
     seasonal: true,
     volleyballAdjusted: false,
-    includeLeagueGames: true,
+    includeLeagueGames: false,
     options: {
       seasonalTaperDays,
       leagueUpdateMultiplier,

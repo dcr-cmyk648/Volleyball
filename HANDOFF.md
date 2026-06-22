@@ -12,9 +12,10 @@ This section supersedes stale branch/model notes below when they conflict.
 - Current branch after shipping should be `mac-beta`. The local `mac-beta` tip
   was already aligned with `origin/main` before this batch, while
   `origin/mac-beta` was older.
-- This batch is intended to be shipped directly to `origin/main` per explicit
-  user request. It includes all app, test, fixture, PWA, and fallback database
-  changes from the long Stats/Bayesian restructuring thread.
+- Feature batch commit `3374e55 Ship stats restructure and Bayesian scoreboards`
+  was pushed directly to `origin/main` per explicit user request. It includes
+  all app, test, fixture, PWA, and fallback database changes from the long
+  Stats/Bayesian restructuring thread.
 - Major UI/app changes:
   - App root and PWA start URL now open Stats by default.
   - Stats defaults to `Season -> Season Ranking`.

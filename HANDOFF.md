@@ -75,6 +75,28 @@ This section supersedes stale branch/model notes below when they conflict.
     126 games / 123 scored / 3 winner-only.
 - Local audit server was left running at `http://127.0.0.1:5177/` during the
   session when requested.
+- Follow-up UI/eval batch after the stats ship:
+  - Added eval-only `eval/forward_balancer_window_compare.mjs` to compare the
+    current full-history balancer scoring against the Season Ranking one-month
+    window on true recorded algorithm-assigned forward-play games. Fresh Drive
+    run on `vballstats_2026-06-22.json`: 36 scored algorithm non-league games;
+    current full-history scored `actGap 6.08`, `W<=5 52.8%`, `BO>8 22.2%`,
+    `expGap 5.47`, `bestGap 5.17`, `best=act 8.3%`, `acc 58.3%`,
+    `brier 0.234`, `mMAE 2.71`; Season one-month scored same realized outcomes
+    but `expGap 5.88`, `bestGap 4.04`, `best=act 0.0%`, `acc 52.8%`,
+    `brier 0.263`, `mMAE 2.77`.
+  - Mobile All-Time/Bayesian scoreboards now use compact fixed column widths like
+    Season Ranking instead of forcing horizontal scroll.
+  - Play page team bubbles now render directly below `Assign Teams`; `Clear Teams`
+    moved above `Clear Present`.
+  - Registering a player from Play now marks the new player present immediately.
+  - Clicking `Assign Teams` now automatically hides players who are not present.
+  - Google/server stats confirmation dialogs now show an in-dialog spinner/status
+    and disable dialog buttons while the database load is running; this avoids the
+    modal looking frozen while the global busy overlay is hidden behind the top
+    layer.
+  - Verification for this follow-up: `npm test` passed 23/23, and local server
+    checks returned 200 for `/` and `/stats.html` on `http://127.0.0.1:5178/`.
 
 Recommended next-thread starting point:
 

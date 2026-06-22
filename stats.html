@@ -898,16 +898,14 @@
 
     .bayesian-table {
       table-layout: fixed;
-      min-width: 760px;
+      min-width: 0;
     }
 
-    .bayesian-table .rank-col { width: 58px; }
+    .bayesian-table .trend-col { width: 70px; }
+    .bayesian-table .rank-col { width: 42px; }
     .bayesian-table .player-col { width: auto; }
-    .bayesian-table .metric-col { width: 84px; }
-    .bayesian-table .ordinal-col { width: 104px; }
-    .bayesian-table .games-col,
-    .bayesian-table .wins-col { width: 66px; }
-    .bayesian-table .rate-col { width: 82px; }
+    .bayesian-table .rating-col { width: 86px; }
+    .bayesian-table .games-col { width: 64px; }
 
     .bayesian-table th,
     .bayesian-table td {
@@ -1220,6 +1218,26 @@
       100% { transform: translateX(240%); }
     }
 
+    .default-database-loading {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 12px;
+      padding: 10px 12px;
+      border: 1px solid rgba(96, 165, 250, 0.34);
+      border-radius: 12px;
+      background: rgba(96, 165, 250, 0.10);
+      color: #dbeafe;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .default-database-loading .busy-spinner {
+      width: 18px;
+      height: 18px;
+      border-width: 2px;
+    }
+
     dialog {
       border: 1px solid var(--border);
       border-radius: 18px;
@@ -1395,7 +1413,22 @@
       }
 
       .bayesian-table {
-        min-width: 690px;
+        min-width: 0;
+      }
+
+      .bayesian-table .trend-col { width: 48px; }
+      .bayesian-table .rank-col { width: 30px; }
+      .bayesian-table .rating-col { width: 62px; }
+      .bayesian-table .games-col { width: 42px; }
+
+      .bayesian-table th,
+      .bayesian-table td {
+        padding: 8px 4px;
+        font-size: 12px;
+      }
+
+      .bayesian-table th {
+        font-size: 11px;
       }
 
       .standings-table .rank-col { width: 30px; }
@@ -1726,6 +1759,10 @@
       </div>
       <div id="defaultDatabaseDestructiveWarning" class="warning-red hidden"></div>
       <div id="defaultDatabaseStatus" class="status">Checking server stats...</div>
+      <div id="defaultDatabaseLoading" class="default-database-loading hidden" role="status" aria-live="polite">
+        <span class="busy-spinner" aria-hidden="true"></span>
+        <span id="defaultDatabaseLoadingText">Loading newest stats...</span>
+      </div>
       <div class="dialog-actions">
         <button id="confirmLoadDefaultDatabaseButton" class="success">Yes, load newest stats</button>
         <button id="declineLoadDefaultDatabaseButton" class="secondary">No</button>
@@ -1926,6 +1963,8 @@
     const defaultDatabaseTextEl = document.getElementById('defaultDatabaseText');
     const defaultDatabaseDestructiveWarningEl = document.getElementById('defaultDatabaseDestructiveWarning');
     const defaultDatabaseStatusEl = document.getElementById('defaultDatabaseStatus');
+    const defaultDatabaseLoadingEl = document.getElementById('defaultDatabaseLoading');
+    const defaultDatabaseLoadingTextEl = document.getElementById('defaultDatabaseLoadingText');
     const confirmLoadDefaultDatabaseButtonEl = document.getElementById('confirmLoadDefaultDatabaseButton');
     const declineLoadDefaultDatabaseButtonEl = document.getElementById('declineLoadDefaultDatabaseButton');
     const busyOverlayEl = document.getElementById('busyOverlay');
@@ -8124,8 +8163,16 @@
       }
     }
 
+    function setDefaultDatabaseLoading(isLoading, message = 'Loading newest stats...') {
+      defaultDatabaseLoadingEl?.classList.toggle('hidden', !isLoading);
+      if (defaultDatabaseLoadingTextEl) defaultDatabaseLoadingTextEl.textContent = message;
+      confirmLoadDefaultDatabaseButtonEl.disabled = Boolean(isLoading);
+      declineLoadDefaultDatabaseButtonEl.disabled = Boolean(isLoading);
+    }
+
     function openDefaultDatabaseDialog(meta, mode = 'prompt') {
       defaultDatabaseDialogMode = mode;
+      setDefaultDatabaseLoading(false);
       const localGamesMissingFromServer = getLocalGamesMissingFromServer(meta);
       const missingServerGames = getServerGamesMissingLocally(meta);
       const changedServerGames = getServerGamesChangedLocally(meta);
@@ -8387,16 +8434,19 @@
     confirmLoadDefaultDatabaseButtonEl.addEventListener('click', async () => {
       if (isLoadingDefaultDatabase) return;
       isLoadingDefaultDatabase = true;
+      const originalButtonText = confirmLoadDefaultDatabaseButtonEl.textContent;
 
       try {
-        confirmLoadDefaultDatabaseButtonEl.disabled = true;
+        setDefaultDatabaseLoading(true, 'Loading newest stats from server...');
+        confirmLoadDefaultDatabaseButtonEl.textContent = 'Loading...';
         defaultDatabaseStatusEl.textContent = 'Loading newest stats from server...';
         await runWithBusy('Loading newest stats from server...', loadDefaultDatabaseIntoStorage);
         setPromptChoice('loaded');
         defaultDatabaseDialog.close();
       } catch {
         defaultDatabaseStatusEl.textContent = 'Failed to load newest stats from server.';
-        confirmLoadDefaultDatabaseButtonEl.disabled = false;
+        confirmLoadDefaultDatabaseButtonEl.textContent = originalButtonText;
+        setDefaultDatabaseLoading(false);
       } finally {
         isLoadingDefaultDatabase = false;
       }

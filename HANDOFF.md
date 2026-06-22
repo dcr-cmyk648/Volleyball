@@ -4,10 +4,97 @@ Working doc to resume balancing/algorithm work in a fresh thread. Read this firs
 
 ---
 
+## 0. Latest state — June 22, 2026
+
+This section supersedes stale branch/model notes below when they conflict.
+
+- Current local repo path in this session: `/Users/dustinrowland/Projects/Volleyball`.
+- Current branch after shipping should be `mac-beta`. The local `mac-beta` tip
+  was already aligned with `origin/main` before this batch, while
+  `origin/mac-beta` was older.
+- This batch is intended to be shipped directly to `origin/main` per explicit
+  user request. It includes all app, test, fixture, PWA, and fallback database
+  changes from the long Stats/Bayesian restructuring thread.
+- Major UI/app changes:
+  - App root and PWA start URL now open Stats by default.
+  - Stats defaults to `Season -> Season Ranking`.
+  - Stats primary tabs are `Session`, `Season`, and `All-Time`, each with a
+    distinct palette.
+  - Season sub-tabs are `Season Movers` and `Season Ranking`; Awards is hidden
+    from the Stats tab but still available for trend-page award chips.
+  - Session tab summarizes the most recent play date, including player/game
+    counts, new players, returning players, best session win rate, and per-player
+    Season Ranking +/-.
+  - Season Ranking uses a one-month rolling game window anchored to the latest
+    included game date. The Games column counts only games in that ranking
+    calculation.
+  - Trend opens as an overlay from Stats, has a close/back path, and now uses the
+    same one-month Season Ranking replay/window and displayed rating as the
+    Season Ranking board.
+  - Game History lazy rendering was restored after the Stats default-tab change;
+    it now schedules from `renderAll()` and renders when scrolled into view.
+- Bayesian / All-Time changes:
+  - Added isolated Bayesian batch model files:
+    `bayesian-ratings.js` and `bayesian-ratings-worker.js`.
+  - All-Time has Bayesian scoreboards for All Games, Big Team, and Small Team.
+  - Bayesian calculation is manual only, runs in a Web Worker, shows determinate
+    progress, persists snapshots separately from the canonical DB, detects stale
+    data, and preserves stale snapshots until the user recalculates.
+  - One click calculates all three Bayesian scoreboards.
+  - Bayesian display uses the app's 1500-scale adjusted rating and rank-change
+    presentation instead of raw mu/sigma columns.
+- Rating/eval notes:
+  - The balancer still does **not** use the one-month Season Ranking window or
+    Bayesian ratings. It remains on the production OpenSkill-style replay and
+    balancing model.
+  - League-game effect is still constrained to at least 1.0; recent sweeps were
+    redirected away from league-parameter changes.
+  - One-month Season Ranking was chosen for display/forward-ranking behavior,
+    not for team assignment.
+  - Added eval sweep scripts for season-ranking forward/rolling-window/carry and
+    score-margin experiments.
+- Data/PWA/test changes:
+  - `default_database` was refreshed on explicit user request and now matches
+    the 48-player / 126-game reference data used in tests.
+  - Added frozen Bayesian fixture
+    `test/fixtures/bayesian-2026-06-20.json`.
+  - Added root `npm test` using Node's built-in test runner.
+  - Added browser smoke coverage for default Stats view, Game History render,
+    Trend-vs-Season-Ranking rating alignment, and manual Bayesian worker
+    snapshot behavior.
+  - Added/updated service worker and manifest caching so the new module and
+    worker are available offline.
+- Latest verification before shipping:
+  - `npm test`: 23 passed, 0 failed.
+  - `git diff --check`: passed.
+  - Browser smoke with local server `http://127.0.0.1:5177/`: passed.
+    It confirmed Season Ranking default, 126 Game History cards after scroll,
+    Trend alignment for JoeM (`2381` on Season Ranking and Trend), Bayesian
+    manual snapshots for composite/big/small, and Bayesian reference counts
+    126 games / 123 scored / 3 winner-only.
+- Local audit server was left running at `http://127.0.0.1:5177/` during the
+  session when requested.
+
+Recommended next-thread starting point:
+
+1. Start from `mac-beta` locally unless the user asks for `main`.
+2. If investigating team assignment, optimize with BalanceIQ and keep AccIQ as a
+   guardrail; do not assume Season Ranking's one-month window should drive the
+   balancer.
+3. If continuing Stats polish, watch for expensive first-render paths and add
+   busy overlays when work exceeds roughly half a second.
+4. If changing Bayesian model behavior, bump `BAYESIAN_MODEL_VERSION`, update
+   cache/service-worker paths if needed, and regenerate expected values only
+   intentionally from a frozen fixture.
+
+---
+
 ## 1. Repo, branch, workflow rules
 
-- Repo: `C:\Users\rowla\Documents\Volleyball` — static HTML/JS app served via GitHub Pages.
-- **Work only on `beta`. Never touch `main`.** `main` is the stable production branch.
+- Historical Windows repo path: `C:\Users\rowla\Documents\Volleyball`.
+  Current Mac path for this session is `/Users/dustinrowland/Projects/Volleyball`.
+- Branch guidance has varied by platform. Current branch is `mac-beta`; do not
+  push or switch branches unless the user explicitly asks.
 - **Commit only when the user explicitly approves. Never push unless asked.**
 - One small change at a time. After each edit: show `git diff`, then the user runs `node --check ratings.js` (or trust the harness).
 - **Never commit `default_database`** — the user edits it locally for testing. It will always show as modified; leave it unstaged.
@@ -60,9 +147,12 @@ Working doc to resume balancing/algorithm work in a fresh thread. Read this firs
 
 ## 6. Current uncommitted state
 
-- `default_database` — modified (user testing). **Do not commit.**
-- Untracked diagnostic scripts (decide whether to keep/commit): `eval/blowouts.mjs`,
-  `eval/blowout_features.mjs`, `eval/blowout_imbalance.mjs`.
+- As of June 21, 2026 current uncommitted files are expected to include:
+  `stats.html`, `trend.html`, and `HANDOFF.md`.
+- The `stats.html` and `trend.html` changes are intentional:
+  quality dashboard AccIQ markers and scoreboard/trend raw-count consistency.
+- `default_database` may be modified or refreshed locally. Do not stage it
+  unless the user explicitly asks.
 
 ## 7. How the model works now
 

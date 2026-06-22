@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "node local-server.mjs",
-    "start": "node local-server.mjs"
+    "start": "node local-server.mjs",
+    "test": "node --test"
   }
 }

@@ -244,6 +244,65 @@
       transform: none;
     }
 
+    .trend-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      background: var(--bg);
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .trend-overlay.hidden {
+      display: none;
+    }
+
+    .trend-overlay-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.96);
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.26);
+    }
+
+    .trend-overlay-title {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .trend-overlay-frame-wrap {
+      position: relative;
+      min-height: 0;
+    }
+
+    .trend-overlay-frame {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: var(--bg);
+      display: block;
+    }
+
+    .trend-overlay-loading {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: rgba(11, 18, 32, 0.92);
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .trend-overlay-loading.hidden {
+      display: none;
+    }
+
     .controls {
       display: flex;
       gap: 10px;
@@ -357,6 +416,51 @@
       font-size: 14px;
       color: var(--muted);
       line-height: 1.5;
+    }
+
+    .session-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      white-space: normal;
+    }
+
+    .session-stat-pill {
+      border: 1px solid rgba(96, 165, 250, 0.28);
+      border-radius: 8px;
+      background: rgba(96, 165, 250, 0.10);
+      padding: 12px;
+      min-height: 74px;
+    }
+
+    .session-stat-pill.highlight {
+      border-color: rgba(34, 197, 94, 0.36);
+      background: rgba(34, 197, 94, 0.10);
+    }
+
+    .session-stat-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+
+    .session-stat-value {
+      color: var(--text);
+      font-size: 18px;
+      font-weight: 800;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+
+    .session-stat-detail {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
     }
 
     .table-wrap {
@@ -728,14 +832,88 @@
       border-color: var(--border);
     }
 
+    #sessionStatsTabButton {
+      background: rgba(34, 197, 94, 0.10);
+      border-color: rgba(34, 197, 94, 0.30);
+      color: #bbf7d0;
+    }
+
+    #seasonStatsTabButton {
+      background: rgba(96, 165, 250, 0.10);
+      border-color: rgba(96, 165, 250, 0.32);
+      color: #bfdbfe;
+    }
+
+    #allTimeStatsTabButton {
+      background: rgba(245, 158, 11, 0.10);
+      border-color: rgba(245, 158, 11, 0.32);
+      color: #fde68a;
+    }
+
     button.tab-button.active {
       background: rgba(147, 197, 253, 0.16);
       color: #dbeafe;
       border-color: rgba(147, 197, 253, 0.45);
     }
 
+    #sessionStatsTabButton.active {
+      background: rgba(34, 197, 94, 0.20);
+      border-color: rgba(34, 197, 94, 0.58);
+      color: #dcfce7;
+      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+    }
+
+    #seasonStatsTabButton.active {
+      background: rgba(96, 165, 250, 0.20);
+      border-color: rgba(96, 165, 250, 0.60);
+      color: #eff6ff;
+      box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.12);
+    }
+
+    #allTimeStatsTabButton.active {
+      background: rgba(245, 158, 11, 0.20);
+      border-color: rgba(245, 158, 11, 0.60);
+      color: #fffbeb;
+      box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12);
+    }
+
     .tab-panel.hidden {
       display: none !important;
+    }
+
+    .bayesian-intro {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      margin-bottom: 12px;
+    }
+
+    .bayesian-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 14px;
+      margin-bottom: 10px;
+    }
+
+    .bayesian-table {
+      table-layout: fixed;
+      min-width: 760px;
+    }
+
+    .bayesian-table .rank-col { width: 58px; }
+    .bayesian-table .player-col { width: auto; }
+    .bayesian-table .metric-col { width: 84px; }
+    .bayesian-table .ordinal-col { width: 104px; }
+    .bayesian-table .games-col,
+    .bayesian-table .wins-col { width: 66px; }
+    .bayesian-table .rate-col { width: 82px; }
+
+    .bayesian-table th,
+    .bayesian-table td {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .season-movers-controls {
@@ -1025,6 +1203,13 @@
       animation: busy-progress 1.05s ease-in-out infinite;
     }
 
+    .busy-progress.determinate .busy-progress-bar {
+      width: var(--busy-progress-value, 0%);
+      transform: none;
+      animation: none;
+      transition: width 160ms ease;
+    }
+
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
@@ -1180,7 +1365,7 @@
 
       .tab-row {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
       }
 
@@ -1207,6 +1392,10 @@
 
       .standings-table {
         min-width: 0;
+      }
+
+      .bayesian-table {
+        min-width: 690px;
       }
 
       .standings-table .rank-col { width: 30px; }
@@ -1306,8 +1495,8 @@
     <header class="app-header">
       <div class="app-brand">Volleyball Tracker</div>
       <nav class="app-tabs" aria-label="Primary">
-        <a href="index.html" class="app-tab app-tab-play">Play</a>
         <a href="stats.html" class="app-tab app-tab-stats active" aria-current="page">Stats</a>
+        <a href="index.html" class="app-tab app-tab-play">Play</a>
         <a href="help.html" class="app-tab app-tab-help">Help</a>
       </nav>
     </header>
@@ -1341,75 +1530,94 @@
         <a href="ranking.html" class="button-link">How ranking works</a>
       </div>
 
-      <div class="tab-row" role="tablist" aria-label="Stats views">
-        <button id="seasonMoversTabButton" class="tab-button active" type="button">Season Movers</button>
-        <button id="overallStandingsTabButton" class="tab-button" type="button">Overall Standings</button>
-        <button id="awardsTabButton" class="tab-button" type="button">Awards</button>
+      <div class="tab-row" role="tablist" aria-label="Stats periods">
+        <button id="sessionStatsTabButton" class="tab-button active" type="button">Session</button>
+        <button id="seasonStatsTabButton" class="tab-button" type="button">Season</button>
+        <button id="allTimeStatsTabButton" class="tab-button" type="button">All-Time</button>
       </div>
 
-      <section id="overallStandingsPanel" class="tab-panel hidden">
-        <div class="small hidden" id="rankingModeDescription"></div>
-
-        <div class="small hidden" id="modelHelpText"></div>
-
-        <div class="scoreboard-mode-row" role="tablist" aria-label="Overall scoreboard type">
-          <button id="overallCompositeModeButton" class="scoreboard-mode-button active" type="button">All Games</button>
-          <button id="overallBigTeamModeButton" class="scoreboard-mode-button" type="button">Big Team</button>
-          <button id="overallSmallTeamModeButton" class="scoreboard-mode-button" type="button">Small Team</button>
-        </div>
-        <div id="overallScoreboardModeDescription" class="small" style="margin-top: 8px;"></div>
-
-        <div id="sortIndicator" class="small hidden" style="margin-top: 12px;"></div>
+      <section id="sessionStatsPanel" class="tab-panel">
+        <div id="sessionStatsSummary" class="status">Session stats will appear once games are loaded.</div>
         <div class="table-wrap standings-wrap" style="margin-top: 8px;">
           <table class="standings-table">
             <thead>
               <tr>
-                <th class="trend-col">Trend</th>
                 <th class="rank-col">#</th>
                 <th class="player-col">Player</th>
-                <th class="rating-col" id="statsSortHeader">Rating</th>
+                <th class="rating-col">Season +/-</th>
                 <th class="games-col">Games</th>
+                <th class="games-col">Wins</th>
+                <th class="games-col">Win Rate</th>
               </tr>
             </thead>
-            <tbody id="statsTableBody"></tbody>
+            <tbody id="sessionStatsTableBody"></tbody>
           </table>
-        </div>
-        <div class="small">
-          Click a name to open the detailed trend page with wins, mu, sigma, rating changes, and game-by-game model details.
-        </div>
-
-        <div class="season-player-lookup">
-          <label for="overallPlayerLookupInput">Look up any player</label>
-          <div class="season-player-lookup-row">
-            <input type="search" id="overallPlayerLookupInput" placeholder="Type a player name..." autocomplete="off" />
-            <button id="clearOverallPlayerLookupButton" class="ghost" type="button">Clear</button>
-          </div>
-          <div id="overallPlayerLookupResult" class="season-player-lookup-result"></div>
         </div>
       </section>
 
-      <section id="seasonMoversPanel" class="tab-panel">
-        <div class="season-movers-controls">
-          <div class="season-date-field">
-            <label for="seasonStartDateInput">Season start date</label>
-            <input type="date" id="seasonStartDateInput" />
-          </div>
-          <button id="applySeasonStartDateButton" class="secondary" type="button">Apply Date</button>
+      <section id="seasonStatsPanel" class="tab-panel hidden">
+        <div class="tab-row sub-tab-row" role="tablist" aria-label="Season stats views">
+          <button id="seasonMoversSubTabButton" class="tab-button active" type="button">Season Movers</button>
+          <button id="seasonRankingSubTabButton" class="tab-button" type="button">Season Ranking</button>
         </div>
 
-
-
-        <div id="seasonMoversSummary" class="status">Choose a season start date to calculate season movers.</div>
-        <div id="seasonMoversList" class="season-movers-list"></div>
-
-        <div class="season-player-lookup">
-          <label for="seasonPlayerLookupInput">Look up any player</label>
-          <div class="season-player-lookup-row">
-            <input type="search" id="seasonPlayerLookupInput" placeholder="Type a player name..." autocomplete="off" />
-            <button id="clearSeasonPlayerLookupButton" class="ghost" type="button">Clear</button>
+        <section id="seasonMoversPanel" class="tab-panel">
+          <div class="season-movers-controls">
+            <div class="season-date-field">
+              <label for="seasonStartDateInput">Season start date</label>
+              <input type="date" id="seasonStartDateInput" />
+            </div>
+            <button id="applySeasonStartDateButton" class="secondary" type="button">Apply Date</button>
           </div>
-          <div id="seasonPlayerLookupResult" class="season-player-lookup-result"></div>
-        </div>
+
+          <div id="seasonMoversSummary" class="status">Choose a season start date to calculate season movers.</div>
+          <div id="seasonMoversList" class="season-movers-list"></div>
+
+          <div class="season-player-lookup">
+            <label for="seasonPlayerLookupInput">Look up any player</label>
+            <div class="season-player-lookup-row">
+              <input type="search" id="seasonPlayerLookupInput" placeholder="Type a player name..." autocomplete="off" />
+              <button id="clearSeasonPlayerLookupButton" class="ghost" type="button">Clear</button>
+            </div>
+            <div id="seasonPlayerLookupResult" class="season-player-lookup-result"></div>
+          </div>
+        </section>
+
+        <section id="overallStandingsPanel" class="tab-panel hidden">
+          <div class="small" id="rankingModeDescription"></div>
+
+          <div class="small hidden" id="modelHelpText"></div>
+
+          <div id="overallScoreboardModeDescription" class="small hidden" style="margin-top: 8px;"></div>
+
+          <div id="sortIndicator" class="small hidden" style="margin-top: 12px;"></div>
+          <div class="table-wrap standings-wrap" style="margin-top: 8px;">
+            <table class="standings-table">
+              <thead>
+                <tr>
+                  <th class="trend-col">Trend</th>
+                  <th class="rank-col">#</th>
+                  <th class="player-col">Player</th>
+                  <th class="rating-col" id="statsSortHeader">Rating</th>
+                  <th class="games-col">Games</th>
+                </tr>
+              </thead>
+              <tbody id="statsTableBody"></tbody>
+            </table>
+          </div>
+          <div class="small">
+            Click a name to open the detailed trend page with wins, mu, sigma, rating changes, and game-by-game model details.
+          </div>
+
+          <div class="season-player-lookup">
+            <label for="overallPlayerLookupInput">Look up any player</label>
+            <div class="season-player-lookup-row">
+              <input type="search" id="overallPlayerLookupInput" placeholder="Type a player name..." autocomplete="off" />
+              <button id="clearOverallPlayerLookupButton" class="ghost" type="button">Clear</button>
+            </div>
+            <div id="overallPlayerLookupResult" class="season-player-lookup-result"></div>
+          </div>
+        </section>
       </section>
 
       <section id="awardsPanel" class="tab-panel hidden">
@@ -1419,6 +1627,40 @@
           <h3 id="groupAwardsHeading" class="awards-subheading">Pair And Team Awards</h3>
           <div id="groupAwardsGrid" class="awards-grid group-awards-grid"></div>
         </section>
+      </section>
+
+      <section id="bayesianPanel" class="tab-panel hidden">
+        <div class="bayesian-intro">
+          Bayesian ratings are a retrospective batch model: given all games included at calculation time, they estimate the stable player skills that best explain those results. They are better at explaining large data sets and less affected by recent win or loss streaks, but that also makes them worse at balancing teams during a session.
+        </div>
+
+        <div class="scoreboard-mode-row" role="tablist" aria-label="All-time Bayesian scoreboard type">
+          <button id="overallCompositeModeButton" class="scoreboard-mode-button active" type="button">All Games</button>
+          <button id="overallBigTeamModeButton" class="scoreboard-mode-button" type="button">Big Team</button>
+          <button id="overallSmallTeamModeButton" class="scoreboard-mode-button" type="button">Small Team</button>
+        </div>
+        <div id="bayesianScoreboardModeDescription" class="small" style="margin-top: 8px;"></div>
+
+        <div class="bayesian-toolbar">
+          <button id="calculateBayesianButton" class="secondary" type="button">Calculate Bayesian ratings</button>
+          <div id="bayesianSnapshotMeta" class="small"></div>
+        </div>
+        <div id="bayesianStatus" class="status hidden"></div>
+
+        <div class="table-wrap bayesian-table-wrap" style="margin-top: 10px;">
+          <table class="bayesian-table">
+            <thead>
+              <tr>
+                <th class="trend-col">Trend</th>
+                <th class="rank-col">#</th>
+                <th class="player-col">Player</th>
+                <th class="rating-col">Rating</th>
+                <th class="games-col">Games</th>
+              </tr>
+            </thead>
+            <tbody id="bayesianTableBody"></tbody>
+          </table>
+        </div>
       </section>
     </div>
 
@@ -1430,13 +1672,13 @@
       </div>
       <div id="qualityPanels" class="quality-split hidden">
         <section class="quality-panel" aria-labelledby="qualityExplanatoryHeading">
-          <h3 id="qualityExplanatoryHeading">Explanatory</h3>
+          <h3 id="qualityExplanatoryHeading">BackAccIQ</h3>
           <div class="quality-panel-note">Back-prediction using the current full dataset, rating model, and balancer context.</div>
           <div id="qualityExplanatoryScore" class="quality-score-banner hidden"></div>
           <div id="qualityExplanatoryMetrics" class="quality-grid"></div>
         </section>
         <section class="quality-panel" aria-labelledby="qualityPredictiveHeading">
-          <h3 id="qualityPredictiveHeading">Predictive</h3>
+          <h3 id="qualityPredictiveHeading">FwdAccIQ</h3>
           <div class="quality-panel-note">Play-forward validation using only the ratings available before each game.</div>
           <div id="qualityPredictiveScore" class="quality-score-banner hidden"></div>
           <div id="qualityPredictiveMetrics" class="quality-grid"></div>
@@ -1448,7 +1690,7 @@
       <div id="qualityEmpty" class="small hidden">Not enough games to analyze yet.</div>
     </details>
 
-    <div class="card">
+    <div class="card" id="gameHistoryCard">
       <h2>Game History</h2>
       <div class="small hidden" id="historyModeDescription"></div>
       <div id="historyList" class="history-list" style="margin-top: 12px;"></div>
@@ -1495,13 +1737,39 @@
     <div class="busy-panel">
       <span class="busy-spinner" aria-hidden="true"></span>
       <span id="busyMessage" class="busy-message">Working...</span>
-      <div class="busy-progress" aria-hidden="true">
-        <div class="busy-progress-bar"></div>
+      <div
+        id="busyProgress"
+        class="busy-progress"
+        role="progressbar"
+        aria-hidden="true"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="0"
+      >
+        <div id="busyProgressBar" class="busy-progress-bar"></div>
       </div>
     </div>
   </div>
 
+  <div id="trendOverlay" class="trend-overlay hidden" role="dialog" aria-modal="true" aria-label="Player trend">
+    <div class="trend-overlay-bar">
+      <div class="trend-overlay-title">Player Trend</div>
+      <button id="closeTrendOverlayButton" class="secondary" type="button">Close</button>
+    </div>
+    <div class="trend-overlay-frame-wrap">
+      <div id="trendOverlayLoading" class="trend-overlay-loading">Loading trend...</div>
+      <iframe id="trendOverlayFrame" class="trend-overlay-frame" title="Player trend"></iframe>
+    </div>
+  </div>
+
   <script type="module">
+    import {
+      createBayesianUiState,
+      loadBayesianSnapshot,
+      saveBayesianSnapshot,
+      sortBayesianRatings,
+      validateBayesianSnapshot,
+    } from './bayesian-ratings.js';
     import {
       VERSION,
       replayRatings,
@@ -1545,7 +1813,6 @@
     const SEASON_START_DATE_STORAGE_KEY = 'gameDaySeasonStartDate';
     const SEASON_PLAYER_LOOKUP_STORAGE_KEY = 'gameDaySeasonPlayerLookup';
     const OVERALL_PLAYER_LOOKUP_STORAGE_KEY = 'gameDayOverallPlayerLookup';
-    const OVERALL_SCOREBOARD_MODE_STORAGE_KEY = 'gameDayOverallScoreboardMode';
     const QUALITY_CACHE_STORAGE_KEY = 'gameDayQualityOverviewCache';
 
     const LEADERBOARD_LOW_SIGMA = 6.4;
@@ -1562,6 +1829,7 @@
     const SEASON_MOVER_SUSTAINED_MIN_CONSISTENCY = 0.65;
     const SEASON_MOVER_SUSTAINED_CONFIDENCE_GAMES = 8;
     const SEASON_MOVER_SUSTAINED_MAX_BONUS = 0.15;
+    const SEASON_MOVER_MISSING_GAME_PENALTY_POINTS = 1;
     const OVERALL_STANDINGS_MIN_GAMES = 5;
     const OVERALL_SCOREBOARD_MODES = {
       composite: {
@@ -1595,12 +1863,14 @@
     const clearOverallPlayerLookupButtonEl = document.getElementById('clearOverallPlayerLookupButton');
     const overallPlayerLookupResultEl = document.getElementById('overallPlayerLookupResult');
     const overallScoreboardModeDescriptionEl = document.getElementById('overallScoreboardModeDescription');
+    const bayesianScoreboardModeDescriptionEl = document.getElementById('bayesianScoreboardModeDescription');
     const overallScoreboardModeButtons = {
       composite: document.getElementById('overallCompositeModeButton'),
       bigTeam: document.getElementById('overallBigTeamModeButton'),
       smallTeam: document.getElementById('overallSmallTeamModeButton')
     };
     const historyList = document.getElementById('historyList');
+    const gameHistoryCardEl = document.getElementById('gameHistoryCard');
     const algorithmQualityCardEl = document.getElementById('algorithmQualityCard');
     const qualityPanelsEl = document.getElementById('qualityPanels');
     const qualityExplanatoryScoreEl = document.getElementById('qualityExplanatoryScore');
@@ -1623,12 +1893,23 @@
     const rankingModeDescriptionEl = document.getElementById('rankingModeDescription');
     const historyModeDescriptionEl = document.getElementById('historyModeDescription');
 
-    const overallStandingsTabButtonEl = document.getElementById('overallStandingsTabButton');
-    const seasonMoversTabButtonEl = document.getElementById('seasonMoversTabButton');
-    const awardsTabButtonEl = document.getElementById('awardsTabButton');
+    const sessionStatsTabButtonEl = document.getElementById('sessionStatsTabButton');
+    const seasonStatsTabButtonEl = document.getElementById('seasonStatsTabButton');
+    const allTimeStatsTabButtonEl = document.getElementById('allTimeStatsTabButton');
+    const seasonMoversSubTabButtonEl = document.getElementById('seasonMoversSubTabButton');
+    const seasonRankingSubTabButtonEl = document.getElementById('seasonRankingSubTabButton');
+    const sessionStatsPanelEl = document.getElementById('sessionStatsPanel');
+    const seasonStatsPanelEl = document.getElementById('seasonStatsPanel');
+    const sessionStatsSummaryEl = document.getElementById('sessionStatsSummary');
+    const sessionStatsTableBodyEl = document.getElementById('sessionStatsTableBody');
     const overallStandingsPanelEl = document.getElementById('overallStandingsPanel');
     const seasonMoversPanelEl = document.getElementById('seasonMoversPanel');
     const awardsPanelEl = document.getElementById('awardsPanel');
+    const bayesianPanelEl = document.getElementById('bayesianPanel');
+    const calculateBayesianButtonEl = document.getElementById('calculateBayesianButton');
+    const bayesianSnapshotMetaEl = document.getElementById('bayesianSnapshotMeta');
+    const bayesianStatusEl = document.getElementById('bayesianStatus');
+    const bayesianTableBodyEl = document.getElementById('bayesianTableBody');
     const awardsSummaryEl = document.getElementById('awardsSummary');
     const awardsGridEl = document.getElementById('awardsGrid');
     const groupAwardsSectionEl = document.getElementById('groupAwardsSection');
@@ -1649,6 +1930,12 @@
     const declineLoadDefaultDatabaseButtonEl = document.getElementById('declineLoadDefaultDatabaseButton');
     const busyOverlayEl = document.getElementById('busyOverlay');
     const busyMessageEl = document.getElementById('busyMessage');
+    const busyProgressEl = document.getElementById('busyProgress');
+    const busyProgressBarEl = document.getElementById('busyProgressBar');
+    const trendOverlayEl = document.getElementById('trendOverlay');
+    const trendOverlayFrameEl = document.getElementById('trendOverlayFrame');
+    const trendOverlayLoadingEl = document.getElementById('trendOverlayLoading');
+    const closeTrendOverlayButtonEl = document.getElementById('closeTrendOverlayButton');
 
     let pendingDeleteGameId = null;
     let defaultDatabaseMeta = null;
@@ -1656,15 +1943,45 @@
     let defaultDatabaseDialogRequestInFlight = false;
     let isLoadingDefaultDatabase = false;
     const REPLAY_RESULT_CACHE_PREFIX = 'vballReplayResult:';
+    const SEASON_MOVERS_RENDER_CACHE_KEY = 'vballSeasonMoversRenderCacheV3';
+    const SEASON_RANKING_RENDER_CACHE_KEY = 'vballSeasonRankingRenderCacheV1';
     const replayResultMemoryCache = new Map();
     const MAX_REPLAY_RESULT_MEMORY_ENTRIES = 180;
-    let activeStatsTab = 'seasonMovers';
+    const ALL_TIME_SCOREBOARD_MODE_STORAGE_KEY = 'gameDayAllTimeBayesianScoreboardMode';
+    const BAYESIAN_SNAPSHOT_MODE_KEYS = {
+      composite: 'gameDayBayesianScoreboardSnapshotV1:composite',
+      bigTeam: 'gameDayBayesianScoreboardSnapshotV1:bigTeam',
+      smallTeam: 'gameDayBayesianScoreboardSnapshotV1:smallTeam'
+    };
+    const BAYESIAN_CALCULATION_MODES = ['composite', 'bigTeam', 'smallTeam'];
+
+    let activeStatsTab = 'session';
+    let activeSeasonStatsTab = 'seasonMovers';
     let activeSortBy = null;
     let activeOverallScoreboardMode = 'composite';
     let activeSeasonStartDate = '';
+    let bayesianSnapshot = loadBayesianSnapshot(localStorage);
+    let bayesianWorkers = new Set();
+    let bayesianCalculationRunning = false;
+    let bayesianProgressPercent = 0;
+    let renderedHistorySignature = '';
+    let historyRenderQueued = false;
+    let historyIntersectionObserver = null;
+    let trendOverlayLoadTimer = null;
+    let trendOverlayOpenedAt = 0;
 
-    function showBusy(message = 'Working...') {
+    function setBusyProgress(percent = 0, { determinate = false } = {}) {
+      const safePercent = Math.max(0, Math.min(100, Math.floor(Number(percent) || 0)));
+      if (!busyProgressEl || !busyProgressBarEl) return;
+      busyProgressEl.classList.toggle('determinate', Boolean(determinate));
+      busyProgressEl.setAttribute('aria-hidden', determinate ? 'false' : 'true');
+      busyProgressEl.setAttribute('aria-valuenow', String(safePercent));
+      busyProgressBarEl.style.setProperty('--busy-progress-value', `${safePercent}%`);
+    }
+
+    function showBusy(message = 'Working...', { determinate = false, percent = 0 } = {}) {
       if (busyMessageEl) busyMessageEl.textContent = message;
+      setBusyProgress(percent, { determinate });
       busyOverlayEl?.classList.remove('hidden');
     }
 
@@ -1674,23 +1991,134 @@
 
     function hideBusy() {
       busyOverlayEl?.classList.add('hidden');
+      setBusyProgress(0, { determinate: false });
     }
 
     function nextFrame() {
       return new Promise(resolve => requestAnimationFrame(() => resolve()));
     }
 
-    async function runWithBusy(message, action) {
-      showBusy(message);
+    function wait(ms) {
+      return new Promise(resolve => window.setTimeout(resolve, ms));
+    }
+
+    async function waitForBusyPaint() {
       await nextFrame();
+      await wait(80);
+    }
+
+    async function runWithBusy(message, action, { delayMs = 0 } = {}) {
+      let shown = false;
+      let timer = null;
+      let shownAt = 0;
+
+      const show = async () => {
+        if (shown) return;
+        shown = true;
+        shownAt = performance.now();
+        showBusy(message);
+        await waitForBusyPaint();
+      };
+
+      if (delayMs > 0) {
+        timer = window.setTimeout(() => {
+          show();
+        }, delayMs);
+      } else {
+        await show();
+      }
 
       try {
         return await action({
           updateBusyMessage,
           yieldToBrowser: nextFrame,
+          showBusy: show,
         });
       } finally {
-        hideBusy();
+        if (timer !== null) window.clearTimeout(timer);
+        if (shown) {
+          const elapsed = performance.now() - shownAt;
+          if (elapsed < 300) {
+            await wait(300 - elapsed);
+          }
+          hideBusy();
+        }
+      }
+    }
+
+    function runWithDeferredBusy(message, action) {
+      return runWithBusy(message, action, { delayMs: 500 });
+    }
+
+    function getTrendOverlayUrl(href) {
+      const url = new URL(href, window.location.href);
+      url.searchParams.set('embed', 'statsOverlay');
+      return url.href;
+    }
+
+    async function openTrendOverlay(href) {
+      if (!trendOverlayEl || !trendOverlayFrameEl) {
+        window.location.href = href;
+        return;
+      }
+
+      if (trendOverlayLoadTimer !== null) {
+        window.clearTimeout(trendOverlayLoadTimer);
+        trendOverlayLoadTimer = null;
+      }
+      trendOverlayOpenedAt = performance.now();
+      trendOverlayLoadingEl?.classList.remove('hidden');
+      trendOverlayEl.classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+      closeTrendOverlayButtonEl?.focus();
+      await waitForBusyPaint();
+      trendOverlayFrameEl.src = getTrendOverlayUrl(href);
+      trendOverlayLoadTimer = window.setTimeout(() => {
+        trendOverlayLoadingEl?.classList.add('hidden');
+        trendOverlayLoadTimer = null;
+      }, 15000);
+    }
+
+    function closeTrendOverlay() {
+      if (!trendOverlayEl || !trendOverlayFrameEl) return;
+      if (trendOverlayLoadTimer !== null) {
+        window.clearTimeout(trendOverlayLoadTimer);
+        trendOverlayLoadTimer = null;
+      }
+      trendOverlayEl.classList.add('hidden');
+      trendOverlayLoadingEl?.classList.add('hidden');
+      trendOverlayOpenedAt = 0;
+      trendOverlayFrameEl.src = 'about:blank';
+      document.body.style.overflow = '';
+    }
+
+    function finishTrendOverlayLoading() {
+      const minVisibleMs = 3000;
+      const elapsed = trendOverlayOpenedAt ? performance.now() - trendOverlayOpenedAt : minVisibleMs;
+      const delay = Math.max(0, minVisibleMs - elapsed);
+      window.setTimeout(() => {
+        if (trendOverlayLoadTimer !== null) {
+          window.clearTimeout(trendOverlayLoadTimer);
+          trendOverlayLoadTimer = null;
+        }
+        trendOverlayLoadingEl?.classList.add('hidden');
+      }, delay);
+    }
+
+    function readSessionRenderCache(key, signature) {
+      try {
+        const parsed = JSON.parse(sessionStorage.getItem(key) || 'null');
+        return parsed?.signature === signature ? parsed : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function writeSessionRenderCache(key, signature, payload) {
+      try {
+        sessionStorage.setItem(key, JSON.stringify({ signature, ...payload }));
+      } catch {
+        // Render caches are performance-only; storage pressure should not block the app.
       }
     }
 
@@ -1923,7 +2351,6 @@
 
     function createPlayerCountOverrideMap(games, mode = getOverallScoreboardMode()) {
       const sideMatcher = getOverallScoreboardSideMatcher(mode);
-      if (!sideMatcher) return null;
 
       const map = new Map();
       const ensure = player => {
@@ -1938,8 +2365,12 @@
       games.forEach(game => {
         if (!game) return;
 
-        const redQualifies = sideMatcher(getScoreboardTeamSize(game, 'red'));
-        const blueQualifies = !game.isLeagueGame && sideMatcher(getScoreboardTeamSize(game, 'blue'));
+        const redQualifies = sideMatcher
+          ? sideMatcher(getScoreboardTeamSize(game, 'red'))
+          : true;
+        const blueQualifies = sideMatcher
+          ? !game.isLeagueGame && sideMatcher(getScoreboardTeamSize(game, 'blue'))
+          : !game.isLeagueGame;
 
         if (redQualifies) {
           (Array.isArray(game.redTeam) ? game.redTeam : []).forEach(player => {
@@ -1964,7 +2395,7 @@
     }
 
     function createOverallStandingsRecencyMap(games, mode = getOverallScoreboardMode()) {
-      const cutoffDate = getOneMonthAgoDateString();
+      const cutoffDate = getOneMonthAgoDateString(games);
       const sideMatcher = getOverallScoreboardSideMatcher(mode);
       const map = new Map();
 
@@ -2018,15 +2449,19 @@
         overallScoreboardModeDescriptionEl.textContent =
           OVERALL_SCOREBOARD_MODES[mode]?.description || '';
       }
+      if (bayesianScoreboardModeDescriptionEl) {
+        bayesianScoreboardModeDescriptionEl.textContent =
+          OVERALL_SCOREBOARD_MODES[mode]?.description || '';
+      }
     }
 
     function setOverallScoreboardMode(mode, { persist = true } = {}) {
       activeOverallScoreboardMode = OVERALL_SCOREBOARD_MODES[mode] ? mode : 'composite';
       if (persist) {
-        localStorage.setItem(OVERALL_SCOREBOARD_MODE_STORAGE_KEY, activeOverallScoreboardMode);
+        localStorage.setItem(ALL_TIME_SCOREBOARD_MODE_STORAGE_KEY, activeOverallScoreboardMode);
       }
       updateOverallScoreboardModeControls();
-      renderStats();
+      renderBayesianScoreboard();
     }
 
     function getReplayResult() {
@@ -2172,26 +2607,51 @@
     }
 
     function setStatsTab(tabName, { render = true } = {}) {
-      activeStatsTab = ['overall', 'seasonMovers', 'awards'].includes(tabName)
+      activeStatsTab = ['session', 'season', 'allTime'].includes(tabName)
         ? tabName
-        : 'seasonMovers';
+        : 'session';
       sessionStorage.setItem('statsActiveTab', activeStatsTab);
 
-      overallStandingsTabButtonEl.classList.toggle('active', activeStatsTab === 'overall');
-      seasonMoversTabButtonEl.classList.toggle('active', activeStatsTab === 'seasonMovers');
-      awardsTabButtonEl.classList.toggle('active', activeStatsTab === 'awards');
-      overallStandingsPanelEl.classList.toggle('hidden', activeStatsTab !== 'overall');
-      seasonMoversPanelEl.classList.toggle('hidden', activeStatsTab !== 'seasonMovers');
-      awardsPanelEl.classList.toggle('hidden', activeStatsTab !== 'awards');
+      sessionStatsTabButtonEl.classList.toggle('active', activeStatsTab === 'session');
+      seasonStatsTabButtonEl.classList.toggle('active', activeStatsTab === 'season');
+      allTimeStatsTabButtonEl.classList.toggle('active', activeStatsTab === 'allTime');
+      sessionStatsPanelEl.classList.toggle('hidden', activeStatsTab !== 'session');
+      seasonStatsPanelEl.classList.toggle('hidden', activeStatsTab !== 'season');
+      bayesianPanelEl.classList.toggle('hidden', activeStatsTab !== 'allTime');
+      awardsPanelEl.classList.add('hidden');
 
       if (!render) return;
 
-      if (activeStatsTab === 'overall') {
-        renderStats();
-      } else if (activeStatsTab === 'seasonMovers') {
+      if (activeStatsTab === 'session') {
+        renderSessionStats();
+      } else if (activeStatsTab === 'season') {
+        renderSeasonStats();
+      } else if (activeStatsTab === 'allTime') {
+        renderBayesianScoreboard();
+      }
+      scheduleHistoryRender();
+    }
+
+    function setSeasonStatsTab(tabName, { render = true } = {}) {
+      activeSeasonStatsTab = ['seasonMovers', 'seasonRanking'].includes(tabName)
+        ? tabName
+        : 'seasonMovers';
+      sessionStorage.setItem('seasonStatsActiveTab', activeSeasonStatsTab);
+
+      seasonMoversSubTabButtonEl.classList.toggle('active', activeSeasonStatsTab === 'seasonMovers');
+      seasonRankingSubTabButtonEl.classList.toggle('active', activeSeasonStatsTab === 'seasonRanking');
+      seasonMoversPanelEl.classList.toggle('hidden', activeSeasonStatsTab !== 'seasonMovers');
+      overallStandingsPanelEl.classList.toggle('hidden', activeSeasonStatsTab !== 'seasonRanking');
+
+      if (!render) return;
+      renderSeasonStats();
+    }
+
+    function renderSeasonStats() {
+      if (activeSeasonStatsTab === 'seasonRanking') {
+        renderStats('composite');
+      } else {
         renderSeasonMovers();
-      } else if (activeStatsTab === 'awards') {
-        renderAwards();
       }
     }
 
@@ -2327,10 +2787,34 @@
       return mode === 'composite' || mode === 'bigTeam' || mode === 'smallTeam';
     }
 
-    function getOverallReplayResult({ games = loadGames(), mode = getOverallScoreboardMode() } = {}) {
+    function getSeasonRankingWindowCutoffDate(games = loadGames()) {
+      const latestGameDate = getLatestGameDate(Array.isArray(games) ? games : []);
+      const anchor = isValidDateString(latestGameDate) ? latestGameDate : getTodayDateString();
+      const date = new Date(`${anchor}T00:00:00`);
+      date.setMonth(date.getMonth() - 1);
+      return date.toISOString().slice(0, 10);
+    }
+
+    function getSeasonRankingWindowGames(games = loadGames(), mode = getOverallScoreboardMode()) {
       const scoreboardGames = getOverallScoreboardGames(games, mode);
+      const cutoffDate = getSeasonRankingWindowCutoffDate(scoreboardGames);
+      return scoreboardGames.filter(game => {
+        const date = getGameDateValue(game);
+        return isValidDateString(date) && date >= cutoffDate;
+      });
+    }
+
+    function getOverallReplayResult({
+      games = loadGames(),
+      mode = getOverallScoreboardMode(),
+      rollingWindow = false
+    } = {}) {
+      const scoreboardGames = getOverallScoreboardGames(games, mode);
+      const ratingGames = rollingWindow
+        ? getSeasonRankingWindowGames(games, mode)
+        : scoreboardGames;
       const ratingOptions = getLeagueScoreboardRatingOptions(mode);
-      const replay = getReplayResultForGames(scoreboardGames, {
+      const replay = getReplayResultForGames(ratingGames, {
         includeLeagueDisplayEstimate: false,
         includeLeagueGames: shouldIncludeLeagueGamesForScoreboard(mode),
         persist: true,
@@ -2338,9 +2822,9 @@
       });
       return {
         mode,
-        games: scoreboardGames,
+        games: ratingGames,
         ratingOptions,
-        result: applyOverallScoreboardPlayerCounts(replay, scoreboardGames, mode)
+        result: applyOverallScoreboardPlayerCounts(replay, ratingGames, mode)
       };
     }
 
@@ -2821,12 +3305,61 @@
       });
     }
 
+    function getSeasonMoverPenaltyGameCount(row) {
+      return Math.min(
+        SCOREBOARD_MISSING_GAME_PENALTY_MAX_GAMES,
+        Math.max(0, Number(row?.gamesThisSeason || row?.gamesSinceDate || 0) || 0)
+      );
+    }
+
+    function isSeasonMoverBoardCandidate(player) {
+      return Boolean(
+        player?.baselineReached &&
+        Number(player.gamesSinceDate) >= 1 &&
+        Number(player.rawMuChange) > 0
+      );
+    }
+
+    function getSeasonMoverPenaltyMaxGames(rows = []) {
+      return rows.reduce(
+        (max, row) => Math.max(max, getSeasonMoverPenaltyGameCount(row)),
+        0
+      );
+    }
+
+    function applySeasonMoverGamePenalty(candidateRows = [], maxGames = getSeasonMoverPenaltyMaxGames(candidateRows)) {
+      const cappedMaxGames = Math.min(
+        SCOREBOARD_MISSING_GAME_PENALTY_MAX_GAMES,
+        Math.max(0, Number(maxGames) || 0)
+      );
+
+      return candidateRows.map(row => {
+        const cappedGames = getSeasonMoverPenaltyGameCount(row);
+        const missingGames = Math.max(0, cappedMaxGames - cappedGames);
+        const gamePenaltyDisplayPoints = missingGames * SEASON_MOVER_MISSING_GAME_PENALTY_POINTS;
+        const gamePenaltyModelDelta = gamePenaltyDisplayPoints / 50;
+        const prePenaltyAdjustedMuChange = Number(row.adjustedMuChange) || 0;
+
+        return {
+          ...row,
+          prePenaltyAdjustedMuChange,
+          seasonMoverMaxPenaltyGames: cappedMaxGames,
+          seasonMoverPenaltyGames: missingGames,
+          seasonMoverGamePenaltyDisplayPoints: gamePenaltyDisplayPoints,
+          adjustedMuChange: prePenaltyAdjustedMuChange - gamePenaltyModelDelta,
+        };
+      });
+    }
+
     function getSeasonMoverRows(candidateRows = getSeasonMoverCandidateRows()) {
+      const eligibleRows = candidateRows.filter(isSeasonMoverBoardCandidate);
+      const penalizedRows = applySeasonMoverGamePenalty(
+        eligibleRows,
+        getSeasonMoverPenaltyMaxGames(eligibleRows)
+      );
       return sortSeasonMoverRows(
-        candidateRows.filter(player =>
-          player.baselineReached &&
-          player.gamesSinceDate >= 1 &&
-          player.rawMuChange > 0
+        penalizedRows.filter(player =>
+          player.adjustedMuChange > 0
         )
       );
     }
@@ -2850,7 +3383,9 @@
       const normalized = query.trim().toLowerCase();
       if (!normalized) return null;
 
-      const sorted = sortSeasonMoverRows(candidateRows);
+      const eligibleRows = candidateRows.filter(isSeasonMoverBoardCandidate);
+      const maxGames = getSeasonMoverPenaltyMaxGames(eligibleRows);
+      const sorted = sortSeasonMoverRows(applySeasonMoverGamePenalty(candidateRows, maxGames));
       return (
         sorted.find(row => row.name.toLowerCase() === normalized) ||
         sorted.find(row => row.name.toLowerCase().startsWith(normalized)) ||
@@ -2885,12 +3420,20 @@
               ${rows.map(row => {
                 const id = String(row.id);
                 const rank = rankMap.has(id) ? String(rankMap.get(id)) : '—';
+                const penaltyPoints = Number(row.seasonMoverGamePenaltyDisplayPoints) || 0;
+                const prePenaltyScore = formatDisplayDeltaFromModelDelta(
+                  row.prePenaltyAdjustedMuChange ?? row.adjustedMuChange,
+                  { signed: false }
+                );
+                const scoreTitle = penaltyPoints > 0
+                  ? `Before game-count penalty: ${prePenaltyScore}; penalty: -${Math.round(penaltyPoints)}`
+                  : `No game-count penalty; ${Number(row.seasonMoverMaxPenaltyGames) || 0} capped games matches the board leader.`;
                 return `
                   <tr>
                     <td>${renderSeasonMoverTrendCell(row, trendMaps || {})}</td>
                     <td>${escapeHtml(rank)}</td>
                     <td class="player-cell">${formatPlayerNameCell(row)}</td>
-                    <td class="season-mover-score">${escapeHtml(formatDisplayDeltaFromModelDelta(row.adjustedMuChange, { signed: false }))}</td>
+                    <td class="season-mover-score" title="${escapeHtml(scoreTitle)}">${escapeHtml(formatDisplayDeltaFromModelDelta(row.adjustedMuChange, { signed: false }))}</td>
                     <td>${escapeHtml(row.gamesThisSeason || 0)}</td>
                   </tr>
                 `;
@@ -2925,12 +3468,47 @@
       renderSeasonMoverTable(seasonPlayerLookupResultEl, [match], { rankMap, trendMaps });
     }
 
+    function getSeasonMoversRenderSignature() {
+      return hashString(JSON.stringify({
+        players: localStorage.getItem(PLAYER_STORAGE_KEY) || '',
+        games: localStorage.getItem(GAME_STORAGE_KEY) || '',
+        seasonStartDate: getSeasonStartDate(),
+        lookup: getSeasonPlayerLookupQuery(),
+      }));
+    }
+
+    function restoreSeasonMoversRenderCache(signature = getSeasonMoversRenderSignature()) {
+      const cached = readSessionRenderCache(SEASON_MOVERS_RENDER_CACHE_KEY, signature);
+      if (!cached || !seasonMoversSummaryEl || !seasonMoversListEl) return false;
+
+      seasonMoversSummaryEl.textContent = cached.summaryText || '';
+      seasonMoversListEl.innerHTML = cached.listHtml || '';
+      if (seasonPlayerLookupResultEl) {
+        seasonPlayerLookupResultEl.innerHTML = cached.lookupHtml || '';
+      }
+      if (seasonStartDateInputEl) {
+        seasonStartDateInputEl.value = getSeasonStartDate();
+      }
+      return true;
+    }
+
+    function saveSeasonMoversRenderCache(signature = getSeasonMoversRenderSignature()) {
+      writeSessionRenderCache(SEASON_MOVERS_RENDER_CACHE_KEY, signature, {
+        summaryText: seasonMoversSummaryEl?.textContent || '',
+        listHtml: seasonMoversListEl?.innerHTML || '',
+        lookupHtml: seasonPlayerLookupResultEl?.innerHTML || '',
+      });
+    }
+
     function renderSeasonMovers() {
       const seasonStartDate = getSeasonStartDate();
 
       if (seasonStartDateInputEl && seasonStartDateInputEl.value !== seasonStartDate) {
         seasonStartDateInputEl.value = seasonStartDate;
       }
+
+      const renderSignature = getSeasonMoversRenderSignature();
+      if (restoreSeasonMoversRenderCache(renderSignature)) return;
 
       const allGames = loadGames();
       const candidateRows = getSeasonMoverCandidateRows(seasonStartDate, allGames);
@@ -2957,14 +3535,16 @@
 
       if (!rows.length) {
         seasonMoversSummaryEl.textContent =
-          `No positive season movers found since ${seasonStartDate}. Improvement Score uses league and non-league model gain since the later of season start or each player's first 6-game baseline, then adjusts for season-game volume, sustained gains, and higher-rating difficulty.`;
+          `No positive season movers found since ${seasonStartDate}. Improvement Score uses league and non-league model gain since the later of season start or each player's first 6-game baseline, then adjusts for season-game volume, sustained gains, higher-rating difficulty, and a 1-point penalty per missing capped game behind the board leader.`;
+        saveSeasonMoversRenderCache(renderSignature);
         return;
       }
 
       seasonMoversSummaryEl.textContent =
-        `${rows.length} positive season mover${rows.length === 1 ? '' : 's'} since ${seasonStartDate}. Improvement Score uses league and non-league model gain since the later of season start or each player's first 6-game baseline, then adjusts for season-game volume, sustained gains, and higher-rating difficulty.`;
+        `${rows.length} positive season mover${rows.length === 1 ? '' : 's'} since ${seasonStartDate}. Improvement Score uses league and non-league model gain since the later of season start or each player's first 6-game baseline, then adjusts for season-game volume, sustained gains, higher-rating difficulty, and a 1-point penalty per missing capped game behind the board leader.`;
 
       renderSeasonMoverTable(seasonMoversListEl, rows, { rankMap, trendMaps });
+      saveSeasonMoversRenderCache(renderSignature);
     }
 
     const AWARD_MIN_GAMES = 5;
@@ -2974,8 +3554,10 @@
     const AWARD_NARROW_MARGIN = 2;
     const AWARD_BLOWOUT_MARGIN = 8;
 
-    function getOneMonthAgoDateString() {
-      const date = new Date(`${getTodayDateString()}T00:00:00`);
+    function getOneMonthAgoDateString(games = null) {
+      const latestGameDate = Array.isArray(games) ? getLatestGameDate(games) : '';
+      const anchorDate = isValidDateString(latestGameDate) ? latestGameDate : getTodayDateString();
+      const date = new Date(`${anchorDate}T00:00:00`);
       date.setMonth(date.getMonth() - 1);
       return date.toISOString().slice(0, 10);
     }
@@ -4779,7 +5361,10 @@
         'league games included by context'
       ];
 
-      if (rankingModeDescriptionEl) rankingModeDescriptionEl.textContent = '';
+      if (rankingModeDescriptionEl) {
+        rankingModeDescriptionEl.textContent =
+          'Season Ranking uses a one-month rolling window anchored to the latest game date. The Games column counts only games included in that calculation.';
+      }
       if (historyModeDescriptionEl) historyModeDescriptionEl.textContent = '';
     }
 
@@ -4798,6 +5383,10 @@
       params.set('seasonal', '1');
       params.set('seasonMonths', String(getSeasonLengthMonths()));
       params.set('mode', getOverallScoreboardMode());
+      params.set('returnTab', activeStatsTab);
+      if (activeStatsTab === 'season') {
+        params.set('returnSeasonTab', activeSeasonStatsTab);
+      }
 
       if (isIncludeLeagueGamesMode()) {
         params.set('includeLeagueGames', '1');
@@ -5321,16 +5910,318 @@
       );
     }
 
-    function renderStats() {
-      updateOverallScoreboardModeControls();
-      const mode = getOverallScoreboardMode();
-      const replay = getOverallReplayResult({ mode });
+    function getLatestPlayDateGames(games = loadGames()) {
+      const datedGames = (Array.isArray(games) ? games : [])
+        .filter(game => isValidDateString(getGameDateValue(game)));
+      const latestDate = datedGames
+        .map(getGameDateValue)
+        .sort()
+        .at(-1) || '';
+
+      return {
+        latestDate,
+        games: latestDate
+          ? datedGames.filter(game => getGameDateValue(game) === latestDate)
+          : []
+      };
+    }
+
+    function forEachRealPlayerInGame(game, callback) {
+      const visit = (player, side) => {
+        if (!player?.id) return;
+        callback(player, side);
+      };
+
+      (Array.isArray(game?.redTeam) ? game.redTeam : []).forEach(player => visit(player, 'red'));
+      if (!game?.isLeagueGame) {
+        (Array.isArray(game?.blueTeam) ? game.blueTeam : []).forEach(player => visit(player, 'blue'));
+      }
+    }
+
+    function getPlayerParticipationDates(games = loadGames()) {
+      const map = new Map();
+      getGamesSortedOldestFirst(Array.isArray(games) ? games : []).forEach(game => {
+        const date = getGameDateValue(game);
+        if (!isValidDateString(date)) return;
+        forEachRealPlayerInGame(game, player => {
+          const id = String(player.id);
+          if (!map.has(id)) map.set(id, []);
+          map.get(id).push(date);
+        });
+      });
+      return map;
+    }
+
+    function getOneMonthBeforeDateString(dateString) {
+      if (!isValidDateString(dateString)) return '';
+      const date = new Date(`${dateString}T00:00:00`);
+      date.setMonth(date.getMonth() - 1);
+      return date.toISOString().slice(0, 10);
+    }
+
+    function getSeasonRatingDisplayMapForGames(games, mode = 'composite') {
+      const replay = getOverallReplayResult({ games, mode, rollingWindow: true });
+      const rows = getSortedStandingsRows(replay.result, mode, replay.games);
+      return new Map(rows.map(row => [
+        String(row.id),
+        {
+          rating: Math.round(toDisplayRating(Number(row.experimentalLeaderboardRaw) || 0)),
+          rank: Number(row.rank) || 0,
+          row,
+        }
+      ]));
+    }
+
+    function renderSessionDeltaCell(delta) {
+      if (delta === 'NEW') return '<span class="trend-new">NEW</span>';
+      if (delta === null || typeof delta === 'undefined') return '<span class="trend-stable">—</span>';
+      const value = Math.round(Number(delta) || 0);
+      if (value > 0) return `<span class="trend-up">+${value}</span>`;
+      if (value < 0) return `<span class="trend-down">${value}</span>`;
+      return `<span class="trend-stable">0</span>`;
+    }
+
+    function getSessionDeltaSortValue(row) {
+      if (typeof row?.seasonRatingDelta === 'number' && Number.isFinite(row.seasonRatingDelta)) {
+        return row.seasonRatingDelta;
+      }
+      return Number.NEGATIVE_INFINITY;
+    }
+
+    function renderSessionStatPill(label, value, detail = '', { highlight = false } = {}) {
+      return `
+        <div class="session-stat-pill${highlight ? ' highlight' : ''}">
+          <div class="session-stat-label">${escapeHtml(label)}</div>
+          <div class="session-stat-value">${escapeHtml(value)}</div>
+          ${detail ? `<div class="session-stat-detail">${escapeHtml(detail)}</div>` : ''}
+        </div>
+      `;
+    }
+
+    function renderSessionStats() {
+      if (!sessionStatsTableBodyEl) return;
+      const games = loadGames();
+      const { latestDate, games: sessionGames } = getLatestPlayDateGames(games);
+      const counts = new Map();
+
+      const ensure = player => {
+        if (!player?.id) return null;
+        const id = String(player.id);
+        if (!counts.has(id)) {
+          counts.set(id, {
+            id: player.id,
+            name: player.name || id,
+            games: 0,
+            wins: 0
+          });
+        }
+        return counts.get(id);
+      };
+
+      sessionGames.forEach(game => {
+        forEachRealPlayerInGame(game, (player, side) => {
+          const row = ensure(player);
+          if (!row) return;
+          row.games += 1;
+          if (game.winner === side) row.wins += 1;
+        });
+      });
+
+      const participationDates = getPlayerParticipationDates(games);
+      const oneMonthCutoff = getOneMonthBeforeDateString(latestDate);
+      const newPlayers = [];
+      const returningPlayers = [];
+
+      counts.forEach(row => {
+        const dates = participationDates.get(String(row.id)) || [];
+        const priorDates = dates.filter(date => date < latestDate);
+        row.firstGame = priorDates.length === 0;
+        row.returning = !row.firstGame &&
+          priorDates.length > 0 &&
+          priorDates.at(-1) <= oneMonthCutoff;
+        row.previousGameDate = priorDates.at(-1) || '';
+        row.winrate = row.games > 0 ? row.wins / row.games : 0;
+        if (row.firstGame) newPlayers.push(row);
+        if (row.returning) returningPlayers.push(row);
+      });
+
+      const sessionGameIds = new Set(sessionGames.map(game => game?.id).filter(id => id !== undefined && id !== null));
+      const priorGames = games.filter(game => !sessionGameIds.has(game?.id));
+      const currentRatingMap = getSeasonRatingDisplayMapForGames(games, 'composite');
+      const priorRatingMap = getSeasonRatingDisplayMapForGames(priorGames, 'composite');
+
+      counts.forEach(row => {
+        const current = currentRatingMap.get(String(row.id));
+        const prior = priorRatingMap.get(String(row.id));
+        row.currentSeasonRating = current?.rating ?? null;
+        row.priorSeasonRating = prior?.rating ?? null;
+        row.seasonRatingDelta = current && prior
+          ? current.rating - prior.rating
+          : row.firstGame
+            ? 'NEW'
+            : null;
+      });
+
+      const rows = [...counts.values()].sort((a, b) => {
+        const deltaB = getSessionDeltaSortValue(b);
+        const deltaA = getSessionDeltaSortValue(a);
+        if (deltaB !== deltaA) return deltaB - deltaA;
+        if (b.games !== a.games) return b.games - a.games;
+        if (b.wins !== a.wins) return b.wins - a.wins;
+        return String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' });
+      });
+
+      const highestWinrate = rows.length
+        ? Math.max(...rows.map(row => row.winrate))
+        : 0;
+      const highestWinratePlayers = rows
+        .filter(row => row.games > 0 && row.winrate === highestWinrate)
+        .map(row => `${row.name} (${row.wins}-${row.games - row.wins}, ${Math.round(row.winrate * 100)}%)`);
+      const formatNameList = list => list.length
+        ? list.map(row => row.name).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })).join(', ')
+        : 'None';
+
+      if (isValidDateString(latestDate)) {
+        sessionStatsSummaryEl.innerHTML = `
+          <div class="session-stat-grid">
+            ${renderSessionStatPill('Play Date', latestDate)}
+            ${renderSessionStatPill('Players', String(rows.length), 'Total players present')}
+            ${renderSessionStatPill('Games', String(sessionGames.length), 'Games on this date')}
+            ${renderSessionStatPill('New Players', String(newPlayers.length), formatNameList(newPlayers), { highlight: newPlayers.length > 0 })}
+            ${renderSessionStatPill('Returning Players', String(returningPlayers.length), formatNameList(returningPlayers), { highlight: returningPlayers.length > 0 })}
+            ${renderSessionStatPill('Best Win Rate', highestWinratePlayers.length ? `${Math.round(highestWinrate * 100)}%` : 'n/a', highestWinratePlayers.join(', '), { highlight: highestWinratePlayers.length > 0 })}
+          </div>
+        `;
+      } else {
+        sessionStatsSummaryEl.textContent = 'No dated games found yet.';
+      }
+
+      sessionStatsTableBodyEl.innerHTML = '';
+      if (!rows.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 6;
+        td.innerHTML = '<div class="empty-state">No players found for the most recent play date.</div>';
+        tr.appendChild(td);
+        sessionStatsTableBodyEl.appendChild(tr);
+        return;
+      }
+
+      rows.forEach((row, index) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${index + 1}</td>
+          <td class="player-cell">${formatPlayerNameCell(row)}</td>
+          <td>${renderSessionDeltaCell(row.seasonRatingDelta)}</td>
+          <td>${row.games}</td>
+          <td>${row.wins}</td>
+          <td>${Math.round(row.winrate * 100)}%</td>
+        `;
+        sessionStatsTableBodyEl.appendChild(tr);
+      });
+    }
+
+    function getSeasonRankingRenderSignature(mode = 'composite') {
+      return hashString(JSON.stringify({
+        mode,
+        players: localStorage.getItem(PLAYER_STORAGE_KEY) || '',
+        games: localStorage.getItem(GAME_STORAGE_KEY) || '',
+        seasonStartDate: getSeasonStartDate(),
+        sortBy: activeSortBy || '',
+        lookup: getOverallPlayerLookupQuery(),
+      }));
+    }
+
+    function restoreSeasonRankingRenderCache(signature) {
+      const cached = readSessionRenderCache(SEASON_RANKING_RENDER_CACHE_KEY, signature);
+      if (!cached || !statsTableBody) return false;
+
+      statsTableBody.innerHTML = cached.tableHtml || '';
+      if (rankingModeDescriptionEl) {
+        rankingModeDescriptionEl.textContent = cached.descriptionText || '';
+        rankingModeDescriptionEl.classList.toggle('hidden', Boolean(cached.descriptionHidden));
+      }
+
+      const sortHeader = document.getElementById('statsSortHeader');
+      const sortIndicator = document.getElementById('sortIndicator');
+      if (sortHeader) sortHeader.textContent = cached.sortHeaderText || 'Rating';
+      if (sortIndicator) {
+        sortIndicator.textContent = cached.sortIndicatorText || '';
+        sortIndicator.classList.toggle('hidden', Boolean(cached.sortIndicatorHidden));
+      }
+      if (overallPlayerLookupResultEl) {
+        overallPlayerLookupResultEl.innerHTML = cached.lookupHtml || '';
+      }
+      return true;
+    }
+
+    function saveSeasonRankingRenderCache(signature) {
+      const sortHeader = document.getElementById('statsSortHeader');
+      const sortIndicator = document.getElementById('sortIndicator');
+      writeSessionRenderCache(SEASON_RANKING_RENDER_CACHE_KEY, signature, {
+        tableHtml: statsTableBody?.innerHTML || '',
+        descriptionText: rankingModeDescriptionEl?.textContent || '',
+        descriptionHidden: rankingModeDescriptionEl?.classList.contains('hidden') ?? true,
+        sortHeaderText: sortHeader?.textContent || 'Rating',
+        sortIndicatorText: sortIndicator?.textContent || '',
+        sortIndicatorHidden: sortIndicator?.classList.contains('hidden') ?? true,
+        lookupHtml: overallPlayerLookupResultEl?.innerHTML || '',
+      });
+    }
+
+    function hasSeasonMoversRenderCache() {
+      return Boolean(readSessionRenderCache(
+        SEASON_MOVERS_RENDER_CACHE_KEY,
+        getSeasonMoversRenderSignature()
+      ));
+    }
+
+    function hasSeasonRankingRenderCache(mode = 'composite') {
+      return Boolean(readSessionRenderCache(
+        SEASON_RANKING_RENDER_CACHE_KEY,
+        getSeasonRankingRenderSignature(mode)
+      ));
+    }
+
+    function hasSeasonStatsRenderCache(tabName = activeSeasonStatsTab) {
+      return tabName === 'seasonRanking'
+        ? hasSeasonRankingRenderCache('composite')
+        : hasSeasonMoversRenderCache();
+    }
+
+    function getSeasonStatsBusyMessage(tabName = activeSeasonStatsTab) {
+      return tabName === 'seasonRanking'
+        ? 'Loading season ranking...'
+        : 'Loading season movers...';
+    }
+
+    async function runSeasonStatsActionWithCachePolicy(tabName, action) {
+      const cached = hasSeasonStatsRenderCache(tabName);
+      if (cached) {
+        action();
+        return;
+      }
+      await runWithBusy(getSeasonStatsBusyMessage(tabName), async () => action());
+    }
+
+    function renderStats(modeOverride = 'composite') {
+      const mode = OVERALL_SCOREBOARD_MODES[modeOverride] ? modeOverride : 'composite';
+      const renderSignature = getSeasonRankingRenderSignature(mode);
+      if (restoreSeasonRankingRenderCache(renderSignature)) return;
+
+      const replay = getOverallReplayResult({ mode, rollingWindow: true });
       const result = replay.result;
       const scoreboardGames = replay.games;
       const ratingOptions = replay.ratingOptions || {};
       const ratingScope = `overall:${mode}`;
       const rows = getSortedStandingsRows(result, mode, scoreboardGames);
       renderOverallPlayerLookup(result, scoreboardGames, ratingScope, ratingOptions);
+      if (rankingModeDescriptionEl) {
+        const cutoffDate = getSeasonRankingWindowCutoffDate(getOverallScoreboardGames(loadGames(), mode));
+        rankingModeDescriptionEl.textContent =
+          `Season Ranking uses a one-month rolling window anchored to the latest game date. ${scoreboardGames.length} game${scoreboardGames.length === 1 ? '' : 's'} on or after ${cutoffDate} are included in this calculation. The Games column counts only those included games.`;
+        rankingModeDescriptionEl.classList.remove('hidden');
+      }
 
       // Update column header and sort indicator
       const sortHeader = document.getElementById('statsSortHeader');
@@ -5355,6 +6246,7 @@
         td.innerHTML = `<div class="empty-state">No players have at least ${OVERALL_STANDINGS_MIN_GAMES} games and a qualifying game in the last month in ${escapeHtml(getOverallScoreboardModeLabel(mode))} standings.</div>`;
         tr.appendChild(td);
         statsTableBody.appendChild(tr);
+        saveSeasonRankingRenderCache(renderSignature);
         return;
       }
 
@@ -5367,6 +6259,7 @@
       const priorResult = applyOverallScoreboardPlayerCounts(
         getReplayResultForGames(priorGames, {
           includeLeagueGames: shouldIncludeLeagueGamesForScoreboard(mode),
+          persist: true,
           ratingOptions,
         }),
         priorGames,
@@ -5387,16 +6280,33 @@
         `;
         statsTableBody.appendChild(tr);
       });
+      saveSeasonRankingRenderCache(renderSignature);
     }
 
-    function renderHistory() {
+    function getHistoryRenderSignature(mode = getOverallScoreboardMode()) {
+      return hashString(JSON.stringify({
+        mode,
+        players: localStorage.getItem(PLAYER_STORAGE_KEY) || '',
+        games: localStorage.getItem(GAME_STORAGE_KEY) || '',
+        seasonStartDate: getSeasonStartDate(),
+      }));
+    }
+
+    function renderHistory({ force = false } = {}) {
+      if (!historyList || historyList.offsetParent === null) return;
+
       const mode = getOverallScoreboardMode();
+      const signature = getHistoryRenderSignature(mode);
+      if (!force && signature === renderedHistorySignature) return;
+
       const scoreboardGames = getOverallScoreboardGames(loadGames(), mode);
       const ratingOptions = getLeagueScoreboardRatingOptions(mode);
       const result = getReplayResultForGames(scoreboardGames, {
         includeLeagueGames: shouldIncludeLeagueGamesForScoreboard(mode),
+        persist: true,
         ratingOptions,
       });
+      renderedHistorySignature = signature;
       const displayHistory = expandLeagueSeriesHistory(result.history);
       const historyData = [...displayHistory].reverse();
       const powerMap = getHistoryPowerMap(displayHistory);
@@ -5601,6 +6511,32 @@
       });
     }
 
+    function scheduleHistoryRender() {
+      if (!gameHistoryCardEl || !historyList) return;
+      const signature = getHistoryRenderSignature();
+      if (signature === renderedHistorySignature || historyRenderQueued) return;
+
+      historyRenderQueued = true;
+
+      const renderWhenVisible = () => {
+        historyRenderQueued = false;
+        runWithDeferredBusy('Loading game history...', async () => renderHistory());
+      };
+
+      if ('IntersectionObserver' in window) {
+        historyIntersectionObserver?.disconnect();
+        historyIntersectionObserver = new IntersectionObserver(entries => {
+          if (!entries.some(entry => entry.isIntersecting)) return;
+          historyIntersectionObserver?.disconnect();
+          historyIntersectionObserver = null;
+          renderWhenVisible();
+        }, { rootMargin: '400px 0px' });
+        historyIntersectionObserver.observe(gameHistoryCardEl);
+      } else {
+        window.setTimeout(renderWhenVisible, 800);
+      }
+    }
+
     function getQualityLeagueTeamPlayers(game) {
       const context = getLeagueRatingContext(game);
       const redCount = Array.isArray(game?.redTeam) && game.redTeam.length > 0
@@ -5627,7 +6563,7 @@
       return getGamesSortedOldestFirst(loadGames()).filter(isQualityGame);
     }
 
-    const QUALITY_CACHE_VERSION = 'model-relative-tiers-v24-gap-labels';
+    const QUALITY_CACHE_VERSION = 'model-relative-tiers-v25-acciq-markers';
     const QUALITY_TIERS = [
       { key: 'balanced', label: 'Balanced', detail: 'expected + 1 error' },
       { key: 'imbalanced', label: 'Imbalanced', detail: '+1-2 errors' },
@@ -6116,26 +7052,16 @@
       return Math.round(clampQualityScore(weighted));
     }
 
-    function computeExplanatoryQualityScore(summary) {
+    function computeDashboardAccIQ(summary) {
       return computeVisibleQualityScore([
-        { value: getMarginQualityComponent(summary), weight: 50 },
-        { value: getBrierQualityComponent(summary), weight: 30 },
-        { value: getPctQualityComponent(summary.accuracy), weight: 20 },
+        { value: getPctQualityComponent(summary.accuracy), weight: 45 },
+        { value: getBrierQualityComponent(summary), weight: 35 },
+        { value: getMarginQualityComponent(summary), weight: 20 },
       ]);
     }
 
-    function computePredictiveQualityScore(summary, algorithmBalancedRate, balancedRate) {
-      return computeVisibleQualityScore([
-        { value: getMarginQualityComponent(summary), weight: 45 },
-        { value: getBrierQualityComponent(summary), weight: 25 },
-        {
-          value: getPctQualityComponent(
-            algorithmBalancedRate === null ? balancedRate : algorithmBalancedRate
-          ),
-          weight: 20
-        },
-        { value: getPctQualityComponent(summary.accuracy), weight: 10 },
-      ]);
+    function formatQualityComponent(value) {
+      return value === null ? 'n/a' : String(Math.round(Number(value)));
     }
 
     function renderQualityScore(el, {
@@ -6305,28 +7231,32 @@
       const forwardAlgorithmBalancedGames = Number.isFinite(Number(playForward.algorithmBalancedGames))
         ? Number(playForward.algorithmBalancedGames)
         : Number(playForward.tiers?.balanced?.algorithmGames) || 0;
-      const explanatoryScore = computeExplanatoryQualityScore(backSummary);
-      const predictiveScore = computePredictiveQualityScore(
-        playSummary,
-        forwardAlgorithmBalancedRate,
-        forwardBalancedRate
-      );
+      const backAccIQ = computeDashboardAccIQ(backSummary);
+      const fwdAccIQ = computeDashboardAccIQ(playSummary);
+      const backAccuracyComponent = getPctQualityComponent(backSummary.accuracy);
+      const backBrierComponent = getBrierQualityComponent(backSummary);
+      const backMarginComponent = getMarginQualityComponent(backSummary);
+      const fwdAccuracyComponent = getPctQualityComponent(playSummary.accuracy);
+      const fwdBrierComponent = getBrierQualityComponent(playSummary);
+      const fwdMarginComponent = getMarginQualityComponent(playSummary);
 
       renderQualityScore(qualityExplanatoryScoreEl, {
-        score: explanatoryScore,
-        label: 'Explanatory quality',
+        score: backAccIQ,
+        label: 'BackAccIQ',
         detailLines: [
-          ['Margin error', formatQualityMarginError(backSummary)],
-          ['Brier', formatQualityDecimal(backSummary.brier, 3)],
-          ['Winner accuracy', formatQualityPct(backSummary.accuracy)],
+          ['Acc 45%', formatQualityComponent(backAccuracyComponent)],
+          ['Brier 35%', formatQualityComponent(backBrierComponent)],
+          ['Margin 20%', formatQualityComponent(backMarginComponent)],
           ['Sample', formatQualityGameCount(backPrediction)],
         ],
       });
       renderQualityScore(qualityPredictiveScoreEl, {
-        score: predictiveScore,
-        label: 'Predictive quality',
+        score: fwdAccIQ,
+        label: 'FwdAccIQ',
         detailLines: [
-          ['Margin error', formatQualityMarginError(playSummary)],
+          ['Acc 45%', formatQualityComponent(fwdAccuracyComponent)],
+          ['Brier 35%', formatQualityComponent(fwdBrierComponent)],
+          ['Margin 20%', formatQualityComponent(fwdMarginComponent)],
           ['Algorithm balanced', formatQualityRateWithCount(
             forwardAlgorithmBalancedRate,
             forwardAlgorithmBalancedGames,
@@ -6344,6 +7274,9 @@
 
       renderQualityMetrics(qualityExplanatoryMetricsEl, [
         ['Games', formatQualityGameCount(backPrediction)],
+        ['Acc component', formatQualityComponent(backAccuracyComponent)],
+        ['Brier component', formatQualityComponent(backBrierComponent)],
+        ['Margin component', formatQualityComponent(backMarginComponent)],
         ['Margin error', formatQualityMarginError(backSummary)],
         ['Observed avg gap', formatQualityAverageGap(backSummary)],
         ['Brier score', formatQualityDecimal(backSummary.brier, 3)],
@@ -6354,6 +7287,9 @@
 
       renderQualityMetrics(qualityPredictiveMetricsEl, [
         ['Games', formatQualityGameCount(playForward)],
+        ['Acc component', formatQualityComponent(fwdAccuracyComponent)],
+        ['Brier component', formatQualityComponent(fwdBrierComponent)],
+        ['Margin component', formatQualityComponent(fwdMarginComponent)],
         ['Algorithm balanced', formatQualityRateWithCount(
           forwardAlgorithmBalancedRate,
           forwardAlgorithmBalancedGames,
@@ -6371,21 +7307,314 @@
       renderQualityChart(playForward, playSummary);
     }
 
+    function getBayesianCurrentNameMap(players = loadPlayers()) {
+      return new Map((players || []).map(player => [String(player.id), player.name]));
+    }
+
+    function getBayesianSnapshotStorageKey(mode = getOverallScoreboardMode()) {
+      return BAYESIAN_SNAPSHOT_MODE_KEYS[mode] || BAYESIAN_SNAPSHOT_MODE_KEYS.composite;
+    }
+
+    function loadBayesianSnapshotForMode(mode = getOverallScoreboardMode()) {
+      const key = getBayesianSnapshotStorageKey(mode);
+      const adapter = {
+        getItem(storageKey) {
+          if (storageKey === 'gameDayBayesianScoreboardSnapshotV1') {
+            return localStorage.getItem(key) ||
+              (mode === 'composite' ? localStorage.getItem(storageKey) : null);
+          }
+          return localStorage.getItem(storageKey);
+        }
+      };
+      return loadBayesianSnapshot(adapter);
+    }
+
+    function saveBayesianSnapshotForMode(mode, snapshot) {
+      const key = getBayesianSnapshotStorageKey(mode);
+      const adapter = {
+        setItem(_storageKey, value) {
+          localStorage.setItem(key, value);
+        }
+      };
+      saveBayesianSnapshot(adapter, snapshot);
+    }
+
+    function getBayesianGamesForMode(mode = getOverallScoreboardMode()) {
+      return getOverallScoreboardGames(loadGames(), mode);
+    }
+
+    function getBayesianPriorGamesForMode(mode = getOverallScoreboardMode()) {
+      const games = getBayesianGamesForMode(mode);
+      const recentSessionGames = getRecentSessionGames(games, { includeLeagueGames: true });
+      const excludeIds = new Set(recentSessionGames.map(game => game.id));
+      return games.filter(game => game && !excludeIds.has(game.id));
+    }
+
+    function getBayesianDisplayRows(snapshot = bayesianSnapshot, players = loadPlayers()) {
+      if (!snapshot?.ratings) return [];
+      const nameMap = getBayesianCurrentNameMap(players);
+      const baseRows = sortBayesianRatings(snapshot.ratings.map(row => ({
+        ...row,
+        name: nameMap.get(String(row.id)) || row.name,
+      })));
+      const scoreboardMaxGames = getScoreboardMaxGamesForRows(baseRows);
+      return baseRows
+        .map(row => {
+          const experimentalLeaderboardRaw =
+            getOverallStandingsRawOrdinal(Number(row.ordinal) || 0, Number(row.games) || 0) -
+            getScoreboardMissingGamePenaltyRaw(scoreboardMaxGames, Number(row.games) || 0);
+          return {
+            ...row,
+            scoreboardMaxGames,
+            experimentalLeaderboardRaw,
+            displayRating: formatDisplayedRating(experimentalLeaderboardRaw),
+          };
+        })
+        .sort((a, b) => {
+          if (b.experimentalLeaderboardRaw !== a.experimentalLeaderboardRaw) {
+            return b.experimentalLeaderboardRaw - a.experimentalLeaderboardRaw;
+          }
+          if (b.games !== a.games) return b.games - a.games;
+          return String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' });
+        })
+        .map((row, index) => ({ ...row, rank: index + 1 }));
+    }
+
+    function formatBayesianTimestamp(value) {
+      const date = new Date(value);
+      if (!Number.isFinite(date.getTime())) return 'unknown time';
+      return date.toLocaleString(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      });
+    }
+
+    function formatBayesianNumber(value, digits = 3) {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric.toFixed(digits) : 'n/a';
+    }
+
+    function setBayesianStatus(message, { visible = true } = {}) {
+      if (!bayesianStatusEl) return;
+      bayesianStatusEl.textContent = message || '';
+      bayesianStatusEl.classList.toggle('hidden', !visible || !message);
+    }
+
+    function renderBayesianScoreboard() {
+      updateOverallScoreboardModeControls();
+      const mode = getOverallScoreboardMode();
+      bayesianSnapshot = loadBayesianSnapshotForMode(mode) || null;
+      const players = loadPlayers();
+      const games = getBayesianGamesForMode(mode);
+      const uiState = createBayesianUiState({
+        players,
+        games,
+        snapshot: bayesianSnapshot,
+        running: bayesianCalculationRunning,
+      });
+
+      if (calculateBayesianButtonEl) {
+        calculateBayesianButtonEl.textContent = uiState.buttonText.replace(
+          'Bayesian ratings',
+          'Bayesian ratings for all scoreboards'
+        );
+        calculateBayesianButtonEl.disabled = bayesianCalculationRunning;
+      }
+
+      if (bayesianSnapshotMetaEl) {
+        bayesianSnapshotMetaEl.textContent = bayesianSnapshot
+          ? `Last calculated ${formatBayesianTimestamp(bayesianSnapshot.calculatedAt)} from ${bayesianSnapshot.gamesConsidered} source games.`
+          : 'No saved Bayesian scoreboard yet.';
+      }
+
+      if (uiState.staleMessage) {
+        setBayesianStatus(uiState.staleMessage);
+      } else if (!bayesianSnapshot) {
+        setBayesianStatus('Click calculate to create the first Bayesian scoreboard.');
+      } else {
+        setBayesianStatus('', { visible: false });
+      }
+
+      if (!bayesianTableBodyEl) return;
+      bayesianTableBodyEl.innerHTML = '';
+      const rows = getBayesianDisplayRows(bayesianSnapshot, players);
+      const priorRows = getBayesianDisplayRows({ ratings: bayesianSnapshot?.priorRatings || [] }, players);
+      const currentMap = {};
+      const priorMap = {};
+      rows.forEach(row => { currentMap[String(row.id)] = { rank: row.rank, games: row.games }; });
+      priorRows.forEach(row => { priorMap[String(row.id)] = { rank: row.rank, games: row.games }; });
+      if (rows.length === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 5;
+        td.innerHTML = '<div class="empty-state">No saved Bayesian scoreboard yet.</div>';
+        tr.appendChild(td);
+        bayesianTableBodyEl.appendChild(tr);
+        return;
+      }
+
+      rows.forEach(row => {
+        const tr = document.createElement('tr');
+        const trend = Array.isArray(bayesianSnapshot?.priorRatings)
+          ? computeTrend(row.id, currentMap, priorMap)
+          : null;
+        tr.innerHTML = `
+          <td>${renderTrendCell(trend)}</td>
+          <td>${row.rank}</td>
+          <td class="player-cell">${escapeHtml(row.name)}</td>
+          <td>${escapeHtml(row.displayRating)}</td>
+          <td>${Number(row.games) || 0}</td>
+        `;
+        bayesianTableBodyEl.appendChild(tr);
+      });
+    }
+
+    function updateBayesianProgress(message) {
+      const percent = Math.max(bayesianProgressPercent, Math.min(99, Math.floor(Number(message.percent) || 0)));
+      bayesianProgressPercent = percent;
+      updateBusyMessage(message.message || 'Calculating Bayesian ratings...');
+      setBusyProgress(percent, { determinate: true });
+    }
+
+    function getBayesianCalculationModeLabel(mode) {
+      return getOverallScoreboardModeLabel(mode);
+    }
+
+    function terminateBayesianWorkers() {
+      bayesianWorkers.forEach(worker => worker.terminate());
+      bayesianWorkers.clear();
+    }
+
+    function finishBayesianWorkers() {
+      terminateBayesianWorkers();
+      bayesianCalculationRunning = false;
+      bayesianProgressPercent = 0;
+      hideBusy();
+      renderBayesianScoreboard();
+    }
+
+    function calculateBayesianScoreboardFromWorker() {
+      if (bayesianCalculationRunning || bayesianWorkers.size > 0) return;
+      const modes = BAYESIAN_CALCULATION_MODES.filter(mode => BAYESIAN_SNAPSHOT_MODE_KEYS[mode]);
+      if (!modes.length) return;
+
+      bayesianCalculationRunning = true;
+      bayesianProgressPercent = 0;
+      renderBayesianScoreboard();
+      showBusy('Starting Bayesian scoreboards', { determinate: true, percent: 0 });
+
+      const players = loadPlayers();
+      const modeProgress = new Map(modes.map(mode => [mode, 0]));
+      const snapshots = new Map();
+      let failed = false;
+
+      const updateAggregateProgress = (mode, message = {}) => {
+        const nextModePercent = Math.max(
+          modeProgress.get(mode) || 0,
+          Math.min(99, Math.floor(Number(message.percent) || 0))
+        );
+        modeProgress.set(mode, nextModePercent);
+        const aggregate = Math.floor(
+          [...modeProgress.values()].reduce((sum, value) => sum + value, 0) / modes.length
+        );
+        const percent = Math.max(bayesianProgressPercent, Math.min(99, aggregate));
+        bayesianProgressPercent = percent;
+        const label = getBayesianCalculationModeLabel(mode);
+        updateBusyMessage(`${label}: ${message.message || 'Calculating Bayesian ratings...'}`);
+        setBusyProgress(percent, { determinate: true });
+      };
+
+      const failCalculation = message => {
+        if (failed) return;
+        failed = true;
+        setDatabaseStatus(message || 'Bayesian calculation failed.');
+        finishBayesianWorkers();
+      };
+
+      const saveCompletedSnapshots = () => {
+        try {
+          updateBusyMessage('Saving Bayesian scoreboards');
+          snapshots.forEach(snapshot => validateBayesianSnapshot(snapshot));
+          snapshots.forEach((snapshot, snapshotMode) => {
+            saveBayesianSnapshotForMode(snapshotMode, snapshot);
+          });
+          const activeMode = getOverallScoreboardMode();
+          bayesianSnapshot = snapshots.get(activeMode) || loadBayesianSnapshotForMode(activeMode);
+          setBusyProgress(100, { determinate: true });
+          const labels = modes.map(getBayesianCalculationModeLabel).join(', ');
+          setDatabaseStatus(`Bayesian scoreboards saved for ${labels}.`);
+        } catch (error) {
+          setDatabaseStatus(error instanceof Error ? error.message : 'Could not save Bayesian scoreboards.');
+        } finally {
+          finishBayesianWorkers();
+        }
+      };
+
+      modes.forEach(mode => {
+        const worker = new Worker(new URL('./bayesian-ratings-worker.js', import.meta.url), { type: 'module' });
+        bayesianWorkers.add(worker);
+
+        worker.addEventListener('message', event => {
+          if (failed) return;
+          const message = event.data || {};
+          if (message.type === 'progress') {
+            updateAggregateProgress(mode, message);
+            return;
+          }
+
+          if (message.type === 'complete') {
+            try {
+              validateBayesianSnapshot(message.snapshot);
+              snapshots.set(mode, message.snapshot);
+              modeProgress.set(mode, 99);
+              updateAggregateProgress(mode, {
+                percent: 99,
+                message: `${getBayesianCalculationModeLabel(mode)} complete`
+              });
+              worker.terminate();
+              bayesianWorkers.delete(worker);
+              if (snapshots.size === modes.length) {
+                saveCompletedSnapshots();
+              }
+            } catch (error) {
+              failCalculation(error instanceof Error ? error.message : 'Bayesian worker returned an invalid result.');
+            }
+            return;
+          }
+
+          if (message.type === 'error') {
+            failCalculation(message.message || `${getBayesianCalculationModeLabel(mode)} Bayesian calculation failed.`);
+          }
+        });
+
+        worker.addEventListener('error', event => {
+          failCalculation(event.message || `${getBayesianCalculationModeLabel(mode)} Bayesian worker failed.`);
+        });
+
+        worker.postMessage({
+          type: 'calculate',
+          players,
+          games: getBayesianGamesForMode(mode),
+          priorGames: getBayesianPriorGamesForMode(mode),
+        });
+      });
+    }
+
     function renderAll() {
       updateSeasonStartDateStatus();
       updateModeDescriptions();
-      renderHistory();
       // Only compute the (relatively expensive) quality analysis when the
       // collapsible card is open.
       if (algorithmQualityCardEl.open) renderQuality();
       updateServerSyncButton();
-      if (activeStatsTab === 'overall') {
-        renderStats();
-      } else if (activeStatsTab === 'seasonMovers') {
-        renderSeasonMovers();
-      } else if (activeStatsTab === 'awards') {
-        renderAwards();
+      if (activeStatsTab === 'session') {
+        renderSessionStats();
+      } else if (activeStatsTab === 'season') {
+        renderSeasonStats();
+      } else if (activeStatsTab === 'allTime') {
+        renderBayesianScoreboard();
       }
+      scheduleHistoryRender();
     }
 
     function exportDatabase() {
@@ -6422,6 +7651,10 @@
         .filter(player => player.name.length > 0);
     }
 
+    function normalizeImportedCourtType(value) {
+      return value === 'sand' ? 'sand' : 'indoor';
+    }
+
     function normalizeImportedGames(games) {
       return games
         .filter(game => game && typeof game === 'object')
@@ -6445,6 +7678,7 @@
             predictedAtAssignment: typeof game.predictedAtAssignment === 'number'
               ? game.predictedAtAssignment
               : null,
+            courtType: normalizeImportedCourtType(game.courtType),
             leagueOpponent: game.isLeagueGame
               ? {
                   id: game.leagueOpponent?.id || LEAGUE_TEAM_ID,
@@ -6456,10 +7690,6 @@
 
           if (game.level === 'intermediate') {
             normalized.level = 'intermediate';
-          }
-
-          if (game.courtType === 'sand') {
-            normalized.courtType = 'sand';
           }
 
           if (TEAM_COLORS.includes(game.displayWinnerColor)) {
@@ -6625,7 +7855,7 @@
     }
 
     function getCanonicalGameJson(game) {
-      return stableStringify(game || {});
+      return stableStringify(JSON.parse(JSON.stringify(game || {})));
     }
 
     function getServerGamesChangedLocally(meta) {
@@ -6883,8 +8113,7 @@
       const seasonDateChanged = maybeSyncSeasonStartDateFromServerMeta(defaultDatabaseMeta);
       updateServerStatsDate(defaultDatabaseMeta);
       if (seasonDateChanged) {
-        if (activeStatsTab === 'seasonMovers') renderSeasonMovers();
-        if (activeStatsTab === 'awards') renderAwards();
+        if (activeStatsTab === 'season') renderSeasonStats();
       }
       return defaultDatabaseMeta;
     }
@@ -7024,23 +8253,66 @@
       setDatabaseStatus(`Loaded newest stats from server with ${meta.players.length} players and ${meta.games.length} games. Season start date: ${getSeasonStartDate()}.`);
     }
 
-    overallStandingsTabButtonEl.addEventListener('click', async () => {
-      await runWithBusy('Loading standings...', async () => setStatsTab('overall'));
+    sessionStatsTabButtonEl.addEventListener('click', () => {
+      setStatsTab('session');
     });
-    seasonMoversTabButtonEl.addEventListener('click', async () => {
-      await runWithBusy('Loading season movers...', async () => setStatsTab('seasonMovers'));
+    seasonStatsTabButtonEl.addEventListener('click', async () => {
+      await runSeasonStatsActionWithCachePolicy(activeSeasonStatsTab, () => setStatsTab('season'));
     });
-    awardsTabButtonEl.addEventListener('click', async () => {
-      await runWithBusy('Loading awards...', async () => setStatsTab('awards'));
+    allTimeStatsTabButtonEl.addEventListener('click', () => {
+      setStatsTab('allTime');
+    });
+    seasonMoversSubTabButtonEl.addEventListener('click', async () => {
+      await runSeasonStatsActionWithCachePolicy('seasonMovers', () => setSeasonStatsTab('seasonMovers'));
+    });
+    seasonRankingSubTabButtonEl.addEventListener('click', async () => {
+      await runSeasonStatsActionWithCachePolicy('seasonRanking', () => setSeasonStatsTab('seasonRanking'));
+    });
+
+    calculateBayesianButtonEl?.addEventListener('click', () => {
+      calculateBayesianScoreboardFromWorker();
     });
 
     Object.entries(overallScoreboardModeButtons).forEach(([mode, button]) => {
-      button?.addEventListener('click', async () => {
-        await runWithBusy('Updating standings...', async () => setOverallScoreboardMode(mode));
+      button?.addEventListener('click', () => {
+        setOverallScoreboardMode(mode);
       });
     });
 
-    applySeasonStartDateButtonEl.addEventListener('click', () => {
+    document.addEventListener('click', event => {
+      const link = event.target?.closest?.('a.player-link');
+      if (!link) return;
+      if (event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      if (link.target && link.target !== '_self') return;
+
+      event.preventDefault();
+      openTrendOverlay(link.href);
+    });
+
+    trendOverlayFrameEl?.addEventListener('load', () => {
+      const src = trendOverlayFrameEl.getAttribute('src') || '';
+      if (!src || src === 'about:blank') {
+        trendOverlayLoadingEl?.classList.add('hidden');
+      }
+    });
+
+    window.addEventListener('message', event => {
+      if (event.source !== trendOverlayFrameEl?.contentWindow) return;
+      if (event.data?.type === 'trendOverlayReady') {
+        finishTrendOverlayLoading();
+      }
+    });
+
+    closeTrendOverlayButtonEl?.addEventListener('click', closeTrendOverlay);
+
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !trendOverlayEl?.classList.contains('hidden')) {
+        closeTrendOverlay();
+      }
+    });
+
+    applySeasonStartDateButtonEl.addEventListener('click', async () => {
       const date = seasonStartDateInputEl.value;
 
       if (!isValidDateString(date)) {
@@ -7049,23 +8321,23 @@
       }
 
       saveSeasonStartDate(date);
-      renderSeasonMovers();
+      await runWithDeferredBusy('Updating season movers...', async () => renderSeasonMovers());
       updateSeasonStartDateStatus('saved locally');
       setDatabaseStatus(`Season start date set to ${date}.`);
     });
 
-    seasonStartDateInputEl.addEventListener('change', () => {
+    seasonStartDateInputEl.addEventListener('change', async () => {
       const date = seasonStartDateInputEl.value;
       if (!isValidDateString(date)) return;
       saveSeasonStartDate(date);
       updateSeasonStartDateStatus('saved locally');
-      renderSeasonMovers();
+      await runWithDeferredBusy('Updating season movers...', async () => renderSeasonMovers());
     });
 
     if (overallPlayerLookupInputEl) {
       overallPlayerLookupInputEl.addEventListener('input', () => {
         localStorage.setItem(OVERALL_PLAYER_LOOKUP_STORAGE_KEY, overallPlayerLookupInputEl.value);
-        renderStats();
+        runWithDeferredBusy('Updating season ranking...', async () => renderStats());
       });
     }
 
@@ -7075,14 +8347,14 @@
           overallPlayerLookupInputEl.value = '';
         }
         localStorage.removeItem(OVERALL_PLAYER_LOOKUP_STORAGE_KEY);
-        renderStats();
+        runWithDeferredBusy('Updating season ranking...', async () => renderStats());
       });
     }
 
     if (seasonPlayerLookupInputEl) {
       seasonPlayerLookupInputEl.addEventListener('input', () => {
         localStorage.setItem(SEASON_PLAYER_LOOKUP_STORAGE_KEY, seasonPlayerLookupInputEl.value);
-        renderSeasonMovers();
+        runWithDeferredBusy('Updating season movers...', async () => renderSeasonMovers());
       });
     }
 
@@ -7092,7 +8364,7 @@
           seasonPlayerLookupInputEl.value = '';
         }
         localStorage.removeItem(SEASON_PLAYER_LOOKUP_STORAGE_KEY);
-        renderSeasonMovers();
+        runWithDeferredBusy('Updating season movers...', async () => renderSeasonMovers());
       });
     }
 
@@ -7158,8 +8430,8 @@
     const _modeParam = _initParams.get('mode');
     activeOverallScoreboardMode = OVERALL_SCOREBOARD_MODES[_modeParam]
       ? _modeParam
-      : OVERALL_SCOREBOARD_MODES[localStorage.getItem(OVERALL_SCOREBOARD_MODE_STORAGE_KEY)]
-        ? localStorage.getItem(OVERALL_SCOREBOARD_MODE_STORAGE_KEY)
+      : OVERALL_SCOREBOARD_MODES[localStorage.getItem(ALL_TIME_SCOREBOARD_MODE_STORAGE_KEY)]
+        ? localStorage.getItem(ALL_TIME_SCOREBOARD_MODE_STORAGE_KEY)
         : 'composite';
     updateOverallScoreboardModeControls();
 
@@ -7168,15 +8440,44 @@
       activeSortBy = _sortByParam;
     }
     const _tabParam = _initParams.get('tab');
-    const _urlTab = ['overall', 'seasonMovers', 'awards'].includes(_tabParam)
+    const _seasonTabParam = _initParams.get('seasonTab');
+    const legacyTabMap = {
+      overall: 'season',
+      seasonMovers: 'season',
+      awards: 'season',
+      bayesian: 'allTime',
+    };
+    const _urlTab = ['session', 'season', 'allTime'].includes(_tabParam)
       ? _tabParam
+      : legacyTabMap[_tabParam] || '';
+    const _urlSeasonTab = ['seasonMovers', 'seasonRanking'].includes(_seasonTabParam)
+      ? _seasonTabParam
       : '';
-    const _savedTab = sessionStorage.getItem('statsActiveTab') || 'seasonMovers';
-    setStatsTab(_sortByParam ? 'overall' : (_urlTab || _savedTab), { render: false });
+    setSeasonStatsTab(
+      _sortByParam || _tabParam === 'overall'
+        ? 'seasonRanking'
+        : (_urlSeasonTab || 'seasonRanking'),
+      { render: false }
+    );
+    setStatsTab(_sortByParam ? 'season' : (_urlTab || 'season'), { render: false });
 
-    await runWithBusy('Loading stats...', async () => {
+    if (activeStatsTab === 'season' && !hasSeasonStatsRenderCache(activeSeasonStatsTab)) {
+      await runWithBusy(getSeasonStatsBusyMessage(activeSeasonStatsTab), async () => {
+        renderAll();
+      });
+    } else {
       renderAll();
-    });
+    }
+
+    if (_initParams.get('embed') === 'trendAwards') {
+      renderAwards();
+    }
+
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+      navigator.serviceWorker.register('./sw.js').catch(() => {
+        // Offline support is best effort; the page should still work without it.
+      });
+    }
 
     prepareDefaultDatabaseMeta().catch(() => {
       if (serverStatsDateEl) serverStatsDateEl.textContent = 'Server date unavailable';

@@ -2,7 +2,7 @@
   "name": "Volleyball Game Tracker",
   "short_name": "Volleyball",
   "description": "Track volleyball players, balance teams, record games, and review stats.",
-  "start_url": "./index.html",
+  "start_url": "./stats.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#0b1220",

@@ -74,7 +74,7 @@ async function proxyGoogleStats(req, res) {
 
 function resolveStaticPath(urlPathname) {
   const decodedPath = decodeURIComponent(urlPathname);
-  const cleanPath = decodedPath === '/' ? '/index.html' : decodedPath;
+  const cleanPath = decodedPath === '/' ? '/stats.html' : decodedPath;
   const normalizedRelativePath = normalize(cleanPath).replace(/^([/\\])+/, '');
   const absolutePath = resolve(join(ROOT_DIR, normalizedRelativePath));
   const rootPath = resolve(ROOT_DIR);

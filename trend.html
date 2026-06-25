@@ -644,6 +644,7 @@
     const DEFAULT_SEASON_LENGTH_MONTHS = 6;
     const SCOREBOARD_MISSING_GAME_PENALTY_POINTS = 5;
     const SCOREBOARD_MISSING_GAME_PENALTY_MAX_GAMES = 50;
+    const SCOREBOARD_DISPLAY_ORDINAL_SIGMA_MULTIPLIER = 3.5;
 
     const SEASON_LENGTH_MONTHS_STORAGE_KEY = 'gameDaySeasonLengthMonths';
 
@@ -1085,18 +1086,39 @@
       return base - getScoreboardMissingGamePenaltyRaw(scoreboardMaxGames, games);
     }
 
+    function getDisplayRawOrdinalFromMuSigma(mu, sigma, fallbackRawOrdinal = 0) {
+      const safeMu = Number(mu);
+      const safeSigma = Number(sigma);
+      if (Number.isFinite(safeMu) && Number.isFinite(safeSigma)) {
+        return safeMu - SCOREBOARD_DISPLAY_ORDINAL_SIGMA_MULTIPLIER * safeSigma;
+      }
+      return Number(fallbackRawOrdinal) || 0;
+    }
+
     function getTimelineRatingBefore(row, timelineIndex, scoreboardMaxGames = null) {
-      return toDisplayRating(getOverallLeaderboardRaw(row.ratingBefore, timelineIndex, scoreboardMaxGames));
+      return toDisplayRating(getOverallLeaderboardRaw(
+        getDisplayRawOrdinalFromMuSigma(row.muBefore, row.sigmaBefore, row.ratingBefore),
+        timelineIndex,
+        scoreboardMaxGames
+      ));
     }
 
     function getTimelineRatingAfter(row, timelineIndex, scoreboardMaxGames = null) {
-      return toDisplayRating(getOverallLeaderboardRaw(row.ratingAfter, timelineIndex + 1, scoreboardMaxGames));
+      return toDisplayRating(getOverallLeaderboardRaw(
+        getDisplayRawOrdinalFromMuSigma(row.muAfter, row.sigmaAfter, row.ratingAfter),
+        timelineIndex + 1,
+        scoreboardMaxGames
+      ));
     }
 
     function getCurrentStandingRating(standingsEntry, latest, timelineLength, scoreboardMaxGames = null) {
       if (standingsEntry && typeof standingsEntry.rawOrdinal === 'number') {
         return toDisplayRating(
-          getOverallLeaderboardRaw(standingsEntry.rawOrdinal, standingsEntry.games, scoreboardMaxGames)
+          getOverallLeaderboardRaw(
+            getDisplayRawOrdinalFromMuSigma(standingsEntry.mu, standingsEntry.sigma, standingsEntry.rawOrdinal),
+            standingsEntry.games,
+            scoreboardMaxGames
+          )
         );
       }
       return getTimelineRatingAfter(latest, timelineLength - 1, scoreboardMaxGames);
@@ -1406,9 +1428,9 @@
 
     function getRatingSectionLeagueOptions() {
       return {
-        leagueUpdateMultiplier: 1.5,
+        leagueUpdateMultiplier: 1.25,
         leagueMuUpdateMultiplier: 1,
-        leagueSigmaUpdateMultiplier: 0.8
+        leagueSigmaUpdateMultiplier: 1
       };
     }
 

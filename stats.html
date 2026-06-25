@@ -2542,6 +2542,7 @@
 
     const SCOREBOARD_MISSING_GAME_PENALTY_POINTS = 5;
     const SCOREBOARD_MISSING_GAME_PENALTY_MAX_GAMES = 50;
+    const SCOREBOARD_DISPLAY_ORDINAL_SIGMA_MULTIPLIER = 3.5;
 
     function getDisplayPointsPerRawOrdinal() {
       const zero = toDisplayRating(0);
@@ -2703,7 +2704,9 @@
 
     function getExperimentalLeaderboardRaw(player, scoreboardMaxGames = null) {
       const rawOrdinal =
-        typeof player.rawOrdinal === 'number'
+        Number.isFinite(Number(player?.mu)) && Number.isFinite(Number(player?.sigma))
+          ? Number(player.mu) - SCOREBOARD_DISPLAY_ORDINAL_SIGMA_MULTIPLIER * Number(player.sigma)
+          : typeof player.rawOrdinal === 'number'
           ? player.rawOrdinal
           : typeof player.rating === 'number'
             ? player.rating
@@ -2822,9 +2825,9 @@
 
     function getLeagueScoreboardRatingOptions(mode = getOverallScoreboardMode()) {
       return {
-        leagueUpdateMultiplier: 1.5,
+        leagueUpdateMultiplier: 1.25,
         leagueMuUpdateMultiplier: 1,
-        leagueSigmaUpdateMultiplier: 0.8
+        leagueSigmaUpdateMultiplier: 1
       };
     }
 
@@ -5846,10 +5849,13 @@
       });
     }
 
-    function formatHistoryPlayerRating(rawOrdinal, games) {
+    function formatHistoryPlayerRating(rawOrdinal, games, player = null, scoreboardMaxGames = null) {
       return formatOverallRatingDisplay({
+        mu: player?.mu,
+        sigma: player?.sigma,
         rawOrdinal,
-        games
+        games,
+        scoreboardMaxGames
       });
     }
 
@@ -6481,6 +6487,11 @@
         persist: true,
         ratingOptions,
       });
+      const countedResult = applyOverallScoreboardPlayerCounts(result, scoreboardGames, mode);
+      const recencyMap = createOverallStandingsRecencyMap(scoreboardGames, mode);
+      const eligibleRows = (countedResult.standings || [])
+        .filter(player => isOverallStandingsEligible(player, mode, recencyMap));
+      const scoreboardMaxGames = getScoreboardMaxGamesForRows(eligibleRows);
       renderedHistorySignature = signature;
       const displayHistory = expandLeagueSeriesHistory(result.history);
       const historyData = [...displayHistory].reverse();
@@ -6524,7 +6535,7 @@
           const name =
             (game.redTeam || []).find(player => String(player.id) === String(p.id))?.name || p.id;
           const counts = getHistoryPlayerCounts(gameCountMap, entry, p.id);
-          return `${name} (${formatHistoryPlayerRating(p.rating, counts.before)} → ${formatHistoryPlayerRating(after.rating, counts.after)})`;
+          return `${name} (${formatHistoryPlayerRating(p.rating, counts.before, p, scoreboardMaxGames)} → ${formatHistoryPlayerRating(after.rating, counts.after, after, scoreboardMaxGames)})`;
         }).join(', ') || '(none)';
 
         const blueNames = game.isLeagueGame
@@ -6555,7 +6566,7 @@
               const name =
                 (game.blueTeam || []).find(player => String(player.id) === String(p.id))?.name || p.id;
               const counts = getHistoryPlayerCounts(gameCountMap, entry, p.id);
-              return `${name} (${formatHistoryPlayerRating(p.rating, counts.before)} → ${formatHistoryPlayerRating(after.rating, counts.after)})`;
+              return `${name} (${formatHistoryPlayerRating(p.rating, counts.before, p, scoreboardMaxGames)} → ${formatHistoryPlayerRating(after.rating, counts.after, after, scoreboardMaxGames)})`;
             }).join(', ') || '(none)';
 
         const modeBits = [];

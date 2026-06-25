@@ -155,8 +155,8 @@ export const DEFAULT_RATING_OPTIONS = {
   leagueDayOffsetGridStep: 0.25,
   leagueDayOffsetPriorSd: 3,
   leagueSeriesAggregationEnabled: true,
-  leagueMuUpdateMultiplier: 0,
-  leagueSigmaUpdateMultiplier: 0.4,
+  leagueMuUpdateMultiplier: 1,
+  leagueSigmaUpdateMultiplier: 1,
   leagueOpponentUpdateMultiplier: 1,
   leagueOpponentBurnInGames: 0,
   leagueOpponentBurnInMultiplier: 1,
@@ -215,7 +215,7 @@ export const DEFAULT_RATING_OPTIONS = {
   // Eval/modeling knobs for OpenSkill-native update tuning. Defaults preserve
   // the current behavior: binary win/loss scores, package-default beta, and no tau.
   openSkillScoreMode: 'binary',
-  openSkillBetaMultiplier: 1,
+  openSkillBetaMultiplier: 0.6,
   openSkillTau: null,
   openSkillPreventSigmaIncrease: false,
   openSkillEvidenceMultiplierMode: 'volleyball',
@@ -2256,6 +2256,7 @@ function applyStreakProtectionForEntry({
   volleyballOptions = {},
 } = {}) {
   if (!cfg.streakProtectionEnabled || !historyEntry || !recentDeltaMap) return;
+  if (historyEntry.game?.isLeagueGame) return;
 
   const mode = cfg.streakProtectionMode || 'net';
   const windowSize = Math.max(2, Number(cfg.streakProtectionWindow) || 10);
@@ -2387,6 +2388,7 @@ function applySessionProtectionForEntry({
   cfg,
 } = {}) {
   if (!cfg.sessionProtectionEnabled || !historyEntry || !sessionDeltaMap) return;
+  if (historyEntry.game?.isLeagueGame) return;
 
   const minPriorGames = Math.max(0, Number(cfg.sessionProtectionMinPriorGames) || 0);
   const minSessionGames = Math.max(1, Number(cfg.sessionProtectionMinSessionGames) || 1);
@@ -2607,10 +2609,14 @@ export function getEvidenceWeight({
     vbCfg.finalUpdateMultiplierMin,
     Math.min(vbCfg.finalUpdateMultiplierMax, marginSensitiveMax)
   );
-  const leagueUpdateMultiplier = game?.isLeagueGame
-    ? getNonNegativeOption(cfg.leagueUpdateMultiplier, 1)
+  const isLeagueGame = Boolean(game?.isLeagueGame);
+  const leagueUpdateMultiplier = isLeagueGame
+    ? Math.max(1, getNonNegativeOption(cfg.leagueUpdateMultiplier, 1))
     : 1;
-  const evidenceWeight = cappedVolatility * leagueUpdateMultiplier;
+  const effectiveVolatility = isLeagueGame
+    ? Math.max(1, cappedVolatility)
+    : cappedVolatility;
+  const evidenceWeight = effectiveVolatility * leagueUpdateMultiplier;
 
   // Per-team size damping: players on teams larger than 6 have less individual impact
   // per game (more rotations, fewer touches). Damper = 6 / teamSize for teams > 6.
@@ -2636,6 +2642,7 @@ export function getEvidenceWeight({
     volleyballUpdateMultiplier,
     volatilityMultiplier,
     cappedVolatility,
+    effectiveVolatility,
     leagueUpdateMultiplier,
     evidenceWeight,
     baseUpdateMultiplier: evidenceWeight,

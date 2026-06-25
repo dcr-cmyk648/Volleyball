@@ -270,6 +270,46 @@
       font-weight: 700;
     }
 
+    .chart-heading-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+
+    .chart-heading-row h2 {
+      margin-bottom: 0;
+    }
+
+    .range-toggle {
+      display: inline-flex;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.04);
+    }
+
+    .range-toggle button {
+      min-height: 36px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      padding: 7px 12px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .range-toggle button.active {
+      color: #ffffff;
+      border-color: var(--page-accent-border);
+      background: var(--page-accent-soft);
+    }
+
     .chart-wrap {
       height: 390px;
       margin-top: 12px;
@@ -534,8 +574,14 @@
     </div>
 
     <div class="card">
-      <h2>Rating Over Time</h2>
-      <div class="small">
+      <div class="chart-heading-row">
+        <h2>Rating Over Time</h2>
+        <div class="range-toggle" role="group" aria-label="Rating graph range">
+          <button id="trendMonthRangeButton" class="active" type="button">Last Month</button>
+          <button id="trendAllTimeRangeButton" type="button">All-Time</button>
+        </div>
+      </div>
+      <div id="chartRangeDescription" class="small">
         This graph shows the same one-month rolling, confidence-adjusted Rating used by Season Ranking. It is display-only and is not used for backend updates or team balancing.
       </div>
       <div id="summaryGrid" class="summary-grid"></div>
@@ -630,10 +676,15 @@
     const statusMessageEl = document.getElementById('statusMessage');
     const timelineTableBodyEl = document.getElementById('timelineTableBody');
     const chartCanvas = document.getElementById('ratingChart');
+    const trendMonthRangeButtonEl = document.getElementById('trendMonthRangeButton');
+    const trendAllTimeRangeButtonEl = document.getElementById('trendAllTimeRangeButton');
+    const chartRangeDescriptionEl = document.getElementById('chartRangeDescription');
     const busyOverlayEl = document.getElementById('busyOverlay');
     const busyMessageEl = document.getElementById('busyMessage');
 
     let chart = null;
+    let activeChartRange = 'month';
+    let chartRenderState = null;
 
     if (new URLSearchParams(window.location.search).get('embed') === 'statsOverlay') {
       document.body.classList.add('embed-mode');
@@ -1398,9 +1449,12 @@
       volleyballUpdateUsesBalancerContext,
       volleyballUpdateContextMode,
       includeLeagueGames,
-      mode = getTrendScoreboardMode()
+      mode = getTrendScoreboardMode(),
+      rollingWindow = true
     }) {
-      const scoreboardGames = getSeasonRankingWindowGames(games, mode);
+      const scoreboardGames = rollingWindow
+        ? getSeasonRankingWindowGames(games, mode)
+        : getTrendScoreboardGames(games, mode);
       const replay = applyTrendPlayerCountOverrides(getReplayResult({
         players,
         games: scoreboardGames,
@@ -1478,7 +1532,69 @@
       });
     }
 
-    function renderChart(timeline, entityName, scoreboardMaxGames = null) {
+    function getChartRangeLabel(range = activeChartRange) {
+      return range === 'allTime' ? 'All-Time' : 'Last Month';
+    }
+
+    function updateChartRangeControls() {
+      const isAllTime = activeChartRange === 'allTime';
+      trendMonthRangeButtonEl?.classList.toggle('active', !isAllTime);
+      trendAllTimeRangeButtonEl?.classList.toggle('active', isAllTime);
+      trendMonthRangeButtonEl?.setAttribute('aria-pressed', String(!isAllTime));
+      trendAllTimeRangeButtonEl?.setAttribute('aria-pressed', String(isAllTime));
+      if (chartRangeDescriptionEl) {
+        chartRangeDescriptionEl.textContent = isAllTime
+          ? 'This graph shows all included games for the selected scoreboard mode using the all-time rating replay.'
+          : 'This graph shows the same one-month rolling, confidence-adjusted Rating used by Season Ranking.';
+      }
+    }
+
+    function buildTrendTimeline({
+      players,
+      playerId,
+      seasonal,
+      volleyballAdjusted,
+      volleyballUpdateUsesBalancerContext,
+      volleyballUpdateContextMode,
+      includeLeagueGames,
+      replayData,
+    }) {
+      return getPlayerRatingTimeline({
+        players,
+        games: replayData.scoreboardGames,
+        playerId,
+        seasonal,
+        volleyballAdjusted,
+        volleyballUpdateUsesBalancerContext,
+        volleyballUpdateContextMode,
+        includeLeagueGames,
+        _calibratedStarts: replayData.calibratedStartMap,
+        options: {
+          ...getRatingSectionLeagueOptions(),
+          seasonalTaperDays: getSeasonalTaperDays()
+        }
+      });
+    }
+
+    function renderActiveChart() {
+      updateChartRangeControls();
+      if (!chartRenderState) {
+        renderChart([], '', null);
+        return;
+      }
+
+      const selected = activeChartRange === 'allTime'
+        ? chartRenderState.allTime
+        : chartRenderState.month;
+      renderChart(
+        selected?.timeline || [],
+        chartRenderState.entityName,
+        selected?.scoreboardMaxGames ?? null,
+        activeChartRange
+      );
+    }
+
+    function renderChart(timeline, entityName, scoreboardMaxGames = null, range = activeChartRange) {
       if (chart) {
         chart.destroy();
       }
@@ -1503,7 +1619,7 @@
           labels,
           datasets: [
             {
-              label: `${entityName} Rating`,
+              label: `${entityName} Rating (${getChartRangeLabel(range)})`,
               data,
               tension: 0.25,
               pointRadius: 4,
@@ -1652,6 +1768,31 @@
       });
     }
 
+    async function setChartRange(range) {
+      const nextRange = range === 'allTime' ? 'allTime' : 'month';
+      activeChartRange = nextRange;
+
+      if (nextRange === 'allTime' && chartRenderState && !chartRenderState.allTime) {
+        await runWithBusy('Calculating all-time trend...', async ({ updateBusyMessage, yieldToBrowser }) => {
+          updateBusyMessage('Calculating all-time trend ratings...');
+          await yieldToBrowser();
+          const replayData = getReplayData({
+            ...chartRenderState.replayParams,
+            rollingWindow: false,
+          });
+          chartRenderState.allTime = {
+            timeline: buildTrendTimeline({
+              ...chartRenderState.timelineParams,
+              replayData,
+            }),
+            scoreboardMaxGames: replayData.scoreboardMaxGames,
+          };
+        });
+      }
+
+      renderActiveChart();
+    }
+
     function renderPageContent() {
       const playerId = getPlayerIdFromUrl();
       const players = loadPlayers();
@@ -1667,12 +1808,34 @@
       const volleyballUpdateContextMode = 'pair';
       const includeLeagueGames = true;
       const mode = getTrendScoreboardMode();
+      const replayParams = {
+        players,
+        games,
+        playerId,
+        seasonLengthMonths,
+        volleyballAdjusted,
+        volleyballUpdateUsesBalancerContext,
+        volleyballUpdateContextMode,
+        includeLeagueGames,
+        mode,
+      };
+      const timelineParams = {
+        players,
+        playerId,
+        seasonal,
+        volleyballAdjusted,
+        volleyballUpdateUsesBalancerContext,
+        volleyballUpdateContextMode,
+        includeLeagueGames,
+      };
 
       if (!playerId || !entity) {
         pageTitleEl.textContent = 'Rating Not Found';
         clearTrendAwards();
         statusMessageEl.textContent = 'Could not find that player or league context. Go back to Stats and choose a name from the standings.';
+        chartRenderState = null;
         renderSummary([], null, null);
+        renderActiveChart();
         renderTable([], false, null);
         return;
       }
@@ -1682,37 +1845,27 @@
 
       // Run the full replay first to get calibrated starting ratings, then use
       // those starts for the timeline so both views are consistent.
-      const { standingsEntry, calibratedStartMap, scoreboardGames, scoreboardMaxGames } = getReplayData({
-        players,
-        games,
-        playerId,
-        seasonLengthMonths,
-        volleyballAdjusted,
-        volleyballUpdateUsesBalancerContext,
-        volleyballUpdateContextMode,
-        includeLeagueGames,
-        mode
+      const replayData = getReplayData(replayParams);
+      const { standingsEntry, scoreboardMaxGames } = replayData;
+      const timeline = buildTrendTimeline({
+        ...timelineParams,
+        replayData,
       });
-
-      const timeline = getPlayerRatingTimeline({
-        players,
-        games: scoreboardGames,
-        playerId,
-        seasonal,
-        volleyballAdjusted,
-        volleyballUpdateUsesBalancerContext,
-        volleyballUpdateContextMode,
-        includeLeagueGames,
-        _calibratedStarts: calibratedStartMap,
-        options: {
-          ...getRatingSectionLeagueOptions(),
-          seasonalTaperDays: getSeasonalTaperDays()
-        }
-      });
+      chartRenderState = {
+        entityName: entity.name,
+        replayParams,
+        timelineParams,
+        month: {
+          timeline,
+          scoreboardMaxGames,
+        },
+        allTime: null,
+      };
 
       if (timeline.length === 0) {
         statusMessageEl.textContent = `${entity.name} has no included games under the current model settings.`;
         renderSummary(timeline, standingsEntry, scoreboardMaxGames);
+        renderActiveChart();
         renderTable(timeline, isLeagueContext, scoreboardMaxGames);
         return;
       }
@@ -1744,7 +1897,7 @@
       ].join('\n');
 
       renderSummary(timeline, standingsEntry, scoreboardMaxGames);
-      renderChart(timeline, entity.name, scoreboardMaxGames);
+      renderActiveChart();
       renderTable(timeline, isLeagueContext, scoreboardMaxGames);
     }
 
@@ -1752,6 +1905,12 @@
       updateBusyMessage('Calculating trend ratings...');
       await yieldToBrowser();
       renderPageContent();
+    });
+    trendMonthRangeButtonEl?.addEventListener('click', () => {
+      setChartRange('month');
+    });
+    trendAllTimeRangeButtonEl?.addEventListener('click', () => {
+      setChartRange('allTime');
     });
     await waitForTrendOverlaySettle();
     notifyTrendOverlayReady();

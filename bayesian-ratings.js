@@ -9,6 +9,7 @@ export const BAYESIAN_DISPLAY_BASE = 25;
 export const BAYESIAN_DISPLAY_SCALE = 25 / 3;
 export const BAYESIAN_DEFAULT_SIGMA = 25 / 3;
 
+const BAYESIAN_LEAGUE_ENTITY_PREFIX = 'league:';
 const MAX_EXP_ARG = 35;
 const EPSILON = 1e-12;
 
@@ -34,10 +35,16 @@ const EPSILON = 1e-12;
  * @param {Object} input
  * @param {Array<Object>} input.players
  * @param {Array<Object>} input.games
+ * @param {boolean} [input.includeLeagueRatings]
  * @param {(progress: Object) => void} [input.onProgress]
  * @returns {BayesianScoreboardSnapshot}
  */
-export function calculateBayesianScoreboard({ players = [], games = [], onProgress = null } = {}) {
+export function calculateBayesianScoreboard({
+  players = [],
+  games = [],
+  includeLeagueRatings = false,
+  onProgress = null
+} = {}) {
   const progress = createProgressReporter(onProgress);
   progress(1, 'validate', 'Validating games and indexing players');
 
@@ -108,8 +115,15 @@ export function calculateBayesianScoreboard({ players = [], games = [], onProgre
   );
   progress(94, 'posterior', 'Estimating posterior uncertainty', posterior.diagnostics);
 
-  const playerStats = countPlayerGameStats(players, observations.validObservations);
-  const ratings = formatPlayerRatings(players, indexed, optimized.x, posterior.covariance, playerStats);
+  const entityStats = countEntityGameStats(indexed, observations.validObservations);
+  const ratings = formatPlayerRatings(
+    players,
+    indexed,
+    optimized.x,
+    posterior.covariance,
+    entityStats,
+    { includeLeagueRatings }
+  );
   validateBayesianRatings(ratings);
 
   progress(96, 'save', 'Saving the Bayesian scoreboard');
@@ -339,11 +353,14 @@ function buildModelIndex(players, games) {
   const playerIdSet = new Set(playerIds);
   const leagueOpponentIds = [];
   const leagueOpponentSet = new Set();
+  const leagueOpponentNames = new Map();
 
   (Array.isArray(games) ? games : []).forEach(game => {
     if (!game?.isLeagueGame) return;
     const id = String(game?.leagueOpponent?.id ?? '').trim();
     if (!id) return;
+    const name = String(game?.leagueOpponent?.name ?? game?.leagueOpponent?.label ?? '').trim();
+    if (name && !leagueOpponentNames.has(id)) leagueOpponentNames.set(id, name);
     if (!leagueOpponentSet.has(id)) {
       leagueOpponentSet.add(id);
       leagueOpponentIds.push(id);
@@ -358,6 +375,7 @@ function buildModelIndex(players, games) {
     playerIds,
     playerIdSet,
     leagueOpponentIds,
+    leagueOpponentNames,
     entityIds,
     entityIndex,
     warnings,
@@ -395,7 +413,7 @@ function buildObservations(games, indexed) {
       const observation = createObservation({
         identity,
         redIndexes: redPlayerIds.map(id => indexed.entityIndex.get(`player:${id}`)),
-        blueIndexes: [indexed.entityIndex.get(`league:${opponentId}`)],
+        blueIndexes: [indexed.entityIndex.get(`${BAYESIAN_LEAGUE_ENTITY_PREFIX}${opponentId}`)],
         game,
         winner,
         hasUsableScores,
@@ -441,6 +459,8 @@ function createObservation({ identity, redIndexes, blueIndexes, game, winner, ha
       blueWeights,
       derivativeWeights: [...derivativeWeights.entries()],
       q: (scoreRed + 0.5) / (scoreRed + scoreBlue + 1),
+      redIndexes,
+      blueIndexes,
       redPlayerIndexes: redIndexes,
       bluePlayerIndexes: game?.isLeagueGame ? [] : blueIndexes,
       winner,
@@ -454,6 +474,8 @@ function createObservation({ identity, redIndexes, blueIndexes, game, winner, ha
     blueWeights,
     derivativeWeights: [...derivativeWeights.entries()],
     y: winner === 'red' ? 1 : 0,
+    redIndexes,
+    blueIndexes,
     redPlayerIndexes: redIndexes,
     bluePlayerIndexes: game?.isLeagueGame ? [] : blueIndexes,
     winner,
@@ -668,53 +690,73 @@ function estimatePosteriorCovariance(theta, gradientFn) {
   };
 }
 
-function formatPlayerRatings(players, indexed, theta, covariance, playerStats) {
+function formatBayesianEntityRating({ id, name, latentIndex, theta, covariance, stats, extra = {} }) {
+  const latentMu = Number.isFinite(theta[latentIndex]) ? theta[latentIndex] : 0;
+  const variance = Math.max(0, covariance?.[latentIndex]?.[latentIndex] ?? 1);
+  const sigma = BAYESIAN_DISPLAY_SCALE * Math.sqrt(variance);
+  const mu = BAYESIAN_DISPLAY_BASE + BAYESIAN_DISPLAY_SCALE * latentMu;
+  return {
+    id,
+    name,
+    mu,
+    sigma,
+    ordinal: mu - 3 * sigma,
+    games: stats.games,
+    wins: stats.wins,
+    winrate: stats.games > 0 ? stats.wins / stats.games : 0,
+    ...extra,
+  };
+}
+
+function formatPlayerRatings(players, indexed, theta, covariance, entityStats, options = {}) {
   const rows = indexed.players.map(player => {
     const latentIndex = indexed.entityIndex.get(`player:${String(player.id)}`);
-    const latentMu = Number.isFinite(theta[latentIndex]) ? theta[latentIndex] : 0;
-    const variance = Math.max(0, covariance?.[latentIndex]?.[latentIndex] ?? 1);
-    const sigma = BAYESIAN_DISPLAY_SCALE * Math.sqrt(variance);
-    const mu = BAYESIAN_DISPLAY_BASE + BAYESIAN_DISPLAY_SCALE * latentMu;
-    const stats = playerStats.get(String(player.id)) || { games: 0, wins: 0 };
-    return {
+    return formatBayesianEntityRating({
       id: player.id,
       name: player.name,
-      mu,
-      sigma,
-      ordinal: mu - 3 * sigma,
-      games: stats.games,
-      wins: stats.wins,
-      winrate: stats.games > 0 ? stats.wins / stats.games : 0,
-    };
+      latentIndex,
+      theta,
+      covariance,
+      stats: entityStats.get(`player:${String(player.id)}`) || { games: 0, wins: 0 },
+    });
   });
+
+  if (options.includeLeagueRatings === true) {
+    indexed.leagueOpponentIds.forEach(id => {
+      const entityId = `${BAYESIAN_LEAGUE_ENTITY_PREFIX}${id}`;
+      const latentIndex = indexed.entityIndex.get(entityId);
+      if (!Number.isInteger(latentIndex)) return;
+      rows.push(formatBayesianEntityRating({
+        id,
+        name: indexed.leagueOpponentNames.get(id) || id,
+        latentIndex,
+        theta,
+        covariance,
+        stats: entityStats.get(entityId) || { games: 0, wins: 0 },
+        extra: { isLeagueContext: true },
+      }));
+    });
+  }
 
   return sortBayesianRatings(rows);
 }
 
-function countPlayerGameStats(players, observations) {
-  const map = new Map(normalizePlayers(players).map(player => [String(player.id), { games: 0, wins: 0 }]));
+function countEntityGameStats(indexed, observations) {
+  const entityIdByIndex = new Map(indexed.entityIds.map((id, index) => [index, id]));
+  const map = new Map(indexed.entityIds.map(id => [id, { games: 0, wins: 0 }]));
+  const addResult = (index, won) => {
+    const entityId = entityIdByIndex.get(index);
+    const stats = map.get(entityId);
+    if (!stats) return;
+    stats.games += 1;
+    if (won) stats.wins += 1;
+  };
+
   observations.forEach(obs => {
-    obs.redPlayerIndexes.forEach(index => {
-      const playerId = playerIdFromObservationIndex(players, index);
-      const stats = map.get(playerId);
-      if (!stats) return;
-      stats.games += 1;
-      if (obs.winner === 'red') stats.wins += 1;
-    });
-    obs.bluePlayerIndexes.forEach(index => {
-      const playerId = playerIdFromObservationIndex(players, index);
-      const stats = map.get(playerId);
-      if (!stats) return;
-      stats.games += 1;
-      if (obs.winner === 'blue') stats.wins += 1;
-    });
+    obs.redIndexes.forEach(index => addResult(index, obs.winner === 'red'));
+    obs.blueIndexes.forEach(index => addResult(index, obs.winner === 'blue'));
   });
   return map;
-}
-
-function playerIdFromObservationIndex(players, index) {
-  const normalized = normalizePlayers(players);
-  return String(normalized[index]?.id ?? '');
 }
 
 function normalizePlayers(players) {

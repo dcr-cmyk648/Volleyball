@@ -1,13 +1,14 @@
 import { calculateBayesianScoreboard } from './bayesian-ratings.js';
 
 self.addEventListener('message', event => {
-  const { type, players, games, priorGames } = event.data || {};
+  const { type, players, games, priorGames, includeLeagueRatings } = event.data || {};
   if (type !== 'calculate') return;
 
   try {
     const snapshot = calculateBayesianScoreboard({
       players,
       games,
+      includeLeagueRatings,
       onProgress: message => self.postMessage({
         ...message,
         percent: Math.min(88, Math.floor((Number(message.percent) || 0) * 0.88)),
@@ -24,6 +25,7 @@ self.addEventListener('message', event => {
       const priorSnapshot = calculateBayesianScoreboard({
         players,
         games: priorGames,
+        includeLeagueRatings,
       });
       snapshot.priorRatings = priorSnapshot.ratings;
       snapshot.priorGamesConsidered = priorSnapshot.gamesConsidered;

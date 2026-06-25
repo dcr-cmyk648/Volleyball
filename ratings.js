@@ -138,7 +138,7 @@ export const DEFAULT_RATING_OPTIONS = {
   sigma: 25 / 3,
   ordinalSigmaMultiplier: 3,
 
-  useScoreMargin: true,
+  useScoreMargin: false,
 
   // League games use a matched external opponent: the league team is modeled as
   // equal to the real team before each game, then the result is counted as
@@ -3748,7 +3748,115 @@ function getLeagueContextTimelineEntry({
       name: context.name,
       size: result.before.blue.length,
     },
+    leagueSeriesGames: Array.isArray(game.leagueSeriesGames) ? cloneSimple(game.leagueSeriesGames) : null,
   };
+}
+
+function getLeagueSeriesTimelineWeights(row) {
+  const seriesGames = Array.isArray(row?.leagueSeriesGames)
+    ? row.leagueSeriesGames
+    : [];
+
+  if (seriesGames.length <= 1) return [];
+
+  const aggregateDelta = Number(row.ratingAfter) - Number(row.ratingBefore);
+  const aggregateDirection = aggregateDelta < 0 ? -1 : 1;
+  const relativeWeights = seriesGames.map(game => {
+    const pointDiff = Number.isFinite(Number(game?.scoreRed)) && Number.isFinite(Number(game?.scoreBlue))
+      ? Math.abs(Number(game.scoreRed) - Number(game.scoreBlue))
+      : 0;
+    const magnitude = Math.max(1, 1 + Math.min(pointDiff, 12) / 40);
+    const redResultSign = game?.winner === 'blue' ? -1 : 1;
+    return redResultSign * aggregateDirection * magnitude;
+  });
+
+  const positiveWeights = relativeWeights.filter(value => value > 0);
+  const negativeWeights = relativeWeights.filter(value => value < 0);
+
+  if (positiveWeights.length && negativeWeights.length) {
+    const positiveTotal = positiveWeights.reduce((sum, value) => sum + value, 0);
+    const negativeTotal = negativeWeights.reduce((sum, value) => sum + Math.abs(value), 0);
+    const targetPositiveTotal = 1 + negativeTotal;
+    return relativeWeights.map(value => {
+      if (value > 0) return (value / positiveTotal) * targetPositiveTotal;
+      return value;
+    });
+  }
+
+  const absoluteWeights = relativeWeights.map(value => Math.abs(value));
+  const total = absoluteWeights.reduce((sum, value) => sum + value, 0) || absoluteWeights.length || 1;
+  return absoluteWeights.map(value => value / total);
+}
+
+function interpolateTimelineValue(before, after, fraction) {
+  const start = Number(before);
+  const end = Number(after);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return before;
+  return start + (end - start) * fraction;
+}
+
+function interpolateLeagueSeriesTimelineRow(row, game, startFraction, endFraction, index, count, weight) {
+  const ratingBefore = interpolateTimelineValue(row.ratingBefore, row.ratingAfter, startFraction);
+  const ratingAfter = interpolateTimelineValue(row.ratingBefore, row.ratingAfter, endFraction);
+  const muBefore = interpolateTimelineValue(row.muBefore, row.muAfter, startFraction);
+  const muAfter = interpolateTimelineValue(row.muBefore, row.muAfter, endFraction);
+  const sigmaBefore = interpolateTimelineValue(row.sigmaBefore, row.sigmaAfter, startFraction);
+  const sigmaAfter = interpolateTimelineValue(row.sigmaBefore, row.sigmaAfter, endFraction);
+
+  return {
+    ...row,
+    gameId: game.id,
+    date: game.date || row.date,
+    winner: game.winner,
+    won: row.side === 'blue' ? game.winner === 'blue' : game.winner === 'red',
+    displayWinnerColor: game.displayWinnerColor || null,
+    displayLoserColor: game.displayLoserColor || null,
+    scoreRed: typeof game.scoreRed === 'undefined' ? null : game.scoreRed,
+    scoreBlue: typeof game.scoreBlue === 'undefined' ? null : game.scoreBlue,
+    redTeam: Array.isArray(game.redTeam) ? cloneSimple(game.redTeam) : row.redTeam,
+    blueTeam: Array.isArray(game.blueTeam) ? cloneSimple(game.blueTeam) : row.blueTeam,
+    leagueOpponent: game.leagueOpponent ? cloneSimple(game.leagueOpponent) : row.leagueOpponent,
+    ratingBefore,
+    ratingAfter,
+    displayRatingBefore: toDisplayRating(ratingBefore),
+    displayRatingAfter: toDisplayRating(ratingAfter),
+    muBefore,
+    muAfter,
+    sigmaBefore,
+    sigmaAfter,
+    leagueSeriesDisplayIndex: index + 1,
+    leagueSeriesDisplayCount: count,
+    leagueSeriesDisplayWeight: weight,
+  };
+}
+
+function expandLeagueSeriesTimeline(timeline) {
+  return (timeline || []).flatMap(row => {
+    const seriesGames = Array.isArray(row?.leagueSeriesGames)
+      ? row.leagueSeriesGames
+      : [];
+
+    if (!row?.isLeagueGame || seriesGames.length <= 1) return [row];
+
+    const weights = getLeagueSeriesTimelineWeights(row);
+    if (weights.length !== seriesGames.length) return [row];
+
+    let cursor = 0;
+    return seriesGames.map((game, index) => {
+      const startFraction = cursor;
+      cursor += weights[index];
+      const endFraction = index === seriesGames.length - 1 ? 1 : cursor;
+      return interpolateLeagueSeriesTimelineRow(
+        row,
+        game,
+        startFraction,
+        endFraction,
+        index,
+        seriesGames.length,
+        weights[index]
+      );
+    });
+  });
 }
 
 export function getPlayerRatingTimeline({
@@ -3857,7 +3965,7 @@ export function getPlayerRatingTimeline({
       });
     });
 
-    return timeline;
+    return expandLeagueSeriesTimeline(timeline);
   }
 
   players.forEach(player => {
@@ -4121,10 +4229,11 @@ export function getPlayerRatingTimeline({
       redTeam: Array.isArray(game.redTeam) ? cloneSimple(game.redTeam) : [],
       blueTeam: Array.isArray(game.blueTeam) ? cloneSimple(game.blueTeam) : [],
       leagueOpponent: game.leagueOpponent ? cloneSimple(game.leagueOpponent) : null,
+      leagueSeriesGames: Array.isArray(game.leagueSeriesGames) ? cloneSimple(game.leagueSeriesGames) : null,
     });
   });
 
-  return timeline;
+  return expandLeagueSeriesTimeline(timeline);
 }
 
 export function scoreCandidateSplit({ redPlayers, bluePlayers, ratingMap, options = {} }) {

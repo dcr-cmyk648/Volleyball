@@ -1577,7 +1577,7 @@
               <tr>
                 <th class="rank-col">#</th>
                 <th class="player-col">Player</th>
-                <th class="rating-col">Season +/-</th>
+                <th class="rating-col">Session +/-</th>
                 <th class="games-col">Games</th>
                 <th class="games-col">Wins</th>
                 <th class="games-col">Win Rate</th>
@@ -1866,6 +1866,12 @@
     const SEASON_MOVER_SUSTAINED_MIN_CONSISTENCY = 0.65;
     const SEASON_MOVER_SUSTAINED_CONFIDENCE_GAMES = 8;
     const SEASON_MOVER_SUSTAINED_MAX_BONUS = 0.15;
+    const SEASON_MOVER_MAINTENANCE_CONFIDENCE_GAMES = 6;
+    const SEASON_MOVER_MAINTENANCE_MIN_FACTOR = 0.70;
+    const SEASON_MOVER_MAINTENANCE_MAX_BONUS = 0.22;
+    const SEASON_MOVER_INACTIVITY_GRACE_DAYS = 7;
+    const SEASON_MOVER_INACTIVITY_FULL_PENALTY_DAYS = 28;
+    const SEASON_MOVER_INACTIVITY_MIN_FACTOR = 0.55;
     const SEASON_MOVER_MISSING_GAME_PENALTY_POINTS = 1;
     const OVERALL_STANDINGS_MIN_GAMES = 5;
     const OVERALL_SCOREBOARD_MODES = {
@@ -1982,7 +1988,7 @@
     let defaultDatabaseDialogRequestInFlight = false;
     let isLoadingDefaultDatabase = false;
     const REPLAY_RESULT_CACHE_PREFIX = 'vballReplayResult:';
-    const SEASON_MOVERS_RENDER_CACHE_KEY = 'vballSeasonMoversRenderCacheV3';
+    const SEASON_MOVERS_RENDER_CACHE_KEY = 'vballSeasonMoversRenderCacheV4';
     const SEASON_RANKING_RENDER_CACHE_KEY = 'vballSeasonRankingRenderCacheV1';
     const replayResultMemoryCache = new Map();
     const MAX_REPLAY_RESULT_MEMORY_ENTRIES = 180;
@@ -3154,6 +3160,118 @@
         (1 - SEASON_MOVER_VOLUME_CONFIDENCE_MIN) * confidence;
     }
 
+    function getSeasonMoverMaintenanceFactor({
+      rawMuChange,
+      peakMuGain,
+      gamesAfterPeak,
+    }) {
+      const safeRawGain = Number(rawMuChange) || 0;
+      const safePeakGain = Number(peakMuGain) || 0;
+      if (!(safeRawGain > 0) || !(safePeakGain > 0)) return 1;
+
+      const retainedShare = clamp(safeRawGain / safePeakGain, 0, 1);
+      const confirmation = Math.max(0, Number(gamesAfterPeak) || 0) /
+        (Math.max(0, Number(gamesAfterPeak) || 0) + SEASON_MOVER_MAINTENANCE_CONFIDENCE_GAMES);
+      const maintenanceScore = retainedShare * confirmation;
+
+      return SEASON_MOVER_MAINTENANCE_MIN_FACTOR +
+        (1 - SEASON_MOVER_MAINTENANCE_MIN_FACTOR + SEASON_MOVER_MAINTENANCE_MAX_BONUS) *
+          maintenanceScore;
+    }
+
+    function getSeasonMoverInactivityFactor({
+      lastSeasonGameDate,
+      latestSeasonGameDate,
+      gamesSinceDate,
+    }) {
+      if (!isValidDateString(lastSeasonGameDate) || !isValidDateString(latestSeasonGameDate)) return 1;
+      if (!(Number(gamesSinceDate) > 0)) return 1;
+
+      const latestTime = new Date(`${latestSeasonGameDate}T00:00:00`).getTime();
+      const lastTime = new Date(`${lastSeasonGameDate}T00:00:00`).getTime();
+      const inactiveDays = Math.max(0, Math.round((latestTime - lastTime) / 86400000));
+      if (inactiveDays <= SEASON_MOVER_INACTIVITY_GRACE_DAYS) return 1;
+
+      const penaltyProgress = clamp(
+        (inactiveDays - SEASON_MOVER_INACTIVITY_GRACE_DAYS) /
+          Math.max(1, SEASON_MOVER_INACTIVITY_FULL_PENALTY_DAYS - SEASON_MOVER_INACTIVITY_GRACE_DAYS),
+        0,
+        1
+      );
+      return 1 - (1 - SEASON_MOVER_INACTIVITY_MIN_FACTOR) * penaltyProgress;
+    }
+
+    function getSeasonMoverLastGameDateMap(games, dateString) {
+      const map = new Map();
+
+      games
+        .filter(game => isGameOnOrAfterDate(game, dateString))
+        .forEach(game => {
+          const gameDate = getGameDateValue(game);
+          if (!isValidDateString(gameDate)) return;
+          getPlayerIdsForGame(game).forEach(id => {
+            if (!map.has(id) || gameDate > map.get(id)) {
+              map.set(id, gameDate);
+            }
+          });
+        });
+
+      return map;
+    }
+
+    function getLatestSeasonMoverGameDate(games, dateString) {
+      return games
+        .filter(game => isGameOnOrAfterDate(game, dateString))
+        .map(getGameDateValue)
+        .filter(isValidDateString)
+        .sort()
+        .at(-1) || '';
+    }
+
+    function getSeasonMoverReplaySnapshots(allGames, replayHistory = []) {
+      const originalIndexById = new Map();
+      allGames.forEach((game, index) => {
+        if (game?.id !== null && typeof game?.id !== 'undefined') {
+          originalIndexById.set(String(game.id), index);
+        }
+      });
+
+      const historyEntryByOriginalIndex = new Array(allGames.length).fill(null);
+      replayHistory.forEach(entry => {
+        const sourceIds = [
+          entry?.game?.id,
+          ...(Array.isArray(entry?.game?.leagueSeriesGames)
+            ? entry.game.leagueSeriesGames.map(game => game?.id)
+            : [])
+        ];
+        sourceIds.forEach(id => {
+          const originalIndex = originalIndexById.get(String(id));
+          if (Number.isInteger(originalIndex)) {
+            historyEntryByOriginalIndex[originalIndex] = entry;
+          }
+        });
+      });
+
+      const snapshots = [];
+      const currentMuById = new Map();
+      const appliedEntries = new Set();
+
+      historyEntryByOriginalIndex.forEach((entry, index) => {
+        if (entry && !appliedEntries.has(entry)) {
+          [...(entry.after?.red || []), ...(entry.after?.blue || [])].forEach(player => {
+            const id = String(player?.id ?? '');
+            const mu = Number(player?.mu);
+            if (id && Number.isFinite(mu)) currentMuById.set(id, mu);
+          });
+          appliedEntries.add(entry);
+        }
+
+        snapshots[index] = new Map(currentMuById);
+      });
+
+      return snapshots;
+    }
+
     function getSeasonMoverRatingDifficultyFactor(startMu) {
       const startDisplayRating = 1500 + (Number(startMu) - DEFAULT_MODEL_MU) * 50;
       const difficulty = clamp(
@@ -3176,16 +3294,6 @@
       return count;
     }
 
-    function getStandingsMap(result) {
-      const map = new Map();
-
-      (result?.standings || []).forEach(player => {
-        map.set(String(player.id), player);
-      });
-
-      return map;
-    }
-
     function isSeasonMoversGame(game) {
       return game && typeof game === 'object';
     }
@@ -3195,39 +3303,44 @@
       const currentResult = getReplayResultForGames(allGames);
       const baselineMap = getSeasonMoverBaselineMap(allGames);
       const seasonGameCountMap = getGamesPlayedSinceDateByPlayer(allGames, seasonStartDate);
+      const lastSeasonGameDateMap = getSeasonMoverLastGameDateMap(allGames, seasonStartDate);
+      const latestSeasonGameDate = getLatestSeasonMoverGameDate(allGames, seasonStartDate);
       const lastBeforeSeasonIndex = getLastGameIndexBeforeDate(allGames, seasonStartDate);
-      const startResultCache = new Map();
-
-      function getStartStandingMapForIndex(index) {
-        const safeIndex = Math.max(-1, Number(index));
-        if (!startResultCache.has(safeIndex)) {
-          const startGames = safeIndex >= 0 ? allGames.slice(0, safeIndex + 1) : [];
-          startResultCache.set(safeIndex, getStandingsMap(getReplayResultForGames(startGames)));
-        }
-
-        return startResultCache.get(safeIndex);
-      }
+      const replaySnapshots = getSeasonMoverReplaySnapshots(allGames, currentResult.history || []);
 
       function getPlayerMuAtIndex(index, id, fallback = DEFAULT_MODEL_MU) {
-        const standing = getStartStandingMapForIndex(index).get(id);
-        return standing ? getModelMuFromStanding(standing, fallback) : fallback;
+        const safeIndex = Math.max(-1, Number(index));
+        if (safeIndex < 0) return fallback;
+        const mu = replaySnapshots[safeIndex]?.get(String(id));
+        return Number.isFinite(mu) ? mu : fallback;
       }
 
       function getPostBaselinePathStats(id, postGameIndexes, startMu) {
         let previousMu = startMu;
+        let peakMu = startMu;
+        let peakGameOffset = -1;
         let positiveSteps = 0;
         let totalSteps = 0;
 
-        postGameIndexes.forEach(index => {
+        postGameIndexes.forEach((index, gameOffset) => {
           const nextMu = getPlayerMuAtIndex(index, id, previousMu);
           const delta = nextMu - previousMu;
           if (delta > 0) positiveSteps += 1;
+          if (nextMu > peakMu) {
+            peakMu = nextMu;
+            peakGameOffset = gameOffset;
+          }
           totalSteps += 1;
           previousMu = nextMu;
         });
 
         return {
-          positiveStepConsistency: totalSteps > 0 ? positiveSteps / totalSteps : 0
+          positiveStepConsistency: totalSteps > 0 ? positiveSteps / totalSteps : 0,
+          peakMu,
+          peakMuGain: Math.max(0, peakMu - startMu),
+          gamesAfterPeak: peakGameOffset >= 0
+            ? Math.max(0, totalSteps - peakGameOffset - 1)
+            : 0,
         };
       }
 
@@ -3272,12 +3385,9 @@
             Number(baselineInfo.baselineGameIndex),
             lastBeforeSeasonIndex
           );
-          const startMap = getStartStandingMapForIndex(deltaStartIndex);
-          const startPlayer = startMap.get(id);
-          const startMu = startPlayer
-            ? getModelMuFromStanding(startPlayer)
-            : DEFAULT_MODEL_MU;
+          const startMu = getPlayerMuAtIndex(deltaStartIndex, id, DEFAULT_MODEL_MU);
           const gamesSinceDate = countPlayerGamesAfterIndex(allGames, id, deltaStartIndex);
+          const lastSeasonGameDate = lastSeasonGameDateMap.get(id) || '';
 
           const rawMuChange = currentMu - startMu;
           const firstMu = typeof baselineInfo.firstGameIndex === 'number'
@@ -3301,10 +3411,22 @@
             positiveStepConsistency: pathStats.positiveStepConsistency,
             settlingDiscount
           });
+          const maintenanceFactor = getSeasonMoverMaintenanceFactor({
+            rawMuChange,
+            peakMuGain: pathStats.peakMuGain,
+            gamesAfterPeak: pathStats.gamesAfterPeak,
+          });
+          const inactivityFactor = getSeasonMoverInactivityFactor({
+            lastSeasonGameDate,
+            latestSeasonGameDate,
+            gamesSinceDate,
+          });
           const ratingDifficultyFactor = getSeasonMoverRatingDifficultyFactor(startMu);
           const confidence = volumeFactor *
             settlingDiscount *
             sustainedBonus *
+            maintenanceFactor *
+            inactivityFactor *
             ratingDifficultyFactor;
           const adjustedMuChange = rawMuChange * confidence;
 
@@ -3327,6 +3449,13 @@
             certaintyConfidence,
             settlingDiscount,
             sustainedBonus,
+            maintenanceFactor,
+            inactivityFactor,
+            lastSeasonGameDate,
+            latestSeasonGameDate,
+            peakMu: pathStats.peakMu,
+            peakMuGain: pathStats.peakMuGain,
+            gamesAfterPeak: pathStats.gamesAfterPeak,
             ratingDifficultyFactor,
             positiveStepConsistency: pathStats.positiveStepConsistency,
             isNewThisSeason: false
@@ -3464,9 +3593,15 @@
                   row.prePenaltyAdjustedMuChange ?? row.adjustedMuChange,
                   { signed: false }
                 );
+                const maintenancePercent = Math.round((Number(row.maintenanceFactor) || 1) * 100);
+                const inactivityPercent = Math.round((Number(row.inactivityFactor) || 1) * 100);
+                const gamesAfterPeak = Math.max(0, Number(row.gamesAfterPeak) || 0);
+                const latestDate = row.latestSeasonGameDate || 'latest season game';
+                const lastDate = row.lastSeasonGameDate || 'no season game';
+                const maintenanceText = `maintenance: ${maintenancePercent}% after ${gamesAfterPeak} post-peak game${gamesAfterPeak === 1 ? '' : 's'}; activity: ${inactivityPercent}% from last game ${lastDate} vs ${latestDate}`;
                 const scoreTitle = penaltyPoints > 0
-                  ? `Before game-count penalty: ${prePenaltyScore}; penalty: -${Math.round(penaltyPoints)}`
-                  : `No game-count penalty; ${Number(row.seasonMoverMaxPenaltyGames) || 0} capped games matches the board leader.`;
+                  ? `Before game-count penalty: ${prePenaltyScore}; penalty: -${Math.round(penaltyPoints)}; ${maintenanceText}`
+                  : `No game-count penalty; ${Number(row.seasonMoverMaxPenaltyGames) || 0} capped games matches the board leader; ${maintenanceText}.`;
                 return `
                   <tr>
                     <td>${renderSeasonMoverTrendCell(row, trendMaps || {})}</td>
@@ -3574,13 +3709,13 @@
 
       if (!rows.length) {
         seasonMoversSummaryEl.textContent =
-          `No positive season movers found since ${seasonStartDate}. Improvement Score uses league and non-league model gain since the later of season start or each player's first 6-game baseline, then adjusts for season-game volume, sustained gains, higher-rating difficulty, and a 1-point penalty per missing capped game behind the board leader.`;
+          `No positive season movers found since ${seasonStartDate}. Improvement Score uses league and non-league model gain since the later of season start or each player's first 6-game baseline, then adjusts for season-game volume, maintained gains after the peak, recent activity, sustained gains, higher-rating difficulty, and a 1-point penalty per missing capped game behind the board leader.`;
         saveSeasonMoversRenderCache(renderSignature);
         return;
       }
 
       seasonMoversSummaryEl.textContent =
-        `${rows.length} positive season mover${rows.length === 1 ? '' : 's'} since ${seasonStartDate}. Improvement Score uses league and non-league model gain since the later of season start or each player's first 6-game baseline, then adjusts for season-game volume, sustained gains, higher-rating difficulty, and a 1-point penalty per missing capped game behind the board leader.`;
+        `${rows.length} positive season mover${rows.length === 1 ? '' : 's'} since ${seasonStartDate}. Improvement Score uses league and non-league model gain since the later of season start or each player's first 6-game baseline, then adjusts for season-game volume, maintained gains after the peak, recent activity, sustained gains, higher-rating difficulty, and a 1-point penalty per missing capped game behind the board leader.`;
 
       renderSeasonMoverTable(seasonMoversListEl, rows, { rankMap, trendMaps });
       saveSeasonMoversRenderCache(renderSignature);
@@ -5998,8 +6133,8 @@
       return date.toISOString().slice(0, 10);
     }
 
-    function getSeasonRatingDisplayMapForGames(games, mode = 'composite') {
-      const replay = getOverallReplayResult({ games, mode, rollingWindow: true });
+    function getSeasonRatingDisplayMapForRatingWindow(games, mode = 'composite') {
+      const replay = getOverallReplayResult({ games, mode, rollingWindow: false });
       const rows = getSortedStandingsRows(replay.result, mode, replay.games);
       return new Map(rows.map(row => [
         String(row.id),
@@ -6085,9 +6220,10 @@
       });
 
       const sessionGameIds = new Set(sessionGames.map(game => game?.id).filter(id => id !== undefined && id !== null));
-      const priorGames = games.filter(game => !sessionGameIds.has(game?.id));
-      const currentRatingMap = getSeasonRatingDisplayMapForGames(games, 'composite');
-      const priorRatingMap = getSeasonRatingDisplayMapForGames(priorGames, 'composite');
+      const seasonWindowGames = getSeasonRankingWindowGames(games, 'composite');
+      const priorSeasonWindowGames = seasonWindowGames.filter(game => !sessionGameIds.has(game?.id));
+      const currentRatingMap = getSeasonRatingDisplayMapForRatingWindow(seasonWindowGames, 'composite');
+      const priorRatingMap = getSeasonRatingDisplayMapForRatingWindow(priorSeasonWindowGames, 'composite');
 
       counts.forEach(row => {
         const current = currentRatingMap.get(String(row.id));
@@ -6338,7 +6474,7 @@
       const signature = getHistoryRenderSignature(mode);
       if (!force && signature === renderedHistorySignature) return;
 
-      const scoreboardGames = getOverallScoreboardGames(loadGames(), mode);
+      const scoreboardGames = getSeasonRankingWindowGames(loadGames(), mode);
       const ratingOptions = getLeagueScoreboardRatingOptions(mode);
       const result = getReplayResultForGames(scoreboardGames, {
         includeLeagueGames: shouldIncludeLeagueGamesForScoreboard(mode),
@@ -7389,19 +7525,56 @@
       return games.filter(game => game && !excludeIds.has(game.id));
     }
 
+    function getBayesianLeagueTeamOpponent(game) {
+      const isIntermediate = game?.level === 'intermediate';
+      const levelKey = isIntermediate ? 'intermediate' : 'rec';
+      const levelLabel = isIntermediate ? 'Intermediate' : 'Rec';
+      const bucketKey = game?.leaguePhase === 'bracket'
+        ? 'bracket'
+        : game?.courtType === 'sand'
+          ? 'sand'
+          : 'indoor';
+      const bucketLabel = bucketKey === 'bracket'
+        ? 'Bracket'
+        : bucketKey === 'sand'
+          ? 'Sand'
+          : 'Indoor';
+
+      return {
+        ...(game?.leagueOpponent || {}),
+        id: `${LEAGUE_TEAM_ID}_bayesian_${levelKey}_${bucketKey}`,
+        name: `${levelLabel} League ${bucketLabel} Team`,
+        size: getLeagueOpponentSizeForGame(game),
+      };
+    }
+
+    function getBayesianModelGamesForMode(mode = getOverallScoreboardMode()) {
+      const games = getBayesianGamesForMode(mode);
+      if (mode !== 'composite') return games;
+
+      return games.map(game => {
+        if (!game?.isLeagueGame) return game;
+        return {
+          ...game,
+          leagueOpponent: getBayesianLeagueTeamOpponent(game),
+        };
+      });
+    }
+
     function getBayesianDisplayRows(snapshot = bayesianSnapshot, players = loadPlayers()) {
       if (!snapshot?.ratings) return [];
       const nameMap = getBayesianCurrentNameMap(players);
       const baseRows = sortBayesianRatings(snapshot.ratings.map(row => ({
         ...row,
         name: nameMap.get(String(row.id)) || row.name,
-      })));
+      }))).filter(row => Number(row.games) > 0);
       const scoreboardMaxGames = getScoreboardMaxGamesForRows(baseRows);
       return baseRows
         .map(row => {
-          const experimentalLeaderboardRaw =
-            getOverallStandingsRawOrdinal(Number(row.ordinal) || 0, Number(row.games) || 0) -
-            getScoreboardMissingGamePenaltyRaw(scoreboardMaxGames, Number(row.games) || 0);
+          const experimentalLeaderboardRaw = row?.isLeagueContext
+            ? Number(row.ordinal) || 0
+            : getOverallStandingsRawOrdinal(Number(row.ordinal) || 0, Number(row.games) || 0) -
+              getScoreboardMissingGamePenaltyRaw(scoreboardMaxGames, Number(row.games) || 0);
           return {
             ...row,
             scoreboardMaxGames,
@@ -7444,7 +7617,7 @@
       const mode = getOverallScoreboardMode();
       bayesianSnapshot = loadBayesianSnapshotForMode(mode) || null;
       const players = loadPlayers();
-      const games = getBayesianGamesForMode(mode);
+      const games = getBayesianModelGamesForMode(mode);
       const uiState = createBayesianUiState({
         players,
         games,
@@ -7633,8 +7806,14 @@
         worker.postMessage({
           type: 'calculate',
           players,
-          games: getBayesianGamesForMode(mode),
-          priorGames: getBayesianPriorGamesForMode(mode),
+          games: getBayesianModelGamesForMode(mode),
+          includeLeagueRatings: mode === 'composite',
+          priorGames: (() => {
+            const games = getBayesianModelGamesForMode(mode);
+            const recentSessionGames = getRecentSessionGames(games, { includeLeagueGames: true });
+            const excludeIds = new Set(recentSessionGames.map(game => game.id));
+            return games.filter(game => game && !excludeIds.has(game.id));
+          })(),
         });
       });
     }

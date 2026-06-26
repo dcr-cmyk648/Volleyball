@@ -1828,6 +1828,7 @@
 
     const PLAYER_STORAGE_KEY = 'gameDayPlayers';
     const GAME_STORAGE_KEY = 'gameDayGames';
+    const TOURNAMENT_PAIR_STORAGE_KEY = 'gameDayTournamentPairs';
     const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
     const DEFAULT_DB_SOURCE_PATH = './default_database';
     const DIRECT_GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwahqGocPhBwCTaB2HjnM3WIjoTOoc-lk94i8JjkRaTfEXf-rT-OXe0pkpQkZk5u0Tm/exec';
@@ -2221,6 +2222,19 @@
 
     function saveGames(games) {
       localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(games));
+    }
+
+    function loadTournamentPairs() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(TOURNAMENT_PAIR_STORAGE_KEY) || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveTournamentPairs(pairs) {
+      localStorage.setItem(TOURNAMENT_PAIR_STORAGE_KEY, JSON.stringify(Array.isArray(pairs) ? pairs : []));
     }
 
     function getSeasonLengthMonths() {
@@ -7878,7 +7892,8 @@
           seasonStartDate
         },
         players: loadPlayers(),
-        games: loadGames()
+        games: loadGames(),
+        tournamentPairs: loadTournamentPairs()
       };
 
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -7931,6 +7946,17 @@
               ? game.predictedAtAssignment
               : null,
             courtType: normalizeImportedCourtType(game.courtType),
+            isTournamentGame: Boolean(game.isTournamentGame),
+            tournamentId: typeof game.tournamentId === 'string' ? game.tournamentId : undefined,
+            tournamentMatchType: ['standard', 'bracket'].includes(game.tournamentMatchType)
+              ? game.tournamentMatchType
+              : undefined,
+            tournamentPairs: game.tournamentPairs && typeof game.tournamentPairs === 'object'
+              ? {
+                  red: Array.isArray(game.tournamentPairs.red) ? game.tournamentPairs.red.map(String) : [],
+                  blue: Array.isArray(game.tournamentPairs.blue) ? game.tournamentPairs.blue.map(String) : []
+                }
+              : undefined,
             leagueOpponent: game.isLeagueGame
               ? {
                   id: game.leagueOpponent?.id || LEAGUE_TEAM_ID,
@@ -7957,9 +7983,36 @@
           if (typeof normalized.assignmentId === 'undefined') delete normalized.assignmentId;
           if (typeof normalized.assignmentSource === 'undefined') delete normalized.assignmentSource;
           if (typeof normalized.assignmentVersion === 'undefined') delete normalized.assignmentVersion;
+          if (typeof normalized.tournamentId === 'undefined') delete normalized.tournamentId;
+          if (typeof normalized.tournamentMatchType === 'undefined') delete normalized.tournamentMatchType;
+          if (typeof normalized.tournamentPairs === 'undefined') delete normalized.tournamentPairs;
 
           return normalized;
         });
+    }
+
+    function normalizeImportedTournamentPairs(pairs) {
+      const seenPlayers = new Set();
+      return (Array.isArray(pairs) ? pairs : [])
+        .filter(pair => pair && typeof pair === 'object')
+        .map((pair, index) => {
+          const playerIds = Array.isArray(pair.playerIds)
+            ? pair.playerIds.map(String).filter(Boolean)
+            : [];
+          if (playerIds.length !== 2) return null;
+          if (playerIds[0] === playerIds[1]) return null;
+          if (seenPlayers.has(playerIds[0]) || seenPlayers.has(playerIds[1])) return null;
+          seenPlayers.add(playerIds[0]);
+          seenPlayers.add(playerIds[1]);
+          return {
+            id: String(pair.id || `pair_${Date.now()}_${index}`),
+            playerIds,
+            name: typeof pair.name === 'string' ? pair.name.trim() : '',
+            active: pair.active !== false,
+            createdAt: Number.isFinite(Number(pair.createdAt)) ? Number(pair.createdAt) : Date.now() + index
+          };
+        })
+        .filter(Boolean);
     }
 
     function importDatabaseFromFile(file) {
@@ -7980,9 +8033,11 @@
 
           const normalizedPlayers = normalizeImportedPlayers(players);
           const normalizedGames = normalizeImportedGames(games);
+          const normalizedTournamentPairs = normalizeImportedTournamentPairs(parsed.tournamentPairs);
 
           savePlayers(normalizedPlayers);
           saveGames(normalizedGames);
+          saveTournamentPairs(normalizedTournamentPairs);
           renderAll();
 
           const seasonText = importedSeasonStartDate
@@ -8333,12 +8388,14 @@
       const normalizedGames = normalizeImportedGames(
         Array.isArray(parsed.games) ? parsed.games : []
       );
+      const normalizedTournamentPairs = normalizeImportedTournamentPairs(parsed.tournamentPairs);
 
       const parsedSeasonStartDate = parsed.seasonStartDate || parsed.metadata?.seasonStartDate || '';
 
       return {
         players: normalizedPlayers,
         games: normalizedGames,
+        tournamentPairs: normalizedTournamentPairs,
         latestGameDate: getLatestGameDate(normalizedGames),
         sourceLabel,
         sourceFileName,
@@ -8500,6 +8557,7 @@
 
       savePlayers(meta.players);
       saveGames(meta.games);
+      saveTournamentPairs(meta.tournamentPairs);
 
       if (isValidDateString(meta.seasonStartDate)) {
         saveSeasonStartDate(meta.seasonStartDate);

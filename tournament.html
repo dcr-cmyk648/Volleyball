@@ -1,0 +1,1419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b1220" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+  <title>Volleyball Tournament</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: #111827;
+      --card-2: #172033;
+      --text: #f3f4f6;
+      --muted: #94a3b8;
+      --border: #243041;
+      --red: #f87171;
+      --blue: #60a5fa;
+      --green: #4ade80;
+      --yellow: #facc15;
+      --orange: #fb923c;
+      --purple: #c084fc;
+      --cyan: #22d3ee;
+      --pink: #f472b6;
+      --button: #334155;
+      --secondary: #475569;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+      --page-accent: #22c55e;
+      --page-accent-soft: rgba(34, 197, 94, 0.12);
+      --page-accent-border: rgba(34, 197, 94, 0.38);
+    }
+
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background:
+        radial-gradient(circle at top left, var(--page-accent-soft) 0%, transparent 42%),
+        radial-gradient(circle at top, #172033 0%, var(--bg) 48%),
+        var(--bg);
+      color: var(--text);
+      padding: 16px;
+    }
+
+    .container { max-width: 1000px; margin: 0 auto; }
+    .app-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.78);
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+    }
+    .app-brand {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 0 6px;
+    }
+    .app-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+    .app-tab {
+      border: 1px solid var(--border);
+      border-top: 4px solid var(--button);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      padding: 9px 16px 10px;
+      border-radius: 8px;
+      min-width: 92px;
+      text-align: center;
+      font-size: 15px;
+      font-weight: 800;
+      text-decoration: none;
+    }
+    .app-tab.active {
+      background: var(--page-accent-soft);
+      border-color: var(--page-accent-border);
+    }
+    .app-tab-stats { border-top-color: #60a5fa; }
+    .app-tab-play { border-top-color: #22c55e; }
+    .app-tab-help { border-top-color: #f59e0b; }
+
+    h1, h2, h3 { margin: 0 0 12px; letter-spacing: 0.01em; }
+    h1 { font-size: 2rem; }
+    h2 { font-size: 1.2rem; }
+    .page-title { margin: 0 0 16px; padding: 0 2px; }
+    .page-title p, .small { color: var(--muted); line-height: 1.45; }
+    .small { font-size: 0.9rem; white-space: pre-line; }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)), var(--card);
+      border-radius: 8px;
+      padding: 18px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+    }
+    .section-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    label { font-weight: 700; color: var(--text); }
+    input {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #0f172a;
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 16px;
+    }
+    .player-search-wrap { position: relative; }
+    .player-search-results {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+      max-height: 220px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #0f172a;
+      padding: 8px;
+    }
+    .player-search-result {
+      width: 100%;
+      text-align: left;
+      background: rgba(255, 255, 255, 0.04);
+      border-color: var(--border);
+      min-height: 38px;
+      padding: 8px 10px;
+    }
+    .player-search-result.selected {
+      background: rgba(34, 197, 94, 0.16);
+      border-color: rgba(34, 197, 94, 0.38);
+      color: #bbf7d0;
+    }
+    .player-search-empty {
+      color: var(--muted);
+      font-size: 0.9rem;
+      padding: 8px 10px;
+    }
+    button, a.button-link {
+      border: 1px solid transparent;
+      background: var(--button);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      min-height: 42px;
+    }
+    button:hover, a.button-link:hover { opacity: 0.96; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    button.secondary { background: var(--secondary); }
+    button.success { background: rgba(34, 197, 94, 0.16); color: #bbf7d0; border-color: rgba(34, 197, 94, 0.35); }
+    button.danger { background: rgba(239, 68, 68, 0.16); color: #fecaca; border-color: rgba(239, 68, 68, 0.35); }
+    button.red-button { background: rgba(248, 113, 113, 0.16); color: #fecaca; border-color: rgba(248, 113, 113, 0.35); }
+    button.blue-button { background: rgba(96, 165, 250, 0.16); color: #bfdbfe; border-color: rgba(96, 165, 250, 0.35); }
+    button.green-button { background: rgba(74, 222, 128, 0.16); color: #bbf7d0; border-color: rgba(74, 222, 128, 0.35); }
+    button.yellow-button { background: rgba(250, 204, 21, 0.16); color: #fef08a; border-color: rgba(250, 204, 21, 0.35); }
+    button.orange-button { background: rgba(251, 146, 60, 0.16); color: #fed7aa; border-color: rgba(251, 146, 60, 0.35); }
+    button.purple-button { background: rgba(192, 132, 252, 0.16); color: #e9d5ff; border-color: rgba(192, 132, 252, 0.35); }
+    button.cyan-button { background: rgba(34, 211, 238, 0.16); color: #a5f3fc; border-color: rgba(34, 211, 238, 0.35); }
+    button.pink-button { background: rgba(244, 114, 182, 0.16); color: #fbcfe8; border-color: rgba(244, 114, 182, 0.35); }
+    .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .status, .error {
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.03);
+      white-space: pre-line;
+    }
+    .error { color: #fecaca; border-color: rgba(239, 68, 68, 0.35); }
+    .hidden { display: none !important; }
+    .pair-list, .bracket-list { display: grid; gap: 10px; }
+    .pair-row, .bracket-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .pair-name { font-weight: 800; }
+    .pair-meta { color: var(--muted); font-size: 0.9rem; margin-top: 3px; }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .team-box {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.04);
+      min-height: 110px;
+    }
+    .team-box strong { display: block; margin-bottom: 8px; }
+    .red-box { border-color: rgba(248, 113, 113, 0.38); background: rgba(248, 113, 113, 0.08); }
+    .blue-box { border-color: rgba(96, 165, 250, 0.38); background: rgba(96, 165, 250, 0.08); }
+    .green-box { border-color: rgba(74, 222, 128, 0.38); background: rgba(74, 222, 128, 0.08); }
+    .yellow-box { border-color: rgba(250, 204, 21, 0.38); background: rgba(250, 204, 21, 0.08); }
+    .orange-box { border-color: rgba(251, 146, 60, 0.38); background: rgba(251, 146, 60, 0.08); }
+    .purple-box { border-color: rgba(192, 132, 252, 0.38); background: rgba(192, 132, 252, 0.08); }
+    .cyan-box { border-color: rgba(34, 211, 238, 0.38); background: rgba(34, 211, 238, 0.08); }
+    .pink-box { border-color: rgba(244, 114, 182, 0.38); background: rgba(244, 114, 182, 0.08); }
+    .score-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    dialog {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0;
+      background: var(--card);
+      color: var(--text);
+      width: min(560px, calc(100vw - 24px));
+    }
+    dialog::backdrop { background: rgba(0, 0, 0, 0.62); }
+    .dialog-content { padding: 18px; }
+    .dialog-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-top: 16px; }
+    .confirmation-summary { white-space: pre-line; line-height: 1.5; }
+
+    @media (max-width: 680px) {
+      body { padding: 10px; }
+      .summary-grid, .score-grid { grid-template-columns: 1fr; }
+      .pair-row, .bracket-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="app-header">
+      <div class="app-brand">Volleyball Tracker</div>
+      <nav class="app-tabs" aria-label="Primary">
+        <a href="stats.html" class="app-tab app-tab-stats">Stats</a>
+        <a href="index.html" class="app-tab app-tab-play">Play</a>
+        <a href="help.html" class="app-tab app-tab-help">Help</a>
+      </nav>
+    </header>
+
+    <div class="page-title">
+      <h1>Tournament</h1>
+      <p>Register two-player pairs, build 4v4 games from two pairs per side, and record tournament games into the shared history.</p>
+    </div>
+
+    <div class="card">
+      <div class="section-heading">
+        <div>
+          <h2>Pairs</h2>
+          <div class="small">Each player can only be in one active pair.</div>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="field">
+          <label for="pairPlayerA">Player 1</label>
+          <div class="player-search-wrap">
+            <input
+              id="pairPlayerA"
+              type="search"
+              placeholder="Search player..."
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="none"
+              spellcheck="false"
+            />
+            <div id="pairPlayerAResults" class="player-search-results hidden"></div>
+          </div>
+        </div>
+        <div class="field">
+          <label for="pairPlayerB">Player 2</label>
+          <div class="player-search-wrap">
+            <input
+              id="pairPlayerB"
+              type="search"
+              placeholder="Search player..."
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="none"
+              spellcheck="false"
+            />
+            <div id="pairPlayerBResults" class="player-search-results hidden"></div>
+          </div>
+        </div>
+      </div>
+      <div class="controls" style="margin-top: 12px;">
+        <button id="addPairButton" class="success" type="button">Add Pair</button>
+      </div>
+      <div id="pairStatus" class="status hidden"></div>
+      <div id="pairList" class="pair-list" style="margin-top: 14px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-heading">
+        <div>
+          <h2>Teams</h2>
+          <div class="small">Generated teams use the same color flow as Play: pick the winning color, then pick who lost.</div>
+        </div>
+        <div class="controls">
+          <button id="assignMatchButton" type="button">Generate Balanced Match</button>
+          <button id="generateBracketButton" type="button">Generate Bracket</button>
+        </div>
+      </div>
+      <div id="teamGrid" class="summary-grid"></div>
+      <div id="assignmentStatus" class="status">No tournament matchup assigned yet.</div>
+      <div id="bracketList" class="bracket-list" style="margin-top: 12px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Record Tournament Game</h2>
+      <div class="score-grid">
+        <div class="field">
+          <label for="redScore">Winning team score (optional)</label>
+          <input id="redScore" type="number" min="0" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="blueScore">Losing team score (optional)</label>
+          <input id="blueScore" type="number" min="0" inputmode="numeric" />
+        </div>
+      </div>
+      <div id="recordButtons" class="controls"></div>
+      <div id="recordError" class="error hidden"></div>
+      <div id="latestGame" class="status">No tournament games recorded yet.</div>
+    </div>
+
+    <div class="small page-footer-link">
+      <button id="debugRandomPairsButton" class="secondary" type="button">Debug: Generate Random Pairs</button>
+    </div>
+  </div>
+
+  <dialog id="confirmGameDialog">
+    <div class="dialog-content">
+      <h2>Confirm Tournament Game</h2>
+      <div id="confirmGameSummary" class="confirmation-summary"></div>
+      <div class="dialog-actions">
+        <button id="confirmGameButton" class="success" type="button">Confirm and Save</button>
+        <button id="cancelConfirmGameButton" class="secondary" type="button">Cancel</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="loserTeamDialog">
+    <div class="dialog-content">
+      <h2>Select Losing Team</h2>
+      <div id="loserTeamText" class="small">Choose the team that lost this game.</div>
+      <div id="loserTeamOptions" class="controls" style="margin-top: 12px;"></div>
+      <div class="dialog-actions">
+        <button id="cancelLoserTeamButton" class="secondary" type="button">Cancel</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script type="module">
+    import { VERSION } from './ratings.js';
+
+    const PLAYER_STORAGE_KEY = 'gameDayPlayers';
+    const GAME_STORAGE_KEY = 'gameDayGames';
+    const TOURNAMENT_PAIR_STORAGE_KEY = 'gameDayTournamentPairs';
+    const PAGE_STATE_KEY = 'gameDayTournamentPageState';
+    const TOURNAMENT_ID = 'default';
+    const BASE_ELO = 1500;
+    const ELO_K = 64;
+    const BLOWOUT_RISK_DIFF = 180;
+    const DEBUG_RANDOM_PAIR_COUNT = 16;
+    const TEAM_COLORS = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'cyan', 'pink'];
+    const TEAM_LABELS = {
+      red: 'Red',
+      blue: 'Blue',
+      green: 'Green',
+      yellow: 'Yellow',
+      orange: 'Orange',
+      purple: 'Purple',
+      cyan: 'Cyan',
+      pink: 'Pink'
+    };
+
+    const pairPlayerAEl = document.getElementById('pairPlayerA');
+    const pairPlayerBEl = document.getElementById('pairPlayerB');
+    const pairPlayerAResultsEl = document.getElementById('pairPlayerAResults');
+    const pairPlayerBResultsEl = document.getElementById('pairPlayerBResults');
+    const addPairButtonEl = document.getElementById('addPairButton');
+    const pairStatusEl = document.getElementById('pairStatus');
+    const pairListEl = document.getElementById('pairList');
+    const assignMatchButtonEl = document.getElementById('assignMatchButton');
+    const generateBracketButtonEl = document.getElementById('generateBracketButton');
+    const teamGridEl = document.getElementById('teamGrid');
+    const assignmentStatusEl = document.getElementById('assignmentStatus');
+    const bracketListEl = document.getElementById('bracketList');
+    const redScoreEl = document.getElementById('redScore');
+    const blueScoreEl = document.getElementById('blueScore');
+    const recordButtonsEl = document.getElementById('recordButtons');
+    const recordErrorEl = document.getElementById('recordError');
+    const latestGameEl = document.getElementById('latestGame');
+    const confirmGameDialog = document.getElementById('confirmGameDialog');
+    const confirmGameSummaryEl = document.getElementById('confirmGameSummary');
+    const confirmGameButtonEl = document.getElementById('confirmGameButton');
+    const cancelConfirmGameButtonEl = document.getElementById('cancelConfirmGameButton');
+    const loserTeamDialog = document.getElementById('loserTeamDialog');
+    const loserTeamTextEl = document.getElementById('loserTeamText');
+    const loserTeamOptionsEl = document.getElementById('loserTeamOptions');
+    const cancelLoserTeamButtonEl = document.getElementById('cancelLoserTeamButton');
+    const debugRandomPairsButtonEl = document.getElementById('debugRandomPairsButton');
+
+    let players = loadPlayers();
+    let games = loadGames();
+    let tournamentPairs = loadTournamentPairs();
+    let generatedTeams = [];
+    let bracketMatches = [];
+    let currentAssignmentId = '';
+    let pendingRecord = null;
+    let selectedPairPlayerAId = '';
+    let selectedPairPlayerBId = '';
+
+    function loadJsonArray(key) {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(key) || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function loadPlayers() {
+      return loadJsonArray(PLAYER_STORAGE_KEY)
+        .filter(player => player && typeof player.name === 'string')
+        .map(player => ({ id: player.id, name: player.name.trim() }))
+        .filter(player => player.name)
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    }
+
+    function loadGames() {
+      return loadJsonArray(GAME_STORAGE_KEY);
+    }
+
+    function loadTournamentPairs() {
+      return loadJsonArray(TOURNAMENT_PAIR_STORAGE_KEY)
+        .filter(pair => pair && Array.isArray(pair.playerIds) && pair.playerIds.length === 2)
+        .map(pair => ({
+          id: String(pair.id),
+          playerIds: pair.playerIds.map(String),
+          name: typeof pair.name === 'string' ? pair.name : '',
+          active: pair.active !== false,
+          createdAt: Number.isFinite(Number(pair.createdAt)) ? Number(pair.createdAt) : Date.now(),
+          debugRating: Number.isFinite(Number(pair.debugRating)) ? Number(pair.debugRating) : undefined
+        }));
+    }
+
+    function saveTournamentPairs() {
+      localStorage.setItem(TOURNAMENT_PAIR_STORAGE_KEY, JSON.stringify(tournamentPairs));
+    }
+
+    function debugCreateRandomPairs() {
+      if (players.length < 2) return;
+      const shuffled = shuffleArray(players).slice(0, Math.min(players.length, DEBUG_RANDOM_PAIR_COUNT * 2));
+      const pairCount = Math.floor(shuffled.length / 2);
+      tournamentPairs = [];
+
+      for (let index = 0; index < pairCount; index += 1) {
+        const playerA = shuffled[index * 2];
+        const playerB = shuffled[index * 2 + 1];
+        tournamentPairs.push({
+          id: createPairId(playerA.id, playerB.id),
+          playerIds: [String(playerA.id), String(playerB.id)],
+          name: '',
+          active: true,
+          createdAt: Date.now() + index,
+          debugRating: 1000 + Math.round(Math.random() * 1000)
+        });
+      }
+
+      saveTournamentPairs();
+      generatedTeams = [];
+      bracketMatches = [];
+      currentAssignmentId = '';
+      localStorage.removeItem(PAGE_STATE_KEY);
+    }
+
+    function saveGames() {
+      localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(games));
+    }
+
+    function savePageState() {
+      localStorage.setItem(PAGE_STATE_KEY, JSON.stringify({ generatedTeams, bracketMatches, currentAssignmentId }));
+    }
+
+    function restorePageState() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(PAGE_STATE_KEY) || '{}');
+        generatedTeams = Array.isArray(saved?.generatedTeams) ? saved.generatedTeams : [];
+        bracketMatches = Array.isArray(saved?.bracketMatches)
+          ? saved.bracketMatches
+          : (Array.isArray(saved?.bracketQueue) ? saved.bracketQueue : []);
+        currentAssignmentId = typeof saved?.currentAssignmentId === 'string' ? saved.currentAssignmentId : '';
+      } catch {
+        generatedTeams = [];
+        bracketMatches = [];
+        currentAssignmentId = '';
+      }
+    }
+
+    function createAssignmentId() {
+      return `tournament_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    function playerById(id) {
+      return players.find(player => String(player.id) === String(id)) || null;
+    }
+
+    function getPairPlayers(pair) {
+      return pair.playerIds.map(playerById).filter(Boolean);
+    }
+
+    function getPairName(pair) {
+      if (pair.name && pair.name.trim()) return pair.name.trim();
+      return getPairPlayers(pair).map(player => player.name).join(' / ') || 'Unknown Pair';
+    }
+
+    function getActivePairs() {
+      return tournamentPairs.filter(pair =>
+        pair.active !== false &&
+        getPairPlayers(pair).length === 2
+      );
+    }
+
+    function setStatus(el, text, visible = true) {
+      el.textContent = text;
+      el.classList.toggle('hidden', !visible);
+    }
+
+    function setError(text = '') {
+      setStatus(recordErrorEl, text, Boolean(text));
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      })[char]);
+    }
+
+    function createPairId(playerAId, playerBId) {
+      return `pair_${[String(playerAId), String(playerBId)].sort().join('_')}`;
+    }
+
+    function getUsedPlayerIds(exceptPairId = '') {
+      const used = new Set();
+      tournamentPairs.forEach(pair => {
+        if (pair.active === false || String(pair.id) === String(exceptPairId)) return;
+        pair.playerIds.forEach(id => used.add(String(id)));
+      });
+      return used;
+    }
+
+    function getAvailablePlayersForPicker(currentId = '') {
+      const used = getUsedPlayerIds();
+      return players.filter(player =>
+        String(player.id) === String(currentId) ||
+        !used.has(String(player.id))
+      );
+    }
+
+    function getPlayerSearchMatches(query, currentId = '') {
+      const normalized = String(query || '').trim().toLowerCase();
+      const available = getAvailablePlayersForPicker(currentId);
+      const matches = normalized
+        ? available.filter(player => player.name.toLowerCase().includes(normalized))
+        : [];
+      return matches.slice(0, 8);
+    }
+
+    function selectPairPlayer(slot, player) {
+      if (slot === 'a') {
+        selectedPairPlayerAId = String(player.id);
+        pairPlayerAEl.value = player.name;
+        pairPlayerAResultsEl.classList.add('hidden');
+      } else {
+        selectedPairPlayerBId = String(player.id);
+        pairPlayerBEl.value = player.name;
+        pairPlayerBResultsEl.classList.add('hidden');
+      }
+      renderPlayerSearchResults();
+    }
+
+    function clearSelectedPairPlayer(slot) {
+      if (slot === 'a') {
+        selectedPairPlayerAId = '';
+      } else {
+        selectedPairPlayerBId = '';
+      }
+    }
+
+    function renderPlayerSearchResultsForSlot({ input, resultsEl, slot, selectedId }) {
+      const query = input.value.trim();
+      const selectedPlayer = selectedId ? playerById(selectedId) : null;
+      const selectedNameMatches = selectedPlayer &&
+        input.value.trim().toLowerCase() === selectedPlayer.name.toLowerCase();
+      const shouldShow = document.activeElement === input && (!selectedPlayer || !selectedNameMatches);
+      resultsEl.innerHTML = '';
+
+      if (!shouldShow) {
+        resultsEl.classList.add('hidden');
+        return;
+      }
+
+      const matches = getPlayerSearchMatches(query, selectedId);
+      if (!matches.length) {
+        const empty = document.createElement('div');
+        empty.className = 'player-search-empty';
+        empty.textContent = query ? 'No available players match.' : 'Start typing to search players.';
+        resultsEl.appendChild(empty);
+        resultsEl.classList.remove('hidden');
+        return;
+      }
+
+      matches.forEach(player => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `player-search-result${String(player.id) === String(selectedId) ? ' selected' : ''}`;
+        button.textContent = player.name;
+        button.addEventListener('mousedown', event => {
+          event.preventDefault();
+          selectPairPlayer(slot, player);
+        });
+        resultsEl.appendChild(button);
+      });
+      resultsEl.classList.remove('hidden');
+    }
+
+    function renderPlayerSearchResults() {
+      renderPlayerSearchResultsForSlot({
+        input: pairPlayerAEl,
+        resultsEl: pairPlayerAResultsEl,
+        slot: 'a',
+        selectedId: selectedPairPlayerAId
+      });
+      renderPlayerSearchResultsForSlot({
+        input: pairPlayerBEl,
+        resultsEl: pairPlayerBResultsEl,
+        slot: 'b',
+        selectedId: selectedPairPlayerBId
+      });
+    }
+
+    function addPair() {
+      const playerAId = String(selectedPairPlayerAId || '');
+      const playerBId = String(selectedPairPlayerBId || '');
+      if (!playerAId || !playerBId) {
+        setStatus(pairStatusEl, 'Choose two players.');
+        return;
+      }
+      if (playerAId === playerBId) {
+        setStatus(pairStatusEl, 'A pair needs two different players.');
+        return;
+      }
+      const used = getUsedPlayerIds();
+      if (used.has(playerAId) || used.has(playerBId)) {
+        setStatus(pairStatusEl, 'One of those players is already in an active pair.');
+        return;
+      }
+
+      const pair = {
+        id: createPairId(playerAId, playerBId),
+        playerIds: [playerAId, playerBId],
+        name: '',
+        active: true,
+        createdAt: Date.now()
+      };
+      tournamentPairs.push(pair);
+      saveTournamentPairs();
+      pairPlayerAEl.value = '';
+      pairPlayerBEl.value = '';
+      selectedPairPlayerAId = '';
+      selectedPairPlayerBId = '';
+      setStatus(pairStatusEl, `Added ${getPairName(pair)}.`);
+      renderAll();
+    }
+
+    function deactivatePair(pairId) {
+      const pair = tournamentPairs.find(item => String(item.id) === String(pairId));
+      if (!pair) return;
+      pair.active = false;
+      generatedTeams = [];
+      bracketMatches = [];
+      currentAssignmentId = '';
+      saveTournamentPairs();
+      savePageState();
+      renderAll();
+    }
+
+    function reactivatePair(pairId) {
+      const pair = tournamentPairs.find(item => String(item.id) === String(pairId));
+      if (!pair) return;
+      const used = getUsedPlayerIds(pair.id);
+      if (pair.playerIds.some(id => used.has(String(id)))) {
+        setStatus(pairStatusEl, 'Cannot reactivate because a player is already in another active pair.');
+        return;
+      }
+      pair.active = true;
+      saveTournamentPairs();
+      renderAll();
+    }
+
+    function getExpectedScore(ratingA, ratingB) {
+      return 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400));
+    }
+
+    function getPairRatings() {
+      const ratings = new Map();
+      tournamentPairs.forEach(pair => {
+        const initialRating = Number.isFinite(Number(pair.debugRating))
+          ? Number(pair.debugRating)
+          : BASE_ELO;
+        ratings.set(String(pair.id), {
+          rating: initialRating,
+          games: 0,
+          wins: 0
+        });
+      });
+
+      [...games].reverse()
+        .filter(game =>
+          game?.isTournamentGame &&
+          game.tournamentId === TOURNAMENT_ID &&
+          game.tournamentPairs &&
+          Array.isArray(game.tournamentPairs.red) &&
+          Array.isArray(game.tournamentPairs.blue)
+        )
+        .forEach(game => {
+          const redIds = game.tournamentPairs.red.map(String);
+          const blueIds = game.tournamentPairs.blue.map(String);
+          const redRating = average(redIds.map(id => ratings.get(id)?.rating ?? BASE_ELO));
+          const blueRating = average(blueIds.map(id => ratings.get(id)?.rating ?? BASE_ELO));
+          const redScore = game.winner === 'red' ? 1 : 0;
+          const redExpected = getExpectedScore(redRating, blueRating);
+
+          redIds.forEach(id => {
+            const stat = ratings.get(id) || { rating: BASE_ELO, games: 0, wins: 0 };
+            stat.rating += ELO_K * (redScore - redExpected);
+            stat.games += 1;
+            stat.wins += redScore;
+            ratings.set(id, stat);
+          });
+          blueIds.forEach(id => {
+            const stat = ratings.get(id) || { rating: BASE_ELO, games: 0, wins: 0 };
+            stat.rating += ELO_K * ((1 - redScore) - (1 - redExpected));
+            stat.games += 1;
+            stat.wins += 1 - redScore;
+            ratings.set(id, stat);
+          });
+        });
+
+      return ratings;
+    }
+
+    function average(values) {
+      const finite = values.map(Number).filter(Number.isFinite);
+      return finite.length ? finite.reduce((sum, value) => sum + value, 0) / finite.length : BASE_ELO;
+    }
+
+    function getPairRating(pair, ratingMap = getPairRatings()) {
+      return ratingMap.get(String(pair.id))?.rating ?? BASE_ELO;
+    }
+
+    function getTeamRating(pairIds, ratingMap = getPairRatings()) {
+      return average(pairIds.map(id => ratingMap.get(String(id))?.rating ?? BASE_ELO));
+    }
+
+    function getPairObject(pairId) {
+      return tournamentPairs.find(pair => String(pair.id) === String(pairId)) || null;
+    }
+
+    function getTeamPlayers(pairIds) {
+      return pairIds
+        .map(getPairObject)
+        .filter(Boolean)
+        .flatMap(getPairPlayers)
+        .map(player => ({ id: player.id, name: player.name }));
+    }
+
+    function getTeamPairNames(pairIds) {
+      return pairIds
+        .map(getPairObject)
+        .filter(Boolean)
+        .map(getPairName);
+    }
+
+    function getPairTeamKey(pairIds) {
+      return pairIds.map(String).sort().join('|');
+    }
+
+    function getWinningPairTeamKeys() {
+      const keys = new Set();
+      games
+        .filter(game => game?.isTournamentGame && game.tournamentId === TOURNAMENT_ID && game.tournamentPairs)
+        .forEach(game => {
+          const winnerIds = game.winner === 'blue'
+            ? game.tournamentPairs.blue
+            : game.tournamentPairs.red;
+          if (Array.isArray(winnerIds) && winnerIds.length === 2) {
+            keys.add(getPairTeamKey(winnerIds));
+          }
+        });
+      return keys;
+    }
+
+    function getBlowoutRisk(teamA, teamB, ratingMap = getPairRatings()) {
+      return Math.abs(getTeamRating(teamA, ratingMap) - getTeamRating(teamB, ratingMap));
+    }
+
+    function shuffleArray(input) {
+      const arr = input.slice();
+      for (let i = arr.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    function buildRandomPairTeams(pairIds) {
+      const shuffled = shuffleArray(pairIds);
+      const teams = [];
+      for (let i = 0; i < shuffled.length - 1; i += 2) {
+        teams.push([shuffled[i], shuffled[i + 1]]);
+      }
+      return teams;
+    }
+
+    function getRankedTeams(teams, ratingMap = getPairRatings()) {
+      return (teams || [])
+        .map(team => ({ pairIds: team, rating: getTeamRating(team, ratingMap) }))
+        .sort((a, b) => b.rating - a.rating);
+    }
+
+    function getHighLowMatchups(rankedTeams, matchType) {
+      const matchups = [];
+      for (let i = 0; i < Math.floor(rankedTeams.length / 2); i += 1) {
+        const high = rankedTeams[i];
+        const low = rankedTeams[rankedTeams.length - 1 - i];
+        matchups.push({
+          redPairIds: high.pairIds,
+          bluePairIds: low.pairIds,
+          redColor: high.color,
+          blueColor: low.color,
+          matchType
+        });
+      }
+      return matchups;
+    }
+
+    function getMatchupDiff(match, ratingMap) {
+      return getBlowoutRisk(match.redPairIds, match.bluePairIds, ratingMap);
+    }
+
+    function getBalancedMatchups(rankedTeams, matchType, ratingMap = getPairRatings()) {
+      const teams = rankedTeams.slice();
+      if (teams.length < 2) return [];
+
+      let best = null;
+
+      function visit(remainingTeams, pairs) {
+        if (remainingTeams.length < 2) {
+          const matchups = pairs.map(([redTeam, blueTeam]) => ({
+            redPairIds: redTeam.pairIds,
+            bluePairIds: blueTeam.pairIds,
+            redColor: redTeam.color,
+            blueColor: blueTeam.color,
+            matchType
+          }));
+          const diffs = matchups.map(match => getMatchupDiff(match, ratingMap));
+          const worstDiff = diffs.length ? Math.max(...diffs) : 0;
+          const totalDiff = diffs.reduce((sum, diff) => sum + diff, 0);
+          const score = worstDiff * 1000 + totalDiff;
+          if (!best || score < best.score) {
+            best = { matchups, score };
+          }
+          return;
+        }
+
+        const first = remainingTeams[0];
+        for (let i = 1; i < remainingTeams.length; i += 1) {
+          const second = remainingTeams[i];
+          const next = remainingTeams.filter((_, index) => index !== 0 && index !== i);
+          visit(next, [...pairs, [first, second]]);
+        }
+      }
+
+      visit(teams, []);
+      return best?.matchups || [];
+    }
+
+    function buildColoredTeams(teams, ratingMap = getPairRatings()) {
+      return getRankedTeams(teams, ratingMap).map((team, index) => ({
+        ...team,
+        color: TEAM_COLORS[index] || TEAM_COLORS[TEAM_COLORS.length - 1]
+      }));
+    }
+
+    function colorTeamsFromScheduledMatchups(matchups, ratingMap = getPairRatings()) {
+      const coloredTeams = [];
+      const coloredMatchups = [];
+
+      matchups.forEach((match, index) => {
+        const redColor = TEAM_COLORS[index * 2];
+        const blueColor = TEAM_COLORS[index * 2 + 1];
+        if (!redColor || !blueColor) return;
+
+        const redTeam = {
+          pairIds: match.redPairIds,
+          rating: getTeamRating(match.redPairIds, ratingMap),
+          color: redColor
+        };
+        const blueTeam = {
+          pairIds: match.bluePairIds,
+          rating: getTeamRating(match.bluePairIds, ratingMap),
+          color: blueColor
+        };
+
+        coloredTeams.push(redTeam, blueTeam);
+        coloredMatchups.push({
+          ...match,
+          redColor,
+          blueColor
+        });
+      });
+
+      return { coloredTeams, coloredMatchups };
+    }
+
+    function scoreBalancedTeams(teams, ratingMap) {
+      if (!teams.length) return Infinity;
+      const coloredTeams = buildColoredTeams(teams, ratingMap);
+      const matchups = getBalancedMatchups(coloredTeams, 'standard', ratingMap);
+      const diffs = matchups.map(match => getMatchupDiff(match, ratingMap));
+      const worstDiff = diffs.length ? Math.max(...diffs) : 0;
+      const totalDiff = diffs.reduce((sum, diff) => sum + diff, 0);
+      return worstDiff * worstDiff * 100 + totalDiff * totalDiff;
+    }
+
+    function getTournamentMatchKey(colorA, colorB) {
+      return [colorA, colorB].sort().join('|');
+    }
+
+    function getRecordedTournamentMatchKeys() {
+      const keys = new Set();
+      if (!currentAssignmentId) return keys;
+
+      games.forEach(game => {
+        if (
+          game?.assignmentId === currentAssignmentId &&
+          game?.isTournamentGame &&
+          game.displayWinnerColor &&
+          game.displayLoserColor
+        ) {
+          keys.add(getTournamentMatchKey(game.displayWinnerColor, game.displayLoserColor));
+        }
+      });
+
+      return keys;
+    }
+
+    function getIncompleteTournamentRound() {
+      if (!generatedTeams.length || !bracketMatches.length || !currentAssignmentId) return null;
+      const recorded = getRecordedTournamentMatchKeys();
+      const missing = bracketMatches.filter(match =>
+        !recorded.has(getTournamentMatchKey(match.redColor, match.blueColor))
+      );
+      return missing.length ? { missing, recordedCount: recorded.size } : null;
+    }
+
+    function confirmReplaceGeneratedTeams(actionLabel) {
+      const incomplete = getIncompleteTournamentRound();
+      if (!incomplete) return true;
+
+      const missingText = incomplete.missing
+        .map(match => `${TEAM_LABELS[match.redColor]} vs ${TEAM_LABELS[match.blueColor]}`)
+        .join(', ');
+
+      return window.confirm(
+        `Some tournament matchups do not have scores entered yet.\n\n` +
+        `Still waiting on: ${missingText}\n\n` +
+        `${actionLabel} anyway?`
+      );
+    }
+
+    function assignBalancedMatch() {
+      if (!confirmReplaceGeneratedTeams('Generate balanced matchups')) return;
+      const active = getActivePairs();
+      if (active.length < 4) {
+        assignmentStatusEl.textContent = 'Need at least 4 active pairs to create 4v4 matchups.';
+        return;
+      }
+
+      const maxUsablePairs = TEAM_COLORS.length * 2;
+      const rawUsableCount = Math.min(active.length, maxUsablePairs);
+      const usableCount = rawUsableCount - (rawUsableCount % 4);
+      const usablePairIds = active.slice(0, usableCount).map(pair => String(pair.id));
+      const leftover = active.length - usableCount;
+      const ratingMap = getPairRatings();
+      const attempts = Math.max(800, usablePairIds.length * 220);
+      let bestTeams = null;
+      let bestScore = Infinity;
+
+      for (let i = 0; i < attempts; i += 1) {
+        const teams = buildRandomPairTeams(usablePairIds);
+        const score = scoreBalancedTeams(teams, ratingMap);
+        if (score < bestScore) {
+          bestScore = score;
+          bestTeams = teams;
+        }
+      }
+
+      const rawColoredTeams = buildColoredTeams(bestTeams || [], ratingMap);
+      const rawMatchups = getBalancedMatchups(rawColoredTeams, 'standard', ratingMap);
+      const schedule = colorTeamsFromScheduledMatchups(rawMatchups, ratingMap);
+      generatedTeams = schedule.coloredTeams;
+      bracketMatches = schedule.coloredMatchups;
+      currentAssignmentId = createAssignmentId();
+      const leftoverText = leftover ? ` ${leftover} pair${leftover === 1 ? '' : 's'} left out.` : '';
+      assignmentStatusEl.textContent = `Generated ${bracketMatches.length} balanced matchup${bracketMatches.length === 1 ? '' : 's'}.${leftoverText}`;
+      savePageState();
+      renderAll();
+    }
+
+    function scoreBracketTeams(teams, winningKeys, ratingMap) {
+      if (!teams.length) return Infinity;
+      const ratings = teams.map(team => getTeamRating(team, ratingMap));
+      const avgRating = average(ratings);
+      const spreadPenalty = ratings.reduce((sum, rating) => sum + Math.abs(rating - avgRating), 0);
+      const maxSpread = ratings.length ? Math.max(...ratings) - Math.min(...ratings) : 0;
+      const reuseBonus = teams.filter(team => winningKeys.has(getPairTeamKey(team))).length * 65;
+      return spreadPenalty * spreadPenalty + maxSpread * 20 - reuseBonus;
+    }
+
+    function generateBracket() {
+      if (!confirmReplaceGeneratedTeams('Generate bracket')) return;
+      const active = getActivePairs();
+      if (active.length < 4) {
+        assignmentStatusEl.textContent = 'Need at least 4 active pairs to generate a bracket.';
+        return;
+      }
+
+      const maxUsablePairs = TEAM_COLORS.length * 2;
+      const rawUsableCount = Math.min(active.length, maxUsablePairs);
+      const usableCount = rawUsableCount - (rawUsableCount % 4);
+      const usablePairIds = active.slice(0, usableCount).map(pair => String(pair.id));
+      const leftover = active.length - usableCount;
+      const ratingMap = getPairRatings();
+      const winningKeys = getWinningPairTeamKeys();
+      const attempts = Math.max(600, usablePairIds.length * 180);
+      let bestTeams = null;
+      let bestScore = Infinity;
+
+      for (let i = 0; i < attempts; i += 1) {
+        const teams = buildRandomPairTeams(usablePairIds);
+        const score = scoreBracketTeams(teams, winningKeys, ratingMap);
+        if (score < bestScore) {
+          bestScore = score;
+          bestTeams = teams;
+        }
+      }
+
+      const rawColoredTeams = buildColoredTeams(bestTeams || [], ratingMap);
+      const rawMatchups = getHighLowMatchups(rawColoredTeams, 'bracket');
+      const schedule = colorTeamsFromScheduledMatchups(rawMatchups, ratingMap);
+      generatedTeams = schedule.coloredTeams;
+      bracketMatches = schedule.coloredMatchups;
+      currentAssignmentId = createAssignmentId();
+      const leftoverText = leftover ? ` ${leftover} pair${leftover === 1 ? '' : 's'} left out.` : '';
+      assignmentStatusEl.textContent = `Generated ${bracketMatches.length} opening bracket matchup${bracketMatches.length === 1 ? '' : 's'}.${leftoverText}`;
+      savePageState();
+      renderAll();
+    }
+
+    function parseOptionalScore(value) {
+      return value === '' ? null : Number(value);
+    }
+
+    function validateScorePair(scoreRed, scoreBlue, requireWinnerGreater = false) {
+      if (scoreRed === null && scoreBlue === null) return null;
+      if (scoreRed === null || scoreBlue === null) return 'Enter both scores or leave both blank.';
+      if (!Number.isFinite(scoreRed) || !Number.isFinite(scoreBlue)) return 'Scores must be valid numbers.';
+      if (scoreRed === scoreBlue) return 'Scores cannot be tied.';
+      if (requireWinnerGreater && scoreRed <= scoreBlue) return 'Scores contradict the selected winner.';
+      return null;
+    }
+
+    function getGeneratedTeam(color) {
+      return generatedTeams.find(team => team.color === color) || null;
+    }
+
+    function buildTournamentGameRecord(winnerColor, loserColor) {
+      if (!TEAM_COLORS.includes(winnerColor) || !TEAM_COLORS.includes(loserColor)) {
+        return { error: 'Choose a valid winner and loser.' };
+      }
+      if (winnerColor === loserColor) {
+        return { error: 'Winner and loser cannot be the same team.' };
+      }
+      const winnerTeam = getGeneratedTeam(winnerColor);
+      const loserTeam = getGeneratedTeam(loserColor);
+      if (!winnerTeam || !loserTeam) return { error: 'Generate tournament teams first.' };
+      if (winnerTeam.pairIds.length !== 2 || loserTeam.pairIds.length !== 2) {
+        return { error: 'Tournament games need exactly two pairs per side.' };
+      }
+      const scoreRed = parseOptionalScore(redScoreEl.value);
+      const scoreBlue = parseOptionalScore(blueScoreEl.value);
+      const scoreError = validateScorePair(scoreRed, scoreBlue, true);
+      if (scoreError) return { error: scoreError };
+
+      const id = Date.now();
+      const matchType = bracketMatches.some(match =>
+        match.matchType === 'bracket' &&
+        [match.redColor, match.blueColor].includes(winnerColor) &&
+        [match.redColor, match.blueColor].includes(loserColor)
+      ) ? 'bracket' : 'standard';
+
+      return {
+        id,
+        date: new Date().toLocaleDateString('en-CA'),
+        redTeam: getTeamPlayers(winnerTeam.pairIds),
+        blueTeam: getTeamPlayers(loserTeam.pairIds),
+        scoreRed,
+        scoreBlue,
+        winner: 'red',
+        isLeagueGame: false,
+        leagueOpponent: null,
+        isTournamentGame: true,
+        tournamentId: TOURNAMENT_ID,
+        tournamentMatchType: matchType,
+        tournamentPairs: {
+          red: winnerTeam.pairIds.map(String),
+          blue: loserTeam.pairIds.map(String)
+        },
+        displayWinnerColor: winnerColor,
+        displayLoserColor: loserColor,
+        createdAt: id,
+        assignmentId: currentAssignmentId || `tournament_${id}`,
+        assignmentSource: 'algorithm',
+        assignmentVersion: VERSION,
+        predictedAtAssignment: null,
+        courtType: 'indoor'
+      };
+    }
+
+    function getRecordSummary(record) {
+      const redPairs = getTeamPairNames(record.tournamentPairs.red).join(' + ');
+      const bluePairs = getTeamPairNames(record.tournamentPairs.blue).join(' + ');
+      const winnerLabel = record.displayWinnerColor
+        ? `${TEAM_LABELS[record.displayWinnerColor] || record.displayWinnerColor} Team`
+        : 'Red Team';
+      const loserLabel = record.displayLoserColor
+        ? `${TEAM_LABELS[record.displayLoserColor] || record.displayLoserColor} Team`
+        : 'Blue Team';
+      const score = record.scoreRed === null || record.scoreBlue === null
+        ? 'Score: none'
+        : `Score: ${winnerLabel} ${record.scoreRed} - ${loserLabel} ${record.scoreBlue}`;
+      return [
+        `Winner: ${winnerLabel}`,
+        `Loser: ${loserLabel}`,
+        score,
+        `Game type: ${record.tournamentMatchType === 'bracket' ? 'Tournament bracket' : 'Tournament'}`,
+        '',
+        `${winnerLabel} pairs: ${redPairs}`,
+        '',
+        `${loserLabel} pairs: ${bluePairs}`
+      ].join('\n');
+    }
+
+    function openConfirmGameDialog(record) {
+      pendingRecord = record;
+      confirmGameSummaryEl.textContent = getRecordSummary(record);
+      confirmGameDialog.showModal();
+    }
+
+    function closeConfirmGameDialog() {
+      pendingRecord = null;
+      confirmGameDialog.close();
+    }
+
+    function handleWin(winnerColor) {
+      setError('');
+      openLoserTeamDialog(winnerColor);
+    }
+
+    function openLoserTeamDialog(winnerColor) {
+      loserTeamOptionsEl.innerHTML = '';
+      loserTeamTextEl.textContent = `${TEAM_LABELS[winnerColor]} Team won. Which team lost?`;
+
+      generatedTeams
+        .filter(team => team.color !== winnerColor)
+        .forEach(team => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = `${team.color}-button`;
+          button.textContent = `${TEAM_LABELS[team.color]} Team Lost`;
+          button.addEventListener('click', () => {
+            loserTeamDialog.close();
+            const record = buildTournamentGameRecord(winnerColor, team.color);
+            if (record.error) {
+              setError(record.error);
+              return;
+            }
+            openConfirmGameDialog(record);
+          });
+          loserTeamOptionsEl.appendChild(button);
+        });
+
+      loserTeamDialog.showModal();
+    }
+
+    function savePendingGame() {
+      if (!pendingRecord) return;
+      games.unshift(pendingRecord);
+      saveGames();
+      redScoreEl.value = '';
+      blueScoreEl.value = '';
+      closeConfirmGameDialog();
+      savePageState();
+      renderAll();
+    }
+
+    function renderPairs() {
+      const ratingMap = getPairRatings();
+      pairListEl.innerHTML = '';
+      const pairs = tournamentPairs.slice().sort((a, b) => {
+        if (a.active !== b.active) return a.active ? -1 : 1;
+        return getPairName(a).localeCompare(getPairName(b), undefined, { sensitivity: 'base' });
+      });
+
+      if (!pairs.length) {
+        pairListEl.innerHTML = '<div class="small">No tournament pairs yet.</div>';
+        return;
+      }
+
+      pairs.forEach(pair => {
+        const stat = ratingMap.get(String(pair.id)) || { rating: BASE_ELO, games: 0, wins: 0 };
+        const row = document.createElement('div');
+        row.className = 'pair-row';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = pair.active !== false;
+        checkbox.addEventListener('change', () => checkbox.checked ? reactivatePair(pair.id) : deactivatePair(pair.id));
+
+        const middle = document.createElement('div');
+        middle.innerHTML = `
+          <div class="pair-name">${escapeHtml(getPairName(pair))}</div>
+          <div class="pair-meta">Rating ${Math.round(stat.rating)} | ${stat.games} game${stat.games === 1 ? '' : 's'} | ${stat.wins} win${stat.wins === 1 ? '' : 's'}</div>
+        `;
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = pair.active === false ? 'success' : 'danger';
+        button.textContent = pair.active === false ? 'Activate' : 'Deactivate';
+        button.addEventListener('click', () => pair.active === false ? reactivatePair(pair.id) : deactivatePair(pair.id));
+
+        row.appendChild(checkbox);
+        row.appendChild(middle);
+        row.appendChild(button);
+        pairListEl.appendChild(row);
+      });
+    }
+
+    function renderTeamSummary() {
+      const ratingMap = getPairRatings();
+      teamGridEl.innerHTML = '';
+      recordButtonsEl.innerHTML = '';
+
+      if (!generatedTeams.length) {
+        teamGridEl.innerHTML = '<div class="small">No tournament teams generated yet.</div>';
+        assignmentStatusEl.textContent = 'No tournament matchup assigned yet.';
+        return;
+      }
+
+      generatedTeams.forEach(team => {
+        const box = document.createElement('div');
+        box.className = `team-box ${team.color}-box`;
+        const pairIds = team.pairIds || [];
+        const pairNames = getTeamPairNames(pairIds);
+        const playerNames = getTeamPlayers(pairIds).map(player => player.name);
+        box.innerHTML = `
+          <strong>${escapeHtml(TEAM_LABELS[team.color] || team.color)} Team</strong>
+          <div>Team rating: ${Math.round(getTeamRating(pairIds, ratingMap))}</div>
+          <div>${escapeHtml(pairNames.join(' + '))}</div>
+          <div class="small">${escapeHtml(playerNames.join(', '))}</div>
+        `;
+        teamGridEl.appendChild(box);
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `${team.color}-button`;
+        button.textContent = `${TEAM_LABELS[team.color] || team.color} Team Win`;
+        button.addEventListener('click', () => handleWin(team.color));
+        recordButtonsEl.appendChild(button);
+      });
+
+      const hasBracket = bracketMatches.some(match => match.matchType === 'bracket');
+      assignmentStatusEl.textContent = hasBracket
+        ? `Generated ${bracketMatches.length} opening bracket matchup${bracketMatches.length === 1 ? '' : 's'} below.`
+        : `Generated ${bracketMatches.length} balanced matchup${bracketMatches.length === 1 ? '' : 's'} below.`;
+    }
+
+    function renderBracketMatches() {
+      bracketListEl.innerHTML = '';
+      if (!bracketMatches.length) return;
+      const ratingMap = getPairRatings();
+      bracketMatches.forEach((match, index) => {
+        const row = document.createElement('div');
+        row.className = 'bracket-row';
+        const label = match.matchType === 'bracket'
+          ? `Bracket ${index + 1}`
+          : `Balanced ${index + 1}`;
+        const detail = match.matchType === 'bracket'
+          ? 'opening round'
+          : 'generated matchup';
+        row.innerHTML = `
+          <strong>${escapeHtml(label)}</strong>
+          <div>
+            <div>${escapeHtml(TEAM_LABELS[match.redColor] || 'Team')}: ${escapeHtml(getTeamPairNames(match.redPairIds).join(' + '))} (${Math.round(getTeamRating(match.redPairIds, ratingMap))})</div>
+            <div>${escapeHtml(TEAM_LABELS[match.blueColor] || 'Team')}: ${escapeHtml(getTeamPairNames(match.bluePairIds).join(' + '))} (${Math.round(getTeamRating(match.bluePairIds, ratingMap))})</div>
+          </div>
+          <span class="small">${escapeHtml(detail)}</span>
+        `;
+        bracketListEl.appendChild(row);
+      });
+    }
+
+    function renderLatestGame() {
+      const latest = games.find(game => game?.isTournamentGame && game.tournamentId === TOURNAMENT_ID);
+      if (!latest) {
+        latestGameEl.textContent = 'No tournament games recorded yet.';
+        return;
+      }
+      latestGameEl.textContent = getRecordSummary(latest);
+    }
+
+    function renderAll() {
+      players = loadPlayers();
+      games = loadGames();
+      tournamentPairs = loadTournamentPairs();
+      if (selectedPairPlayerAId && !getAvailablePlayersForPicker(selectedPairPlayerAId).some(player => String(player.id) === selectedPairPlayerAId)) {
+        selectedPairPlayerAId = '';
+        pairPlayerAEl.value = '';
+      }
+      if (selectedPairPlayerBId && !getAvailablePlayersForPicker(selectedPairPlayerBId).some(player => String(player.id) === selectedPairPlayerBId)) {
+        selectedPairPlayerBId = '';
+        pairPlayerBEl.value = '';
+      }
+      renderPlayerSearchResults();
+      renderPairs();
+      renderTeamSummary();
+      renderBracketMatches();
+      renderLatestGame();
+    }
+
+    addPairButtonEl.addEventListener('click', addPair);
+    pairPlayerAEl.addEventListener('input', () => {
+      clearSelectedPairPlayer('a');
+      renderPlayerSearchResults();
+    });
+    pairPlayerBEl.addEventListener('input', () => {
+      clearSelectedPairPlayer('b');
+      renderPlayerSearchResults();
+    });
+    pairPlayerAEl.addEventListener('focus', renderPlayerSearchResults);
+    pairPlayerBEl.addEventListener('focus', renderPlayerSearchResults);
+    pairPlayerAEl.addEventListener('blur', () => setTimeout(() => pairPlayerAResultsEl.classList.add('hidden'), 120));
+    pairPlayerBEl.addEventListener('blur', () => setTimeout(() => pairPlayerBResultsEl.classList.add('hidden'), 120));
+    assignMatchButtonEl.addEventListener('click', assignBalancedMatch);
+    generateBracketButtonEl.addEventListener('click', generateBracket);
+    confirmGameButtonEl.addEventListener('click', savePendingGame);
+    cancelConfirmGameButtonEl.addEventListener('click', closeConfirmGameDialog);
+    cancelLoserTeamButtonEl.addEventListener('click', () => loserTeamDialog.close());
+    debugRandomPairsButtonEl.addEventListener('click', () => {
+      if (!confirmReplaceGeneratedTeams('Generate debug pairs')) return;
+      debugCreateRandomPairs();
+      pairPlayerAEl.value = '';
+      pairPlayerBEl.value = '';
+      selectedPairPlayerAId = '';
+      selectedPairPlayerBId = '';
+      setStatus(pairStatusEl, `Generated ${tournamentPairs.length} debug pair${tournamentPairs.length === 1 ? '' : 's'} with random ratings from 1000 to 2000.`);
+      renderAll();
+    });
+
+    restorePageState();
+    renderAll();
+    console.log('[vball] tournament.html version:', VERSION);
+  </script>
+</body>
+</html>

@@ -1,7 +1,8 @@
-const CACHE_VERSION = 'vball-static-v4-stats-default';
+const CACHE_VERSION = 'vball-static-v5-tournament';
 const APP_SHELL = [
   './',
   './index.html',
+  './tournament.html',
   './stats.html',
   './trend.html',
   './ranking.html',

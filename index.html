@@ -1103,6 +1103,10 @@
 
       <div id="latestGame" class="status">No games recorded yet.</div>
     </div>
+
+    <div class="small page-footer-link">
+      <a href="tournament.html">Tournament page</a>
+    </div>
   </div>
 
   <dialog id="loserTeamDialog">
@@ -1210,6 +1214,7 @@
 
   const PLAYER_STORAGE_KEY = 'gameDayPlayers';
   const GAME_STORAGE_KEY = 'gameDayGames';
+  const TOURNAMENT_PAIR_STORAGE_KEY = 'gameDayTournamentPairs';
   const PAGE_STATE_KEY = 'gameDayMainPageState';
 
   const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
@@ -1519,6 +1524,10 @@
 
   function saveGames() {
     localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(games));
+  }
+
+  function saveTournamentPairs(pairList) {
+    localStorage.setItem(TOURNAMENT_PAIR_STORAGE_KEY, JSON.stringify(Array.isArray(pairList) ? pairList : []));
   }
 
   function loadSeasonLengthMonths() {
@@ -4383,6 +4392,17 @@
           ? game.predictedAtAssignment
           : null,
         courtType: normalizeImportedCourtType(game.courtType),
+        isTournamentGame: Boolean(game.isTournamentGame),
+        tournamentId: typeof game.tournamentId === 'string' ? game.tournamentId : undefined,
+        tournamentMatchType: ['standard', 'bracket'].includes(game.tournamentMatchType)
+          ? game.tournamentMatchType
+          : undefined,
+        tournamentPairs: game.tournamentPairs && typeof game.tournamentPairs === 'object'
+          ? {
+              red: Array.isArray(game.tournamentPairs.red) ? game.tournamentPairs.red.map(String) : [],
+              blue: Array.isArray(game.tournamentPairs.blue) ? game.tournamentPairs.blue.map(String) : []
+            }
+          : undefined,
         displayWinnerColor: TEAM_COLORS.includes(game.displayWinnerColor) ? game.displayWinnerColor : undefined,
         displayLoserColor: TEAM_COLORS.includes(game.displayLoserColor) ? game.displayLoserColor : undefined,
         leagueOpponent: game.isLeagueGame
@@ -4400,10 +4420,37 @@
         if (typeof game.assignmentId === 'undefined') delete game.assignmentId;
         if (typeof game.assignmentSource === 'undefined') delete game.assignmentSource;
         if (typeof game.assignmentVersion === 'undefined') delete game.assignmentVersion;
+        if (typeof game.tournamentId === 'undefined') delete game.tournamentId;
+        if (typeof game.tournamentMatchType === 'undefined') delete game.tournamentMatchType;
+        if (typeof game.tournamentPairs === 'undefined') delete game.tournamentPairs;
         if (typeof game.displayWinnerColor === 'undefined') delete game.displayWinnerColor;
         if (typeof game.displayLoserColor === 'undefined') delete game.displayLoserColor;
         return game;
       });
+  }
+
+  function normalizeImportedTournamentPairs(pairList) {
+    const seenPlayers = new Set();
+    return (Array.isArray(pairList) ? pairList : [])
+      .filter(pair => pair && typeof pair === 'object')
+      .map((pair, index) => {
+        const playerIds = Array.isArray(pair.playerIds)
+          ? pair.playerIds.map(String).filter(Boolean)
+          : [];
+        if (playerIds.length !== 2) return null;
+        if (playerIds[0] === playerIds[1]) return null;
+        if (seenPlayers.has(playerIds[0]) || seenPlayers.has(playerIds[1])) return null;
+        seenPlayers.add(playerIds[0]);
+        seenPlayers.add(playerIds[1]);
+        return {
+          id: String(pair.id || `pair_${Date.now()}_${index}`),
+          playerIds,
+          name: typeof pair.name === 'string' ? pair.name.trim() : '',
+          active: pair.active !== false,
+          createdAt: Number.isFinite(Number(pair.createdAt)) ? Number(pair.createdAt) : Date.now() + index
+        };
+      })
+      .filter(Boolean);
   }
 
   function getLatestGameDate(gamesList) {
@@ -4578,10 +4625,12 @@
     const normalizedGames = normalizeImportedGames(
       Array.isArray(parsed.games) ? parsed.games : []
     );
+    const normalizedTournamentPairs = normalizeImportedTournamentPairs(parsed.tournamentPairs);
 
     return {
       players: normalizedPlayers,
       games: normalizedGames,
+      tournamentPairs: normalizedTournamentPairs,
       latestGameDate: getLatestGameDate(normalizedGames),
       seasonStartDate: isValidSeasonStartDate(parsed.seasonStartDate)
         ? parsed.seasonStartDate
@@ -4725,6 +4774,7 @@
 
     localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(meta.players));
     localStorage.setItem(GAME_STORAGE_KEY, JSON.stringify(meta.games));
+    saveTournamentPairs(meta.tournamentPairs);
     if (isValidSeasonStartDate(meta.seasonStartDate)) {
       localStorage.setItem(SEASON_START_DATE_STORAGE_KEY, meta.seasonStartDate);
     }

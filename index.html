@@ -1224,12 +1224,21 @@
   ].filter((endpoint, index, endpoints) => endpoints.indexOf(endpoint) === index);
   const DEFAULT_BALANCE_ATTEMPTS = 100;
 
-  // Provisional-player balancing: players with fewer than this many career games
-  // carry wider outcome uncertainty. The penalty weight (in fairness units per
-  // player of imbalance) was chosen from a counterfactual harness that showed
-  // w=0.03 cuts provisional imbalance ~45% at a cost of <0.01 predicted pts/game.
+  // Provisional-player balancing: new/uncertain/low-rated players carry wider
+  // outcome uncertainty. The exposure penalty makes that cost matter most on
+  // 3-person teams and essentially not at all on 4+ teams.
   const PROV_THRESHOLD = 5;
-  const PROV_PENALTY   = 0.03;
+  const PROV_SMALL_TEAM_PENALTY = 0.3;
+  const PROV_THREE_PLAYER_EXPOSURE = 1.35;
+  const PROV_FOUR_PLAYER_EXPOSURE = 0;
+  const PROV_FIVE_PLUS_PLAYER_EXPOSURE = 0;
+  const PROV_LOW_GAMES_WEIGHT = 1;
+  const PROV_UNCERTAINTY_WEIGHT = 0.4;
+  const PROV_LOW_RATING_WEIGHT = 0.4;
+  const PROV_DEBUT_WEIGHT = 0.8;
+  const PROV_LOW_RATING_RAW_THRESHOLD = -2;
+  const PROV_UNCERTAINTY_SIGMA_FLOOR = 5;
+  const PROV_INITIAL_SIGMA = 25 / 3;
   const SAME_SIZE_MATCHUP_FAIRNESS_TOLERANCE = 0.04;
   const SAME_SIZE_MATCHUP_SCORE_BONUS = 30;
 
@@ -2856,6 +2865,58 @@
     return worstRisk;
   }
 
+  function getProvisionalExposureForTeamSize(teamSize) {
+    if (teamSize <= 3) return PROV_THREE_PLAYER_EXPOSURE;
+    if (teamSize === 4) return PROV_FOUR_PLAYER_EXPOSURE;
+    return PROV_FIVE_PLUS_PLAYER_EXPOSURE;
+  }
+
+  function getRawOrdinalFromSkill(skill) {
+    if (!skill) return 0;
+    const mu = Number(skill.mu);
+    const sigma = Number(skill.sigma);
+    if (!Number.isFinite(mu) || !Number.isFinite(sigma)) return 0;
+    return mu - 3 * sigma;
+  }
+
+  function getPlayerProvisionalRisk(player, ratingMap, statsMap = {}) {
+    const id = String(player?.id ?? '');
+    const gamesPlayed = Math.max(0, Number(statsMap[id]?.games) || 0);
+    const skill = ratingMap?.[id] || null;
+    const sigma = Number(skill?.sigma ?? PROV_INITIAL_SIGMA);
+    const rawOrdinal = getRawOrdinalFromSkill(skill);
+    const lowGamesRisk = Math.max(0, (PROV_THRESHOLD - gamesPlayed) / PROV_THRESHOLD);
+    const uncertaintyRisk = Math.max(
+      0,
+      Math.min(1, (sigma - PROV_UNCERTAINTY_SIGMA_FLOOR) / (PROV_INITIAL_SIGMA - PROV_UNCERTAINTY_SIGMA_FLOOR))
+    );
+    const lowRatingRisk = Math.max(
+      0,
+      Math.min(1, (PROV_LOW_RATING_RAW_THRESHOLD - rawOrdinal) / 5)
+    );
+    const debutRisk = gamesPlayed === 0 ? 1 : 0;
+
+    return (
+      PROV_LOW_GAMES_WEIGHT * lowGamesRisk +
+      PROV_UNCERTAINTY_WEIGHT * uncertaintyRisk +
+      PROV_LOW_RATING_WEIGHT * lowRatingRisk +
+      PROV_DEBUT_WEIGHT * debutRisk
+    );
+  }
+
+  function getProvisionalSmallTeamExposure(teamsByColor, colors, ratingMap, statsMap = {}) {
+    return colors.reduce((total, color) => {
+      const team = teamsByColor[color] || [];
+      const exposure = getProvisionalExposureForTeamSize(team.length);
+      if (exposure <= 0) return total;
+
+      return total + team.reduce(
+        (sum, player) => sum + getPlayerProvisionalRisk(player, ratingMap, statsMap) * exposure,
+        0
+      );
+    }, 0);
+  }
+
   function buildMultiTeamCandidate(presentPlayers, colors, ratingMap, carryMap = {}, statsMap = {}, pairAdjustmentMap = null) {
     const units = buildPlayerUnits(presentPlayers);
     const targetSizes = getTeamTargetSizes(presentPlayers.length, colors);
@@ -2890,10 +2951,12 @@
     const averagePairwiseFairness = getAveragePairMetricFairness(pairMetrics);
     const scheduledMatchups = getPreferredScheduledMatchups(teamsByColor, colors, strengthsByColor, ratingMap, carryMap, pairAdjustmentMap, pairMetrics);
 
-    const provCounts = colors.map(color =>
-      teamsByColor[color].filter(p => (statsMap[String(p.id)]?.games ?? 0) < PROV_THRESHOLD).length
+    const provisionalSmallTeamExposure = getProvisionalSmallTeamExposure(
+      teamsByColor,
+      colors,
+      ratingMap,
+      statsMap
     );
-    const provisionalImbalance = Math.max(...provCounts) - Math.min(...provCounts);
 
     return {
       teamsByColor,
@@ -2908,7 +2971,7 @@
       scheduledMaxStrengthDiff: scheduledMatchups.maxStrengthDiff,
       scheduledSameSizePairs: scheduledMatchups.sameSizePairs,
       scheduledTotalPairs: scheduledMatchups.totalPairs,
-      provisionalImbalance,
+      provisionalSmallTeamExposure,
       maxStrength,
       minStrength
     };
@@ -2922,7 +2985,7 @@
       ((c.scheduledSameSizePairs ?? 0) / Math.max(1, c.scheduledTotalPairs ?? 1)) * SAME_SIZE_MATCHUP_SCORE_BONUS +
       c.averagePairwiseFairness * 10 -
       (c.scheduledMaxStrengthDiff ?? 0) -
-      PROV_PENALTY * (c.provisionalImbalance ?? 0);
+      PROV_SMALL_TEAM_PENALTY * (c.provisionalSmallTeamExposure ?? 0);
     return score(candidate) > score(bestCandidate);
   }
 

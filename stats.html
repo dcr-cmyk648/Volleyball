@@ -1873,7 +1873,6 @@
     const SEASON_MOVER_INACTIVITY_FULL_PENALTY_DAYS = 28;
     const SEASON_MOVER_INACTIVITY_MIN_FACTOR = 0.55;
     const SEASON_MOVER_MISSING_GAME_PENALTY_POINTS = 1;
-    const OVERALL_STANDINGS_MIN_GAMES = 5;
     const OVERALL_SCOREBOARD_MODES = {
       composite: {
         label: 'All Games',
@@ -2560,6 +2559,26 @@
       return (missingGames * SCOREBOARD_MISSING_GAME_PENALTY_POINTS) / getDisplayPointsPerRawOrdinal();
     }
 
+    function getSeasonScoreboardGameCountPenaltyPoints(games, scoreboardMaxGames, baseDisplayRating) {
+      const from = Math.max(0, Number(games) || 0);
+      const to = Math.max(from, Number(scoreboardMaxGames) || 0);
+      const underTenGames = Math.max(0, Math.min(to, 10) - Math.min(from, 10));
+      const underFiftyGames = Math.max(0, Math.min(to, 50) - Math.max(from, 10));
+      const behindLeaderGames = Number(baseDisplayRating) >= 1500
+        ? Math.max(0, to - Math.max(from, 50))
+        : 0;
+
+      return underTenGames * 10 + underFiftyGames * 5 + behindLeaderGames * 2;
+    }
+
+    function getSeasonScoreboardGameCountPenaltyRaw(games, scoreboardMaxGames, baseDisplayRating) {
+      return getSeasonScoreboardGameCountPenaltyPoints(
+        games,
+        scoreboardMaxGames,
+        baseDisplayRating
+      ) / getDisplayPointsPerRawOrdinal();
+    }
+
     function clamp(value, min, max) {
       return Math.max(min, Math.min(max, value));
     }
@@ -2717,7 +2736,11 @@
       const games = Math.max(0, Number(player.games) || 0);
       const base = getOverallStandingsRawOrdinal(rawOrdinal, games);
       if (!Number.isFinite(Number(scoreboardMaxGames))) return base;
-      return base - getScoreboardMissingGamePenaltyRaw(scoreboardMaxGames, games);
+      return base - getSeasonScoreboardGameCountPenaltyRaw(
+        games,
+        scoreboardMaxGames,
+        toDisplayRating(base)
+      );
     }
 
     function isOverallStandingsEligible(
@@ -2730,7 +2753,7 @@
       }
 
       const id = String(player?.id ?? '');
-      return Number(player?.games) >= OVERALL_STANDINGS_MIN_GAMES &&
+      return Number(player?.games) > 0 &&
         Boolean(recencyMap?.has(id));
     }
 
@@ -6035,7 +6058,7 @@
       );
       const eligibilityText = isOverallStandingsEligible(player, getOverallScoreboardMode(), recencyMap)
         ? `Shown in ${getOverallScoreboardModeLabel()} standings.`
-        : `Needs ${OVERALL_STANDINGS_MIN_GAMES} games in this scoreboard and one qualifying game in the last month to appear in standings.`;
+        : 'Needs at least one qualifying game in the current one-month window to appear in standings.';
 
       div.innerHTML = `
         <div class="season-mover-header">
@@ -6424,7 +6447,7 @@
         const tr = document.createElement('tr');
         const td = document.createElement('td');
         td.colSpan = 5;
-        td.innerHTML = `<div class="empty-state">No players have at least ${OVERALL_STANDINGS_MIN_GAMES} games and a qualifying game in the last month in ${escapeHtml(getOverallScoreboardModeLabel(mode))} standings.</div>`;
+        td.innerHTML = `<div class="empty-state">No players have a qualifying game in the current one-month ${escapeHtml(getOverallScoreboardModeLabel(mode))} standings window.</div>`;
         tr.appendChild(td);
         statsTableBody.appendChild(tr);
         saveSeasonRankingRenderCache(renderSignature);

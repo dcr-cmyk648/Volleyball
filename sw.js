@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v8-season-movers-baseline';
+const CACHE_VERSION = 'vball-static-v9-season-movers-baseline';
 const APP_SHELL = [
   './',
   './index.html',

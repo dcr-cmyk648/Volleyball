@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v5-tournament';
+const CACHE_VERSION = 'vball-static-v7-burnin';
 const APP_SHELL = [
   './',
   './index.html',

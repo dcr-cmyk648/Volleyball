@@ -203,8 +203,8 @@ export const DEFAULT_RATING_OPTIONS = {
   // Burn-in: first N games for a player count more, so they reach their true level faster.
   // The update delta (both mu and sigma movement) is scaled up by burnInMultiplier for games
   // where the player has fewer than burnInGames games of history.
-  burnInGames: 3,
-  burnInMultiplier: 1.5,
+  burnInGames: 5,
+  burnInMultiplier: 2,
 
   // Two-pass calibration: players with ≤ calibrationGames total games in the dataset
   // get their pass-1 final rating used as the starting point for a second replay pass.
@@ -274,7 +274,7 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260618-3';
+export const VERSION = 'beta-20260629-1';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Flatter team-strength weights. Forward validation favored restoring

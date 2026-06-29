@@ -378,6 +378,26 @@
     </div>
   </dialog>
 
+  <dialog id="deletePairDialog">
+    <div class="dialog-content">
+      <h2>Delete Pair</h2>
+      <div class="small" id="deletePairText">Type delete to remove this pair.</div>
+      <div class="field" style="margin-top: 12px;">
+        <label for="deletePairInput">Confirmation</label>
+        <input
+          type="text"
+          id="deletePairInput"
+          placeholder="Type delete"
+          autocomplete="off"
+        />
+      </div>
+      <div class="dialog-actions">
+        <button id="confirmDeletePairButton" class="danger" type="button">Delete Pair</button>
+        <button id="cancelDeletePairButton" class="secondary" type="button">Cancel</button>
+      </div>
+    </div>
+  </dialog>
+
   <script type="module">
     import { VERSION } from './ratings.js';
 
@@ -427,6 +447,11 @@
     const loserTeamTextEl = document.getElementById('loserTeamText');
     const loserTeamOptionsEl = document.getElementById('loserTeamOptions');
     const cancelLoserTeamButtonEl = document.getElementById('cancelLoserTeamButton');
+    const deletePairDialog = document.getElementById('deletePairDialog');
+    const deletePairInput = document.getElementById('deletePairInput');
+    const deletePairText = document.getElementById('deletePairText');
+    const confirmDeletePairButtonEl = document.getElementById('confirmDeletePairButton');
+    const cancelDeletePairButtonEl = document.getElementById('cancelDeletePairButton');
     const debugRandomPairsButtonEl = document.getElementById('debugRandomPairsButton');
 
     let players = loadPlayers();
@@ -436,6 +461,8 @@
     let bracketMatches = [];
     let currentAssignmentId = '';
     let pendingRecord = null;
+    let pendingDeletePairId = '';
+    let pendingDeletePairName = '';
     let selectedPairPlayerAId = '';
     let selectedPairPlayerBId = '';
 
@@ -728,6 +755,50 @@
       }
       pair.active = true;
       saveTournamentPairs();
+      renderAll();
+    }
+
+    function openDeletePairDialog(pairId) {
+      const pair = tournamentPairs.find(item => String(item.id) === String(pairId));
+      if (!pair) return;
+      pendingDeletePairId = String(pair.id);
+      pendingDeletePairName = getPairName(pair);
+      deletePairInput.value = '';
+      deletePairText.textContent = `Type delete to remove ${pendingDeletePairName}.`;
+      deletePairDialog.showModal();
+      setTimeout(() => deletePairInput.focus(), 0);
+    }
+
+    function closeDeletePairDialog() {
+      pendingDeletePairId = '';
+      pendingDeletePairName = '';
+      deletePairInput.value = '';
+      deletePairDialog.close();
+    }
+
+    function clearGeneratedTeamsIfPairWasScheduled(pairId) {
+      const scheduled = generatedTeams.some(team =>
+        (team.pairIds || []).map(String).includes(String(pairId))
+      );
+      if (!scheduled) return;
+      generatedTeams = [];
+      bracketMatches = [];
+      currentAssignmentId = '';
+    }
+
+    function confirmDeletePair() {
+      if (deletePairInput.value !== 'delete') {
+        setStatus(pairStatusEl, 'Delete cancelled. You must type delete exactly.');
+        return;
+      }
+
+      const pairId = pendingDeletePairId;
+      tournamentPairs = tournamentPairs.filter(pair => String(pair.id) !== String(pairId));
+      clearGeneratedTeamsIfPairWasScheduled(pairId);
+      saveTournamentPairs();
+      savePageState();
+      setStatus(pairStatusEl, `Deleted pair: ${pendingDeletePairName}`);
+      closeDeletePairDialog();
       renderAll();
     }
 
@@ -1277,15 +1348,27 @@
           <div class="pair-meta">Rating ${Math.round(stat.rating)} | ${stat.games} game${stat.games === 1 ? '' : 's'} | ${stat.wins} win${stat.wins === 1 ? '' : 's'}</div>
         `;
 
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = pair.active === false ? 'success' : 'danger';
-        button.textContent = pair.active === false ? 'Activate' : 'Deactivate';
-        button.addEventListener('click', () => pair.active === false ? reactivatePair(pair.id) : deactivatePair(pair.id));
+        const actions = document.createElement('div');
+        actions.className = 'controls';
+
+        const activeButton = document.createElement('button');
+        activeButton.type = 'button';
+        activeButton.className = pair.active === false ? 'success' : 'secondary';
+        activeButton.textContent = pair.active === false ? 'Activate' : 'Deactivate';
+        activeButton.addEventListener('click', () => pair.active === false ? reactivatePair(pair.id) : deactivatePair(pair.id));
+
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'danger';
+        deleteButton.textContent = 'Delete';
+        deleteButton.addEventListener('click', () => openDeletePairDialog(pair.id));
+
+        actions.appendChild(activeButton);
+        actions.appendChild(deleteButton);
 
         row.appendChild(checkbox);
         row.appendChild(middle);
-        row.appendChild(button);
+        row.appendChild(actions);
         pairListEl.appendChild(row);
       });
     }
@@ -1400,6 +1483,8 @@
     confirmGameButtonEl.addEventListener('click', savePendingGame);
     cancelConfirmGameButtonEl.addEventListener('click', closeConfirmGameDialog);
     cancelLoserTeamButtonEl.addEventListener('click', () => loserTeamDialog.close());
+    confirmDeletePairButtonEl.addEventListener('click', confirmDeletePair);
+    cancelDeletePairButtonEl.addEventListener('click', closeDeletePairDialog);
     debugRandomPairsButtonEl.addEventListener('click', () => {
       if (!confirmReplaceGeneratedTeams('Generate debug pairs')) return;
       debugCreateRandomPairs();

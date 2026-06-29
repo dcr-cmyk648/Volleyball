@@ -1855,7 +1855,7 @@
 
     const LEADERBOARD_LOW_SIGMA = 6.4;
     const LEADERBOARD_HIGH_SIGMA = 8.4;
-    const SEASON_MOVER_BASELINE_GAMES = 6;
+    const SEASON_MOVER_BASELINE_GAMES = 8;
     const SEASON_MOVER_POST_BASELINE_CONFIDENCE_GAMES = 8;
     const SEASON_MOVER_VOLUME_CONFIDENCE_MIN = 0.82;
     const SEASON_MOVER_RATING_DIFFICULTY_MAX_BONUS = 0.25;
@@ -3749,13 +3749,13 @@
 
       if (!rows.length) {
         seasonMoversSummaryEl.textContent =
-          `No positive season movers found since ${seasonStartDate}. Improvement Score uses league and non-league model gain since the later of season start or each player's first 6-game baseline, then adjusts for season-game volume, maintained gains after the peak, recent activity, sustained gains, higher-rating difficulty, and a 1-point penalty per missing capped game behind the board leader.`;
+          `No positive season movers found since ${seasonStartDate}. Improvement Score uses league and non-league model gain since the later of season start or each player's first 8-game baseline, then adjusts for season-game volume, maintained gains after the peak, recent activity, sustained gains, higher-rating difficulty, and a 1-point penalty per missing capped game behind the board leader.`;
         saveSeasonMoversRenderCache(renderSignature);
         return;
       }
 
       seasonMoversSummaryEl.textContent =
-        `${rows.length} positive season mover${rows.length === 1 ? '' : 's'} since ${seasonStartDate}. Improvement Score uses league and non-league model gain since the later of season start or each player's first 6-game baseline, then adjusts for season-game volume, maintained gains after the peak, recent activity, sustained gains, higher-rating difficulty, and a 1-point penalty per missing capped game behind the board leader.`;
+        `${rows.length} positive season mover${rows.length === 1 ? '' : 's'} since ${seasonStartDate}. Improvement Score uses league and non-league model gain since the later of season start or each player's first 8-game baseline, then adjusts for season-game volume, maintained gains after the peak, recent activity, sustained gains, higher-rating difficulty, and a 1-point penalty per missing capped game behind the board leader.`;
 
       renderSeasonMoverTable(seasonMoversListEl, rows, { rankMap, trendMaps });
       saveSeasonMoversRenderCache(renderSignature);

@@ -274,7 +274,7 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260629-1';
+export const VERSION = 'beta-20260629-2';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Flatter team-strength weights. Forward validation favored restoring

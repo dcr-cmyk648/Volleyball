@@ -8,6 +8,24 @@ if (process.env.VBALL_BROWSER_SMOKE !== '1') {
 const baseUrl = process.argv[2] || 'http://127.0.0.1:5176';
 const cdpUrl = process.argv[3] || 'http://127.0.0.1:9223';
 const db = JSON.parse(fs.readFileSync('test/fixtures/bayesian-2026-06-20.json', 'utf8'));
+const isValidDateString = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+const getGameDateValue = game => typeof game?.date === 'string' ? game.date : '';
+const getLatestGameDate = games => [...games]
+  .map(getGameDateValue)
+  .filter(Boolean)
+  .sort()
+  .at(-1) || '';
+const getSeasonRankingWindowCutoffDate = games => {
+  const latestGameDate = getLatestGameDate(Array.isArray(games) ? games : []);
+  const anchor = isValidDateString(latestGameDate) ? latestGameDate : new Date().toISOString().slice(0, 10);
+  const date = new Date(`${anchor}T00:00:00`);
+  date.setMonth(date.getMonth() - 1);
+  return date.toISOString().slice(0, 10);
+};
+const seasonRankingWindowGames = db.games.filter(game => {
+  const date = getGameDateValue(game);
+  return isValidDateString(date) && date >= getSeasonRankingWindowCutoffDate(db.games);
+});
 const snapshotKey = 'gameDayBayesianScoreboardSnapshotV1:composite';
 const bigTeamSnapshotKey = 'gameDayBayesianScoreboardSnapshotV1:bigTeam';
 const smallTeamSnapshotKey = 'gameDayBayesianScoreboardSnapshotV1:smallTeam';
@@ -134,8 +152,8 @@ const historyLoaded = await evaluate(client, `
   })
 `, true);
 
-if (historyLoaded.cards !== db.games.length) {
-  throw new Error(`Game History did not render all games: ${JSON.stringify(historyLoaded)}`);
+if (historyLoaded.cards !== seasonRankingWindowGames.length) {
+  throw new Error(`Game History did not render the Season Ranking window: ${JSON.stringify(historyLoaded)}`);
 }
 
 const firstSeasonRankingRow = await evaluate(client, `(() => {

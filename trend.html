@@ -1212,7 +1212,7 @@
     function isAnyTeamSizeGame(game, sizeMatcher) {
       if (!game) return false;
       return sizeMatcher(getScoreboardTeamSize(game, 'red')) ||
-        (!game.isLeagueGame && sizeMatcher(getScoreboardTeamSize(game, 'blue')));
+        sizeMatcher(getScoreboardTeamSize(game, 'blue'));
     }
 
     function getTrendScoreboardGames(games = loadGames(), mode = getTrendScoreboardMode()) {
@@ -1351,6 +1351,11 @@
       return rows.reduce((max, player) => Math.max(max, Number(player.games) || 0), 0);
     }
 
+    function getTrendEligibleRowsForScoreboard(replay, games, mode, range = activeChartRange) {
+      return (replay?.standings || [])
+        .filter(player => isTrendStandingsEligible(player, mode, games, range));
+    }
+
     function getTrendRankedRowsForMode({
       players,
       games,
@@ -1374,8 +1379,7 @@
         volleyballUpdateContextMode,
         includeLeagueGames
       }), scoreboardGames, mode);
-      const eligibleRows = (replay.standings || [])
-        .filter(player => isTrendStandingsEligible(player, mode, scoreboardGames, range));
+      const eligibleRows = getTrendEligibleRowsForScoreboard(replay, scoreboardGames, mode, range);
       const scoreboardMaxGames = getTrendScoreboardMaxGamesForRows(eligibleRows);
 
       return eligibleRows
@@ -1414,11 +1418,9 @@
       });
     }
 
-    function getTrendScoreboardMaxGames(standings = []) {
-      return (standings || []).reduce(
-        (max, player) => Math.max(max, Number(player.games) || 0),
-        0
-      );
+    function getTrendScoreboardMaxGames(replay, games, mode = getTrendScoreboardMode(), range = activeChartRange) {
+      const eligibleRows = getTrendEligibleRowsForScoreboard(replay, games, mode, range);
+      return getTrendScoreboardMaxGamesForRows(eligibleRows);
     }
 
     function getLeagueContextName(row) {
@@ -1646,7 +1648,9 @@
         standingsEntry: replay.standings.find(row => String(row.id) === String(playerId)) || null,
         calibratedStartMap: replay.calibratedStartMap || {},
         scoreboardGames,
-        scoreboardMaxGames: getTrendScoreboardMaxGames(replay.standings),
+        scoreboardMaxGames: rollingWindow
+          ? getTrendScoreboardMaxGames(replay, scoreboardGames, mode, 'month')
+          : null,
       };
     }
 

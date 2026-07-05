@@ -12,6 +12,7 @@ import {
   predictExpectedMargin,
   scoreVolleyballCandidateSplit,
   getGamesSortedOldestFirst,
+  DEFAULT_RATING_OPTIONS,
 } from '../ratings.js';
 
 const { players, games, sourceLabel } = await loadDatabase();
@@ -21,9 +22,9 @@ const printLimit = Math.max(1, Number(process.env.RATING_BACKFIT_PRINT_LIMIT) ||
 
 const ratingLeagueBase = {
   leagueSeriesAggregationEnabled: true,
-  leagueUpdateMultiplier: 1.5,
-  leagueMuUpdateMultiplier: 1,
-  leagueSigmaUpdateMultiplier: 0.8,
+  leagueUpdateMultiplier: DEFAULT_RATING_OPTIONS.leagueUpdateMultiplier,
+  leagueMuUpdateMultiplier: DEFAULT_RATING_OPTIONS.leagueMuUpdateMultiplier,
+  leagueSigmaUpdateMultiplier: DEFAULT_RATING_OPTIONS.leagueSigmaUpdateMultiplier,
 };
 
 function parseListEnv(name, fallback) {

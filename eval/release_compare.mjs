@@ -442,8 +442,6 @@ const currentVariants = [
   { label: 'current exclude league', includeLeagueGames: false },
   { label: 'prior sharp weights', volleyballOptions: PRIOR_SHARP_WEIGHTS },
   { label: 'context off', updateContext: false },
-  { label: 'league x0.80', ratingOptions: { leagueUpdateMultiplier: 0.8 } },
-  { label: 'league x0.25', ratingOptions: { leagueUpdateMultiplier: 0.25 } },
   { label: 'league level split', ratingOptions: { leagueTeamRatingMode: 'level' } },
   {
     label: 'level opp x4 burn3x2',
@@ -473,23 +471,23 @@ const currentVariants = [
     },
   },
   {
-    label: 'BalanceIQ carry-only: carry18 conf6',
-    volleyballOptions: { carryScale: 18, carryConfidenceGames: 6 },
+    label: 'carry-only: carry24 conf6',
+    volleyballOptions: { carryScale: 24, carryConfidenceGames: 6 },
   },
   {
-    label: 'BalanceIQ top: league x2.25 carry18 conf6',
+    label: 'league x2.25 carry24 conf6',
     ratingOptions: { leagueUpdateMultiplier: 2.25 },
-    volleyballOptions: { carryScale: 18, carryConfidenceGames: 6 },
+    volleyballOptions: { carryScale: 24, carryConfidenceGames: 6 },
   },
   {
-    label: 'BalanceIQ near: league x2.125 carry16 conf6',
+    label: 'league x2.125 carry20 conf4',
     ratingOptions: { leagueUpdateMultiplier: 2.125 },
-    volleyballOptions: { carryScale: 16, carryConfidenceGames: 6 },
+    volleyballOptions: { carryScale: 20, carryConfidenceGames: 4 },
   },
   {
-    label: 'BalanceIQ simple: league x2 carry16 conf8',
+    label: 'league x2 carry20 conf4',
     ratingOptions: { leagueUpdateMultiplier: 2.0 },
-    volleyballOptions: { carryScale: 16, carryConfidenceGames: 8 },
+    volleyballOptions: { carryScale: 20, carryConfidenceGames: 4 },
   },
 ];
 

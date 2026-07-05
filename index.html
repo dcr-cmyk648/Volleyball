@@ -1234,6 +1234,7 @@
   // 3-person teams and essentially not at all on 4+ teams.
   const PROV_THRESHOLD = 5;
   const PROV_SMALL_TEAM_PENALTY = 0.3;
+  const PROV_IMBALANCE_PENALTY = 10;
   const PROV_THREE_PLAYER_EXPOSURE = 1.35;
   const PROV_FOUR_PLAYER_EXPOSURE = 0;
   const PROV_FIVE_PLUS_PLAYER_EXPOSURE = 0;
@@ -2211,10 +2212,41 @@
     });
   }
 
+  function getPlayerRecencyMap(gameList = games) {
+    const recency = new Map();
+
+    (Array.isArray(gameList) ? gameList : []).forEach((game, index) => {
+      const date = typeof game?.date === 'string' ? game.date : '';
+      const sortValue = date ? `${date}|${String(index).padStart(6, '0')}` : `0000-00-00|${String(index).padStart(6, '0')}`;
+
+      [...(game?.redTeam || []), ...(game?.blueTeam || [])].forEach(player => {
+        if (!player?.id) return;
+        const id = String(player.id);
+        const previous = recency.get(id) || '';
+        if (!previous || sortValue > previous) {
+          recency.set(id, sortValue);
+        }
+      });
+    });
+
+    return recency;
+  }
+
+  function sortPlayersByRecency(playerList) {
+    const recency = getPlayerRecencyMap(games);
+
+    return [...playerList].sort((a, b) => {
+      const aRecency = recency.get(String(a.id)) || '';
+      const bRecency = recency.get(String(b.id)) || '';
+
+      if (bRecency !== aRecency) return bRecency.localeCompare(aRecency);
+      return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+    });
+  }
+
   function getVisiblePlayers() {
     const normalizedQuery = playerSearchQuery.trim().toLowerCase();
-
-    return players.filter(player => {
+    const visiblePlayers = players.filter(player => {
       const state = getPlayerState(player.id);
 
       if (!normalizedQuery && hideUnselectedPlayers && !state.present) {
@@ -2227,6 +2259,12 @@
 
       return true;
     });
+
+    if (!normalizedQuery && !hideUnselectedPlayers) {
+      return sortPlayersByRecency(visiblePlayers);
+    }
+
+    return visiblePlayers;
   }
 
   function updateAddPlayerSearchAction(visiblePlayers) {
@@ -2926,6 +2964,20 @@
     }, 0);
   }
 
+  function getProvisionalTeamRisk(team, ratingMap, statsMap = {}) {
+    return (team || []).reduce(
+      (sum, player) => sum + getPlayerProvisionalRisk(player, ratingMap, statsMap),
+      0
+    );
+  }
+
+  function getProvisionalRiskImbalance(teamsByColor, colors, ratingMap, statsMap = {}) {
+    const risks = colors.map(color =>
+      getProvisionalTeamRisk(teamsByColor[color] || [], ratingMap, statsMap)
+    );
+    return getAveragePairwiseDifference(risks);
+  }
+
   function buildMultiTeamCandidate(presentPlayers, colors, ratingMap, carryMap = {}, statsMap = {}, pairAdjustmentMap = null) {
     const units = buildPlayerUnits(presentPlayers);
     const targetSizes = getTeamTargetSizes(presentPlayers.length, colors);
@@ -2966,6 +3018,12 @@
       ratingMap,
       statsMap
     );
+    const provisionalRiskImbalance = getProvisionalRiskImbalance(
+      teamsByColor,
+      colors,
+      ratingMap,
+      statsMap
+    );
 
     return {
       teamsByColor,
@@ -2981,6 +3039,7 @@
       scheduledSameSizePairs: scheduledMatchups.sameSizePairs,
       scheduledTotalPairs: scheduledMatchups.totalPairs,
       provisionalSmallTeamExposure,
+      provisionalRiskImbalance,
       maxStrength,
       minStrength
     };
@@ -2994,7 +3053,8 @@
       ((c.scheduledSameSizePairs ?? 0) / Math.max(1, c.scheduledTotalPairs ?? 1)) * SAME_SIZE_MATCHUP_SCORE_BONUS +
       c.averagePairwiseFairness * 10 -
       (c.scheduledMaxStrengthDiff ?? 0) -
-      PROV_SMALL_TEAM_PENALTY * (c.provisionalSmallTeamExposure ?? 0);
+      PROV_SMALL_TEAM_PENALTY * (c.provisionalSmallTeamExposure ?? 0) -
+      PROV_IMBALANCE_PENALTY * (c.provisionalRiskImbalance ?? 0);
     return score(candidate) > score(bestCandidate);
   }
 

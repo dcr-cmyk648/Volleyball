@@ -23,9 +23,9 @@ const printLimit = Math.max(1, Number(process.env.SEASON_RANKING_PRINT_LIMIT) ||
 
 const baseSeasonRankingOptions = {
   seasonalTaperDays,
-  leagueUpdateMultiplier: 1.5,
-  leagueMuUpdateMultiplier: 1,
-  leagueSigmaUpdateMultiplier: 0.8,
+  leagueUpdateMultiplier: DEFAULT_RATING_OPTIONS.leagueUpdateMultiplier,
+  leagueMuUpdateMultiplier: DEFAULT_RATING_OPTIONS.leagueMuUpdateMultiplier,
+  leagueSigmaUpdateMultiplier: DEFAULT_RATING_OPTIONS.leagueSigmaUpdateMultiplier,
 };
 
 function parseListEnv(name, fallback) {
@@ -191,9 +191,9 @@ addOneAtATime('streakProtectionThresholdRaw', parseListEnv('SWEEP_STREAK_THRESHO
 addOneAtATime('streakProtectionMinMultiplier', parseListEnv('SWEEP_STREAK_MIN_MULTS', [0.1, 0.25, 0.4, 0.6]));
 addOneAtATime('sessionProtectionEnabled', [false, true]);
 
-const leagueUpdateMultipliers = parseListEnv('SWEEP_LEAGUE_UPDATES', [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5]);
-const leagueMuMultipliers = parseListEnv('SWEEP_LEAGUE_MU', [0, 0.5, 0.8, 1, 1.25]);
-const leagueSigmaMultipliers = parseListEnv('SWEEP_LEAGUE_SIGMA', [0.4, 0.6, 0.8, 1, 1.2]);
+const leagueUpdateMultipliers = parseListEnv('SWEEP_LEAGUE_UPDATES', [1, 1.25, 1.5, 1.75, 2, 2.5]);
+const leagueMuMultipliers = parseListEnv('SWEEP_LEAGUE_MU', [1, 1.25]);
+const leagueSigmaMultipliers = parseListEnv('SWEEP_LEAGUE_SIGMA', [1, 1.2]);
 leagueUpdateMultipliers.forEach(leagueUpdateMultiplier => {
   addCandidate(`leagueUpdateMultiplier=${leagueUpdateMultiplier}`, { leagueUpdateMultiplier });
   leagueMuMultipliers.forEach(leagueMuUpdateMultiplier => {

@@ -17,15 +17,16 @@ import {
   predictExpectedMargin,
   replayRatings,
   scoreVolleyballCandidateSplit,
+  DEFAULT_RATING_OPTIONS,
 } from '../ratings.js';
 
 const { players, games, sourceLabel } = await loadDatabase();
 
 const seasonalTaperDays = Math.round(6 * 30.4375);
 const seasonRankingLeagueOptions = {
-  leagueUpdateMultiplier: 1.5,
-  leagueMuUpdateMultiplier: 1,
-  leagueSigmaUpdateMultiplier: 0.8,
+  leagueUpdateMultiplier: DEFAULT_RATING_OPTIONS.leagueUpdateMultiplier,
+  leagueMuUpdateMultiplier: DEFAULT_RATING_OPTIONS.leagueMuUpdateMultiplier,
+  leagueSigmaUpdateMultiplier: DEFAULT_RATING_OPTIONS.leagueSigmaUpdateMultiplier,
 };
 
 function getGameDateValue(game) {

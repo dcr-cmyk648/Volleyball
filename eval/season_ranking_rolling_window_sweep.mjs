@@ -13,6 +13,7 @@ import {
   predictExpectedMargin,
   replayRatings,
   scoreVolleyballCandidateSplit,
+  DEFAULT_RATING_OPTIONS,
 } from '../ratings.js';
 
 const { players, games, sourceLabel } = await loadDatabase();
@@ -22,9 +23,9 @@ const rollingWindowDays = Number(process.env.ROLLING_WINDOW_DAYS) || 30.4375;
 const printLimit = Math.max(1, Number(process.env.SEASON_RANKING_PRINT_LIMIT) || 15);
 const defaultSeasonalTaperDays = Math.round(6 * 30.4375);
 const fixedLeagueOptions = {
-  leagueUpdateMultiplier: 1.5,
-  leagueMuUpdateMultiplier: 1,
-  leagueSigmaUpdateMultiplier: 0.8,
+  leagueUpdateMultiplier: DEFAULT_RATING_OPTIONS.leagueUpdateMultiplier,
+  leagueMuUpdateMultiplier: DEFAULT_RATING_OPTIONS.leagueMuUpdateMultiplier,
+  leagueSigmaUpdateMultiplier: DEFAULT_RATING_OPTIONS.leagueSigmaUpdateMultiplier,
 };
 const baseRatingOptions = {
   seasonalTaperDays: defaultSeasonalTaperDays,

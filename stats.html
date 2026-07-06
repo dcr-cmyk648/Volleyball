@@ -3684,6 +3684,7 @@
 
     function getSeasonMoversRenderSignature() {
       return hashString(JSON.stringify({
+        version: VERSION,
         players: localStorage.getItem(PLAYER_STORAGE_KEY) || '',
         games: localStorage.getItem(GAME_STORAGE_KEY) || '',
         seasonStartDate: getSeasonStartDate(),
@@ -6341,6 +6342,7 @@
 
     function getSeasonRankingRenderSignature(mode = 'composite') {
       return hashString(JSON.stringify({
+        version: VERSION,
         mode,
         players: localStorage.getItem(PLAYER_STORAGE_KEY) || '',
         games: localStorage.getItem(GAME_STORAGE_KEY) || '',
@@ -6503,6 +6505,7 @@
 
     function getHistoryRenderSignature(mode = getOverallScoreboardMode()) {
       return hashString(JSON.stringify({
+        version: VERSION,
         mode,
         players: localStorage.getItem(PLAYER_STORAGE_KEY) || '',
         games: localStorage.getItem(GAME_STORAGE_KEY) || '',

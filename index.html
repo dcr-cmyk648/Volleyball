@@ -622,6 +622,57 @@
       line-height: 1.4;
     }
 
+    .rotation-board {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .rotation-controls {
+      display: flex;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .rotation-controls button {
+      min-height: 34px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .rotation-controls button.active {
+      background: rgba(248, 113, 113, 0.18);
+      color: #fecaca;
+      border-color: rgba(248, 113, 113, 0.42);
+    }
+
+    .rotation-line {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .rotation-slot {
+      border: 1px solid rgba(248, 113, 113, 0.28);
+      border-radius: 8px;
+      padding: 8px 6px;
+      color: var(--text);
+      background: rgba(248, 113, 113, 0.08);
+      text-align: center;
+      font-weight: 800;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .record-panel {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+
     .summary-box.red-box { border-left: 5px solid var(--red); }
     .summary-box.blue-box { border-left: 5px solid var(--blue); }
     .summary-box.green-box { border-left: 5px solid var(--green); }
@@ -1045,6 +1096,27 @@
 
       <div id="summaryGrid" class="summary-grid"></div>
 
+      <div class="record-panel">
+        <h2>Record Game</h2>
+
+        <div class="score-grid">
+          <div class="field">
+            <label id="redScoreLabel" for="redScore">Red score (optional)</label>
+            <input type="number" id="redScore" min="0" inputmode="numeric" />
+          </div>
+          <div class="field">
+            <label id="blueScoreLabel" for="blueScore">Blue score (optional)</label>
+            <input type="number" id="blueScore" min="0" inputmode="numeric" />
+          </div>
+        </div>
+
+        <div id="recordButtons" class="controls"></div>
+
+        <div class="small">
+          Scores are not required, but they help make the model more accurate. Every game opens a confirmation popup before being saved.
+        </div>
+      </div>
+
       <div id="selectedCount" class="selected-count">Selected players: 0</div>
       <div id="balanceStatus" class="status">No team assignment yet.</div>
       <div id="errorMessage" class="error"></div>
@@ -1081,28 +1153,7 @@
       </div>
     </div>
 
-    <div class="card">
-      <h2>Record Game</h2>
-
-      <div class="score-grid">
-        <div class="field">
-          <label id="redScoreLabel" for="redScore">Red score (optional)</label>
-          <input type="number" id="redScore" min="0" inputmode="numeric" />
-        </div>
-        <div class="field">
-          <label id="blueScoreLabel" for="blueScore">Blue score (optional)</label>
-          <input type="number" id="blueScore" min="0" inputmode="numeric" />
-        </div>
-      </div>
-
-      <div id="recordButtons" class="controls"></div>
-
-      <div class="small">
-        Scores are not required, but they help make the model more accurate. Every game opens a confirmation popup before being saved.
-      </div>
-
-      <div id="latestGame" class="status">No games recorded yet.</div>
-    </div>
+    <div id="latestGame" class="status">No games recorded yet.</div>
 
     <div class="small page-footer-link">
       <a href="tournament.html">Tournament page</a>
@@ -1155,7 +1206,7 @@
 
   <dialog id="defaultDatabaseDialog">
     <div class="dialog-content">
-      <h2>Load Newest Stats?</h2>
+      <h2 id="defaultDatabaseDialogTitle">Load Newest Stats?</h2>
       <div id="defaultDatabaseText" class="small">
         Checking Google Drive stats...
       </div>
@@ -1200,8 +1251,6 @@
     formatPublicDisplayRating,
     getOverallStandingsRawOrdinal as getAdjustedOverallStandingsRawOrdinal,
     getPublicRatingDisplayScale,
-    formatMu,
-    formatSigma,
     getScoreMarginFactor,
     calibrateMarginModel,
     predictExpectedMargin,
@@ -1322,6 +1371,7 @@
   const cancelConfirmGameButtonEl = document.getElementById('cancelConfirmGameButton');
 
   const defaultDatabaseDialog = document.getElementById('defaultDatabaseDialog');
+  const defaultDatabaseDialogTitleEl = document.getElementById('defaultDatabaseDialogTitle');
   const defaultDatabaseTextEl = document.getElementById('defaultDatabaseText');
   const defaultDatabaseDestructiveWarningEl = document.getElementById('defaultDatabaseDestructiveWarning');
   const defaultDatabaseStatusEl = document.getElementById('defaultDatabaseStatus');
@@ -1349,7 +1399,16 @@
   let groupCount = MIN_GROUP_COUNT;
   let forceChangeCount = 1;
   let forceChangeCountManual = false;
+  let leagueRotationMode = 'averaging';
+  let leagueRotationOffset = 0;
+  let leagueRotationRosterKey = '';
+  let leagueRotationSetKey = '';
+  let leagueRotationCandidates = [];
+  let leagueRotationCandidateIndex = 0;
   let defaultDatabaseMeta = null;
+  let defaultDatabaseDialogMode = 'prompt';
+  let playActionServerCheckState = 'unchecked';
+  let playActionServerCheckPromise = null;
   let publicRatingScaleCacheKey = '';
   let publicRatingScaleCache = null;
   let balanceRatingMapCacheKey = '';
@@ -2030,30 +2089,8 @@
     return getCurrentLeagueContext()?.name || LEAGUE_TEAM_NAME;
   }
 
-  function getCurrentLeagueTeam(ratingData) {
-    const context = getCurrentLeagueContext();
-    if (!context) return ratingData?.leagueTeam || null;
-
-    return (ratingData?.leagueTeams || []).find(team =>
-      String(team.id) === String(context.id) ||
-      String(team.leagueContext?.key || '') === String(context.key)
-    ) || ratingData?.leagueTeam || null;
-  }
-
   function getOverallStandingsRawOrdinal(rawOrdinal, games) {
     return getAdjustedOverallStandingsRawOrdinal(rawOrdinal, games);
-  }
-
-  function getLeagueStandingsRawOrdinal(league) {
-    if (!league) return null;
-
-    const rawOrdinal = typeof league.leaderboardRawOrdinal === 'number'
-      ? league.leaderboardRawOrdinal
-      : typeof league.rating === 'number'
-        ? league.rating
-        : league.rawOrdinal;
-
-    return Number.isFinite(Number(rawOrdinal)) ? Number(rawOrdinal) : null;
   }
 
   function getRecordLeagueContext(record) {
@@ -2385,6 +2422,7 @@
   }
 
   function renderBalanceStatusLines(lines, warningLine = '') {
+    balanceStatusEl.classList.toggle('hidden', false);
     balanceStatusEl.textContent = '';
 
     lines.forEach(line => {
@@ -3234,6 +3272,10 @@
   async function handleAssignTeamsClick() {
     clearError();
 
+    if (!await ensurePlayActionServerDataIsCurrent()) {
+      return;
+    }
+
     if (!confirmReassignWithOutstandingScores()) {
       return;
     }
@@ -3461,34 +3503,12 @@
     const balancePairAdjustmentMap = getBalancePairAdjustmentMap(ratingData);
 
     if (isLeagueGameMode()) {
-      const redTeam = getTeamPlayers('red');
-
-      if (redTeam.length === 0) {
-        balanceStatusEl.textContent = `${getLeagueLevelLabel()} league mode is on. Mark players present to assign them to Red.`;
-        return;
-      }
-
-      const redAvg = getAverageRawOrdinal(redTeam, ratingData.ratingMap);
-      const league = getCurrentLeagueTeam(ratingData);
-      const leagueStandingsRawOrdinal = getLeagueStandingsRawOrdinal(league);
-      const leagueRatingText = Number.isFinite(leagueStandingsRawOrdinal)
-        ? formatPlayerPublicRating(leagueStandingsRawOrdinal)
-        : 'N/A';
-      const leagueMuText = typeof league?.mu === 'number' ? formatMu(league.mu) : 'N/A';
-      const leagueSigmaText = typeof league?.sigma === 'number' ? formatSigma(league.sigma) : 'N/A';
-
-      const lines = [
-        `${getLeagueLevelLabel()} league mode is on.`,
-        `Court type: ${getCourtTypeLabel()}`,
-        `Red average Rating: ${formatPlayerPublicRating(redAvg)}`,
-        `Blue Rating: ${leagueRatingText} (${getCurrentLeagueTeamName()})`,
-        `Blue mu: ${leagueMuText}`,
-        `Blue sigma: ${leagueSigmaText}`
-      ];
-
-      balanceStatusEl.textContent = lines.join('\n');
+      balanceStatusEl.textContent = '';
+      balanceStatusEl.classList.add('hidden');
       return;
     }
+
+    balanceStatusEl.classList.remove('hidden');
 
     const colors = getActiveTeamColors();
     const teamCount = colors.length;
@@ -4000,15 +4020,266 @@
       : 'Hide Unselected Players';
   }
 
-  // Colors shown in the summary boxes and win buttons. League mode always shows
-  // the player team (red) and the synthetic opponent (blue).
-  function getDisplayColors() {
+  // Colors shown in the summary boxes. League mode only needs the player team;
+  // win buttons still include the synthetic opponent for normal recording.
+  function getSummaryColors() {
+    return isLeagueGameMode() ? ['red'] : getActiveTeamColors();
+  }
+
+  function getRecordButtonColors() {
     return isLeagueGameMode() ? ['red', 'blue'] : getActiveTeamColors();
+  }
+
+  function getPlayerRotationRating(player, ratingMap) {
+    const rawOrdinal = ratingMap?.[player.id]?.rawOrdinal;
+    return Number.isFinite(rawOrdinal) ? rawOrdinal : 0;
+  }
+
+  function getCircularWindowTotal(playersForRotation, startIndex, windowSize, ratingMap) {
+    let total = 0;
+
+    for (let offset = 0; offset < windowSize; offset += 1) {
+      const player = playersForRotation[(startIndex + offset) % playersForRotation.length];
+      total += getPlayerRotationRating(player, ratingMap);
+    }
+
+    return total;
+  }
+
+  function getRange(values) {
+    return Math.max(...values) - Math.min(...values);
+  }
+
+  function getAveragingRotationScore(playersForRotation, ratingMap) {
+    const rowTotals = playersForRotation.map((_, index) =>
+      getCircularWindowTotal(playersForRotation, index, 3, ratingMap)
+    );
+    const pairTotals = playersForRotation.map((_, index) =>
+      getCircularWindowTotal(playersForRotation, index, 2, ratingMap)
+    );
+    const earlyServeBonus = playersForRotation.reduce((sum, player, index) =>
+      sum + ((playersForRotation.length - index) * getPlayerRotationRating(player, ratingMap)), 0
+    );
+
+    return (
+      getRange(rowTotals) +
+      (0.25 * getRange(pairTotals)) -
+      (0.01 * earlyServeBonus)
+    );
+  }
+
+  function getAlternatingRotationScore(playersForRotation, ratingMap) {
+    const rankedPlayers = [...playersForRotation].sort((a, b) =>
+      getPlayerRotationRating(b, ratingMap) - getPlayerRotationRating(a, ratingMap)
+    );
+    const highRatedIds = new Set(rankedPlayers.slice(0, 3).map(player => player.id));
+    let sameTierAdjacency = 0;
+
+    playersForRotation.forEach((player, index) => {
+      const next = playersForRotation[(index + 1) % playersForRotation.length];
+      if (highRatedIds.has(player.id) === highRatedIds.has(next.id)) {
+        sameTierAdjacency += 1;
+      }
+    });
+
+    return (sameTierAdjacency * 100) + getAveragingRotationScore(playersForRotation, ratingMap);
+  }
+
+  function getRotationScore(playersForRotation, ratingMap, mode = leagueRotationMode) {
+    return mode === 'alternating'
+      ? getAlternatingRotationScore(playersForRotation, ratingMap)
+      : getAveragingRotationScore(playersForRotation, ratingMap);
+  }
+
+  function permutePlayers(items, visit, startIndex = 0) {
+    if (startIndex >= items.length - 1) {
+      visit(items);
+      return;
+    }
+
+    for (let index = startIndex; index < items.length; index += 1) {
+      [items[startIndex], items[index]] = [items[index], items[startIndex]];
+      permutePlayers(items, visit, startIndex + 1);
+      [items[startIndex], items[index]] = [items[index], items[startIndex]];
+    }
+  }
+
+  function buildLeagueRotationFromServeOrder(serveOrder) {
+    return {
+      serveOrder,
+      front: [serveOrder[3], serveOrder[2], serveOrder[1]],
+      back: [serveOrder[4], serveOrder[5], serveOrder[0]]
+    };
+  }
+
+  function getLeagueRotationRosterKey(teamPlayers, mode = leagueRotationMode) {
+    return [
+      mode,
+      teamPlayers
+        .map(player => String(player.id))
+        .sort()
+        .join('|')
+    ].join(':');
+  }
+
+  function getLeagueRotationCandidates(teamPlayers, ratingMap, mode = leagueRotationMode) {
+    if (teamPlayers.length !== 6) return [];
+
+    const candidates = [];
+    permutePlayers([...teamPlayers], candidate => {
+      candidates.push({
+        score: getRotationScore(candidate, ratingMap, mode),
+        serveOrder: [...candidate]
+      });
+    });
+
+    candidates.sort((a, b) => a.score - b.score);
+    return candidates.map(candidate => buildLeagueRotationFromServeOrder(candidate.serveOrder));
+  }
+
+  function clearLeagueRotationSelection() {
+    leagueRotationOffset = 0;
+    leagueRotationSetKey = '';
+    leagueRotationCandidates = [];
+    leagueRotationCandidateIndex = 0;
+  }
+
+  function setLeagueRotation(teamPlayers, ratingMap) {
+    const setKey = getLeagueRotationRosterKey(teamPlayers);
+    leagueRotationSetKey = setKey;
+    leagueRotationCandidates = getLeagueRotationCandidates(teamPlayers, ratingMap);
+    leagueRotationCandidateIndex = 0;
+    leagueRotationOffset = 0;
+    updateTeamSummaries();
+  }
+
+  function showNextLeagueRotation() {
+    if (!leagueRotationCandidates.length) return;
+    leagueRotationCandidateIndex = (leagueRotationCandidateIndex + 1) % leagueRotationCandidates.length;
+    leagueRotationOffset = 0;
+    updateTeamSummaries();
+  }
+
+  function getShiftedLeagueRotation(rotation) {
+    const serveOrder = rotation.serveOrder || [
+      rotation.back[2],
+      rotation.front[2],
+      rotation.front[1],
+      rotation.front[0],
+      rotation.back[0],
+      rotation.back[1]
+    ];
+    const offset = ((leagueRotationOffset % serveOrder.length) + serveOrder.length) % serveOrder.length;
+    const shifted = serveOrder.map((_, index) =>
+      serveOrder[(index + offset) % serveOrder.length]
+    );
+
+    return {
+      serveOrder: shifted,
+      front: [shifted[3], shifted[2], shifted[1]],
+      back: [shifted[4], shifted[5], shifted[0]]
+    };
+  }
+
+  function renderLeagueRotation(container, teamPlayers, ratingMap) {
+    const rosterKey = teamPlayers
+      .map(player => String(player.id))
+      .sort()
+      .join('|');
+    if (rosterKey !== leagueRotationRosterKey) {
+      leagueRotationRosterKey = rosterKey;
+      clearLeagueRotationSelection();
+    }
+    if (teamPlayers.length !== 6) return false;
+
+    const controls = document.createElement('div');
+    controls.className = 'rotation-controls';
+
+    const averagingButton = document.createElement('button');
+    averagingButton.type = 'button';
+    averagingButton.className = `ghost${leagueRotationMode === 'averaging' ? ' active' : ''}`;
+    averagingButton.textContent = 'Averaging';
+    averagingButton.addEventListener('click', () => {
+      leagueRotationMode = 'averaging';
+      clearLeagueRotationSelection();
+      updateTeamSummaries();
+    });
+
+    const alternatingButton = document.createElement('button');
+    alternatingButton.type = 'button';
+    alternatingButton.className = `ghost${leagueRotationMode === 'alternating' ? ' active' : ''}`;
+    alternatingButton.textContent = 'Alternating';
+    alternatingButton.addEventListener('click', () => {
+      leagueRotationMode = 'alternating';
+      clearLeagueRotationSelection();
+      updateTeamSummaries();
+    });
+
+    const setButton = document.createElement('button');
+    setButton.type = 'button';
+    setButton.className = 'ghost';
+    setButton.textContent = 'Set Rotation';
+    setButton.addEventListener('click', () => setLeagueRotation(teamPlayers, ratingMap));
+
+    controls.appendChild(averagingButton);
+    controls.appendChild(alternatingButton);
+    controls.appendChild(setButton);
+
+    const setKey = getLeagueRotationRosterKey(teamPlayers);
+    const rotationIsSet = leagueRotationSetKey === setKey && leagueRotationCandidates.length > 0;
+
+    if (!rotationIsSet) {
+      container.appendChild(controls);
+      return true;
+    }
+
+    const candidateIndex = Math.min(leagueRotationCandidateIndex, leagueRotationCandidates.length - 1);
+    const displayRotation = getShiftedLeagueRotation(leagueRotationCandidates[candidateIndex]);
+
+    const board = document.createElement('div');
+    board.className = 'rotation-board';
+
+    [displayRotation.front, displayRotation.back].forEach(linePlayers => {
+      const line = document.createElement('div');
+      line.className = 'rotation-line';
+
+      linePlayers.forEach(player => {
+        const slot = document.createElement('div');
+        slot.className = 'rotation-slot';
+        slot.textContent = player.name;
+        line.appendChild(slot);
+      });
+
+      board.appendChild(line);
+    });
+
+    container.appendChild(board);
+
+    const nextButton = document.createElement('button');
+    nextButton.type = 'button';
+    nextButton.className = 'ghost';
+    nextButton.textContent = 'New Rotation';
+    nextButton.addEventListener('click', showNextLeagueRotation);
+
+    const rotateButton = document.createElement('button');
+    rotateButton.type = 'button';
+    rotateButton.className = 'ghost';
+    rotateButton.textContent = 'Rotate';
+    rotateButton.addEventListener('click', () => {
+      leagueRotationOffset = (leagueRotationOffset + 1) % 6;
+      updateTeamSummaries();
+    });
+
+    controls.appendChild(nextButton);
+    controls.appendChild(rotateButton);
+    container.appendChild(controls);
+    return true;
   }
 
   // Rebuilds the summary boxes and win buttons to match the active team colors.
   function renderTeamControls() {
-    const colors = getDisplayColors();
+    const summaryColors = getSummaryColors();
+    const recordButtonColors = getRecordButtonColors();
 
     summaryGridEl.innerHTML = '';
     Object.keys(summaryContentEls).forEach(key => delete summaryContentEls[key]);
@@ -4018,7 +4289,9 @@
       box.className = `summary-box ${color}-box`;
 
       const title = document.createElement('strong');
-      title.textContent = `${TEAM_LABELS[color]} Team`;
+      title.textContent = isLeagueGameMode() && color === 'red'
+        ? 'Red Team Rotations'
+        : `${TEAM_LABELS[color]} Team`;
 
       const content = document.createElement('div');
       content.textContent = '0 players';
@@ -4029,9 +4302,9 @@
       return box;
     };
 
-    for (let i = 0; i < colors.length; i += 2) {
+    for (let i = 0; i < summaryColors.length; i += 2) {
       const pair = document.createElement('div');
-      const pairColors = colors.slice(i, i + 2);
+      const pairColors = summaryColors.slice(i, i + 2);
       pair.className = `summary-pair${pairColors.length === 1 ? ' single' : ''}`;
 
       pairColors.forEach(color => {
@@ -4042,10 +4315,10 @@
     }
 
     // Two columns for 2 teams; four columns (wrapping) for 3+.
-    summaryGridEl.classList.toggle('four-team-summary', colors.length > 2);
+    summaryGridEl.classList.toggle('four-team-summary', summaryColors.length > 2);
 
     recordButtonsEl.innerHTML = '';
-    colors.forEach(color => {
+    recordButtonColors.forEach(color => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = `${color}-button`;
@@ -4066,7 +4339,7 @@
     }
     const balanceRatingMap = getBalanceRatingMap(ratingData);
 
-    getDisplayColors().forEach(color => {
+    getSummaryColors().forEach(color => {
       const el = summaryContentEls[color];
       if (!el) return;
 
@@ -4077,19 +4350,6 @@
 
       const rosterLine = document.createElement('div');
       rosterLine.className = 'summary-roster';
-
-      if (isLeagueGameMode() && color === 'blue') {
-        const league = getCurrentLeagueTeam(ratingData);
-        const leagueStandingsRawOrdinal = getLeagueStandingsRawOrdinal(league);
-        const leagueRatingText = Number.isFinite(leagueStandingsRawOrdinal)
-          ? formatPlayerPublicRating(leagueStandingsRawOrdinal)
-          : 'N/A';
-        ratingLine.textContent = `Rating: ${leagueRatingText}`;
-        rosterLine.textContent = `${getCurrentLeagueTeamName()} (${getPresentPlayers().length || LEAGUE_TEAM_SIZE} players)`;
-        el.appendChild(ratingLine);
-        el.appendChild(rosterLine);
-        return;
-      }
 
       const teamPlayers = getTeamPlayers(color);
       const names = getTeamNames(color);
@@ -4102,6 +4362,16 @@
         });
         ratingLine.textContent = `Strength rating: ${formatTeamStrengthRating(strength.strength)}`;
         el.appendChild(ratingLine);
+      }
+
+      if (isLeagueGameMode() && color === 'red') {
+        if (!renderLeagueRotation(el, teamPlayers, balanceRatingMap)) {
+          rosterLine.textContent = names.length
+            ? `${names.length}: ${names.join(', ')}`
+            : '0 players';
+          el.appendChild(rosterLine);
+        }
+        return;
       }
 
       rosterLine.textContent = names.length
@@ -4726,7 +4996,11 @@
     }
   }
 
-  async function prepareDefaultDatabaseMeta() {
+  async function prepareDefaultDatabaseMeta({ forceRefresh = false } = {}) {
+    if (forceRefresh) {
+      defaultDatabaseMeta = null;
+    }
+
     if (defaultDatabaseMeta) {
       return defaultDatabaseMeta;
     }
@@ -4742,21 +5016,42 @@
     declineLoadDefaultDatabaseButtonEl.disabled = Boolean(isLoading);
   }
 
-  function setDefaultDatabaseDialogState(meta) {
+  function setDefaultDatabaseDialogState(meta, mode = 'prompt') {
+    defaultDatabaseDialogMode = mode;
     setDefaultDatabaseLoading(false);
     const localGamesMissingFromServer = getLocalGamesMissingFromServer(meta);
     const missingServerGames = getServerGamesMissingLocally(meta);
     const changedServerGames = getServerGamesChangedLocally(meta);
     const wouldDeleteLocalGames = localGamesMissingFromServer.length > 0;
     const shouldUseDangerButton = Boolean(meta.usedFallback) || wouldDeleteLocalGames;
+    const isPlaySafetyGate = mode === 'playSafety' && !meta.usedFallback && missingServerGames.length > 0;
 
-    defaultDatabaseStatusEl.classList.toggle('server-warning', Boolean(meta.usedFallback));
+    defaultDatabaseDialogTitleEl.textContent = isPlaySafetyGate
+      ? 'Sync Required Before Playing'
+      : 'Load Newest Stats?';
+    declineLoadDefaultDatabaseButtonEl.textContent = isPlaySafetyGate ? 'Close' : 'No';
+    defaultDatabaseStatusEl.classList.toggle('server-warning', Boolean(meta.usedFallback) || isPlaySafetyGate);
     defaultDatabaseDestructiveWarningEl.classList.toggle('hidden', !wouldDeleteLocalGames);
     defaultDatabaseDestructiveWarningEl.textContent = wouldDeleteLocalGames
       ? `Warning: syncing now would remove ${localGamesMissingFromServer.length} local game${localGamesMissingFromServer.length === 1 ? '' : 's'} that are not on the server. If you already recorded games today, export the database instead of syncing.`
       : '';
     confirmLoadDefaultDatabaseButtonEl.classList.toggle('danger', shouldUseDangerButton);
     confirmLoadDefaultDatabaseButtonEl.classList.toggle('success', !shouldUseDangerButton);
+
+    if (isPlaySafetyGate) {
+      defaultDatabaseTextEl.textContent =
+        `This device is missing ${missingServerGames.length} game${missingServerGames.length === 1 ? '' : 's'} from the server.`;
+      defaultDatabaseStatusEl.textContent = [
+        `New-player registration and team balancing are paused until the newest stats are synced.`,
+        `Syncing helps prevent duplicate player accounts and gives the balancer the complete game history.`,
+        `The server has ${meta.players.length} players and ${meta.games.length} games through ${meta.latestGameDate}.`,
+        `Sync the newest stats, then retry your action.`
+      ].join('\n');
+      confirmLoadDefaultDatabaseButtonEl.textContent = wouldDeleteLocalGames
+        ? 'Overwrite Local Games'
+        : 'Sync Newest Stats';
+      return;
+    }
 
     if (meta.usedFallback) {
       defaultDatabaseTextEl.textContent = 'Unable to connect to server.';
@@ -4795,10 +5090,72 @@
       : 'Load Newest Stats';
   }
 
-  function openDefaultDatabaseDialog(meta) {
-    setDefaultDatabaseDialogState(meta);
+  function openDefaultDatabaseDialog(meta, mode = 'prompt') {
+    setDefaultDatabaseDialogState(meta, mode);
     confirmLoadDefaultDatabaseButtonEl.disabled = false;
-    defaultDatabaseDialog.showModal();
+    if (!defaultDatabaseDialog.open) {
+      defaultDatabaseDialog.showModal();
+    }
+  }
+
+  async function handleOpenAddPlayerDialog() {
+    if (!await ensurePlayActionServerDataIsCurrent()) {
+      return;
+    }
+
+    openAddPlayerDialog(playerSearchQuery.trim());
+  }
+
+  async function ensurePlayActionServerDataIsCurrent() {
+    if (playActionServerCheckState === 'ready' || playActionServerCheckState === 'unavailable') {
+      return true;
+    }
+
+    if (playActionServerCheckState === 'stale' && defaultDatabaseMeta) {
+      const missingServerGames = getServerGamesMissingLocally(defaultDatabaseMeta);
+
+      if (missingServerGames.length === 0) {
+        playActionServerCheckState = 'ready';
+        return true;
+      }
+
+      openDefaultDatabaseDialog(defaultDatabaseMeta, 'playSafety');
+      return false;
+    }
+
+    if (playActionServerCheckPromise) {
+      return playActionServerCheckPromise;
+    }
+
+    playActionServerCheckPromise = runWithBusy('Checking server for newer games...', async () => {
+      try {
+        const meta = await prepareDefaultDatabaseMeta({ forceRefresh: true });
+
+        if (meta.usedFallback) {
+          console.warn('Could not verify live server games; continuing with local data.', meta.serverConnectionError);
+          playActionServerCheckState = 'unavailable';
+          return true;
+        }
+
+        const missingServerGames = getServerGamesMissingLocally(meta);
+        if (missingServerGames.length > 0) {
+          playActionServerCheckState = 'stale';
+          openDefaultDatabaseDialog(meta, 'playSafety');
+          return false;
+        }
+
+        playActionServerCheckState = 'ready';
+        return true;
+      } catch (error) {
+        console.warn('Could not check the server for newer games; continuing with local data.', error);
+        playActionServerCheckState = 'unavailable';
+        return true;
+      }
+    }).finally(() => {
+      playActionServerCheckPromise = null;
+    });
+
+    return playActionServerCheckPromise;
   }
 
   async function maybeOfferDefaultDatabase() {
@@ -4816,7 +5173,7 @@
       defaultDatabaseTextEl.textContent = 'Checking server connection...';
       confirmLoadDefaultDatabaseButtonEl.disabled = true;
       const meta = await prepareDefaultDatabaseMeta();
-      openDefaultDatabaseDialog(meta);
+      openDefaultDatabaseDialog(meta, 'prompt');
     } catch (error) {
       defaultDatabaseTextEl.textContent = 'Unable to load a database.';
       defaultDatabaseStatusEl.classList.add('server-warning');
@@ -4964,7 +5321,11 @@
   });
 
   openAddPlayerDialogButtonEl.addEventListener('click', () => {
-    openAddPlayerDialog(playerSearchQuery.trim());
+    handleOpenAddPlayerDialog().catch(error => {
+      console.error(error);
+      setPlayerAddStatus('Could not open player registration.');
+      hideBusy();
+    });
   });
   cancelPlayerButtonEl.addEventListener('click', closeAddPlayerDialog);
   savePlayerButtonEl.addEventListener('click', addPlayer);
@@ -5008,6 +5369,7 @@
         await loadDefaultDatabaseIntoStorage();
       });
       defaultDatabaseDialog.close();
+      playActionServerCheckState = defaultDatabaseMeta?.usedFallback ? 'unchecked' : 'ready';
       alert(defaultDatabaseMeta?.usedFallback ? 'Bundled fallback database loaded. Server connection is still failing.' : 'Newest stats loaded from Google Drive.');
     } catch {
       defaultDatabaseStatusEl.textContent = 'Failed to load database.';
@@ -5018,7 +5380,9 @@
   });
 
   declineLoadDefaultDatabaseButtonEl.addEventListener('click', () => {
-    setPromptChoice('declined');
+    if (defaultDatabaseDialogMode === 'prompt') {
+      setPromptChoice('declined');
+    }
     defaultDatabaseDialog.close();
   });
 

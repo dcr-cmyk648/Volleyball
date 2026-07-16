@@ -382,6 +382,93 @@
       accent-color: #93c5fd;
     }
 
+    .season-ranking-advanced {
+      margin-bottom: 12px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(96, 165, 250, 0.06);
+    }
+
+    .season-ranking-advanced-options {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    .season-ranking-advanced-note {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .switch-control {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: fit-content;
+      max-width: 100%;
+      cursor: pointer;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    .switch-control input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .switch-track {
+      position: relative;
+      flex: 0 0 42px;
+      width: 42px;
+      height: 24px;
+      border: 1px solid #475569;
+      border-radius: 999px;
+      background: #1e293b;
+      transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+    }
+
+    .switch-track::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #cbd5e1;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+      transition: transform 0.16s ease, background 0.16s ease;
+    }
+
+    .switch-control input:checked + .switch-track {
+      border-color: #60a5fa;
+      background: #2563eb;
+    }
+
+    .switch-control input:checked + .switch-track::after {
+      transform: translateX(18px);
+      background: #ffffff;
+    }
+
+    .switch-control input:focus-visible + .switch-track {
+      outline: 2px solid #bfdbfe;
+      outline-offset: 3px;
+    }
+
+    .switch-control:hover .switch-track {
+      border-color: #93c5fd;
+    }
+
     .season-start-status {
       font-size: 12px;
       color: var(--muted);
@@ -1617,6 +1704,44 @@
         </section>
 
         <section id="overallStandingsPanel" class="tab-panel hidden">
+          <div class="season-ranking-advanced">
+            <label class="switch-control" for="showSeasonRankingAdvancedSettings">
+              <input
+                id="showSeasonRankingAdvancedSettings"
+                type="checkbox"
+                role="switch"
+                aria-controls="seasonRankingAdvancedOptions"
+                aria-expanded="false"
+              />
+              <span class="switch-track" aria-hidden="true"></span>
+              <span>Show advanced settings</span>
+            </label>
+
+            <div id="seasonRankingAdvancedOptions" class="season-ranking-advanced-options hidden">
+              <label class="switch-control" for="hideSeasonRankingLeagueGames">
+                <input id="hideSeasonRankingLeagueGames" type="checkbox" role="switch" />
+                <span class="switch-track" aria-hidden="true"></span>
+                <span>Hide league games</span>
+              </label>
+
+              <label class="switch-control" for="removeSeasonRankingWindow">
+                <input id="removeSeasonRankingWindow" type="checkbox" role="switch" />
+                <span class="switch-track" aria-hidden="true"></span>
+                <span>Remove season window</span>
+              </label>
+
+              <label class="switch-control" for="removeSeasonRankingConfidencePenalty">
+                <input id="removeSeasonRankingConfidencePenalty" type="checkbox" role="switch" />
+                <span class="switch-track" aria-hidden="true"></span>
+                <span>Remove confidence penalty</span>
+              </label>
+
+              <p class="season-ranking-advanced-note">
+                These settings also carry into player Trend and Game History so the displayed ratings and game counts stay aligned.
+              </p>
+            </div>
+          </div>
+
           <div class="small" id="rankingModeDescription"></div>
 
           <div class="small hidden" id="modelHelpText"></div>
@@ -1818,6 +1943,7 @@
       formatDisplayedRating,
       toDisplayRating,
       getOverallStandingsRawOrdinal,
+      getSeasonRankingDisplayRawOrdinal,
       getLeagueContext,
       getLeagueRatingContext,
       isLeagueContextId,
@@ -1852,6 +1978,11 @@
     const SEASON_PLAYER_LOOKUP_STORAGE_KEY = 'gameDaySeasonPlayerLookup';
     const OVERALL_PLAYER_LOOKUP_STORAGE_KEY = 'gameDayOverallPlayerLookup';
     const QUALITY_CACHE_STORAGE_KEY = 'gameDayQualityOverviewCache';
+    const DEFAULT_SEASON_RANKING_SETTINGS = Object.freeze({
+      hideLeagueGames: false,
+      removeSeasonWindow: false,
+      removeConfidencePenalty: false,
+    });
 
     const LEADERBOARD_LOW_SIGMA = 6.4;
     const LEADERBOARD_HIGH_SIGMA = 8.4;
@@ -1935,6 +2066,11 @@
 
     const rankingModeDescriptionEl = document.getElementById('rankingModeDescription');
     const historyModeDescriptionEl = document.getElementById('historyModeDescription');
+    const showSeasonRankingAdvancedSettingsEl = document.getElementById('showSeasonRankingAdvancedSettings');
+    const seasonRankingAdvancedOptionsEl = document.getElementById('seasonRankingAdvancedOptions');
+    const hideSeasonRankingLeagueGamesEl = document.getElementById('hideSeasonRankingLeagueGames');
+    const removeSeasonRankingWindowEl = document.getElementById('removeSeasonRankingWindow');
+    const removeSeasonRankingConfidencePenaltyEl = document.getElementById('removeSeasonRankingConfidencePenalty');
 
     const sessionStatsTabButtonEl = document.getElementById('sessionStatsTabButton');
     const seasonStatsTabButtonEl = document.getElementById('seasonStatsTabButton');
@@ -2005,6 +2141,8 @@
     let activeSortBy = null;
     let activeOverallScoreboardMode = 'composite';
     let activeSeasonStartDate = '';
+    let showSeasonRankingAdvancedSettings = false;
+    let activeSeasonRankingSettings = { ...DEFAULT_SEASON_RANKING_SETTINGS };
     let bayesianSnapshot = loadBayesianSnapshot(localStorage);
     let bayesianWorkers = new Set();
     let bayesianCalculationRunning = false;
@@ -2249,6 +2387,60 @@
       return true;
     }
 
+    function getSeasonRankingSettings() {
+      return { ...activeSeasonRankingSettings };
+    }
+
+    function loadSeasonRankingSettingsFromUrl(params = new URLSearchParams(window.location.search)) {
+      activeSeasonRankingSettings = {
+        hideLeagueGames: params.get('hideLeagueGames') === '1',
+        removeSeasonWindow: params.get('removeSeasonWindow') === '1',
+        removeConfidencePenalty: params.get('removeConfidencePenalty') === '1',
+      };
+      showSeasonRankingAdvancedSettings = params.get('showAdvancedSettings') === '1' ||
+        Object.values(activeSeasonRankingSettings).some(Boolean);
+    }
+
+    function updateSeasonRankingAdvancedControls() {
+      if (showSeasonRankingAdvancedSettingsEl) {
+        showSeasonRankingAdvancedSettingsEl.checked = showSeasonRankingAdvancedSettings;
+        showSeasonRankingAdvancedSettingsEl.setAttribute(
+          'aria-expanded',
+          String(showSeasonRankingAdvancedSettings)
+        );
+      }
+      seasonRankingAdvancedOptionsEl?.classList.toggle(
+        'hidden',
+        !showSeasonRankingAdvancedSettings
+      );
+      if (hideSeasonRankingLeagueGamesEl) {
+        hideSeasonRankingLeagueGamesEl.checked = activeSeasonRankingSettings.hideLeagueGames;
+      }
+      if (removeSeasonRankingWindowEl) {
+        removeSeasonRankingWindowEl.checked = activeSeasonRankingSettings.removeSeasonWindow;
+      }
+      if (removeSeasonRankingConfidencePenaltyEl) {
+        removeSeasonRankingConfidencePenaltyEl.checked =
+          activeSeasonRankingSettings.removeConfidencePenalty;
+      }
+    }
+
+    function appendSeasonRankingSettingsToParams(params) {
+      if (activeSeasonRankingSettings.hideLeagueGames) {
+        params.set('hideLeagueGames', '1');
+      }
+      if (activeSeasonRankingSettings.removeSeasonWindow) {
+        params.set('removeSeasonWindow', '1');
+      }
+      if (activeSeasonRankingSettings.removeConfidencePenalty) {
+        params.set('removeConfidencePenalty', '1');
+      }
+      if (showSeasonRankingAdvancedSettings) {
+        params.set('showAdvancedSettings', '1');
+      }
+      return params;
+    }
+
     function hashString(value) {
       let hash = 2166136261;
       for (let i = 0; i < value.length; i += 1) {
@@ -2452,24 +2644,35 @@
       return map;
     }
 
-    function createOverallStandingsRecencyMap(games, mode = getOverallScoreboardMode()) {
-      const cutoffDate = getOneMonthAgoDateString(games);
+    function createOverallStandingsRecencyMap(
+      games,
+      mode = getOverallScoreboardMode(),
+      seasonRankingSettings = getSeasonRankingSettings()
+    ) {
+      const cutoffDate = seasonRankingSettings.removeSeasonWindow
+        ? ''
+        : getOneMonthAgoDateString(games);
       const sideMatcher = getOverallScoreboardSideMatcher(mode);
       const map = new Map();
 
       const addPlayerDate = (player, date) => {
-        if (!player?.id || !isValidDateString(date) || date < cutoffDate) return;
+        if (!player?.id) return;
+        if (!seasonRankingSettings.removeSeasonWindow &&
+            (!isValidDateString(date) || date < cutoffDate)) return;
         const key = String(player.id);
         const previous = map.get(key) || '';
-        if (!previous || date > previous) {
-          map.set(key, date);
+        const nextDate = isValidDateString(date) ? date : 'included';
+        if (!previous || nextDate > previous) {
+          map.set(key, nextDate);
         }
       };
 
       (Array.isArray(games) ? games : []).forEach(game => {
         if (!game) return;
+        if (seasonRankingSettings.hideLeagueGames && game.isLeagueGame) return;
         const date = getGameDateValue(game);
-        if (!isValidDateString(date) || date < cutoffDate) return;
+        if (!seasonRankingSettings.removeSeasonWindow &&
+            (!isValidDateString(date) || date < cutoffDate)) return;
 
         const redQualifies = sideMatcher
           ? sideMatcher(getScoreboardTeamSize(game, 'red'))
@@ -2555,8 +2758,6 @@
 
     const SCOREBOARD_MISSING_GAME_PENALTY_POINTS = 5;
     const SCOREBOARD_MISSING_GAME_PENALTY_MAX_GAMES = 50;
-    const SEASON_SCOREBOARD_OVER_FIFTY_GAME_PENALTY_POINTS = 1;
-    const SCOREBOARD_DISPLAY_ORDINAL_SIGMA_MULTIPLIER = 3.5;
 
     function getDisplayPointsPerRawOrdinal() {
       const zero = toDisplayRating(0);
@@ -2572,27 +2773,6 @@
       );
       const missingGames = Math.max(0, cappedMaxGames - (Number(playerGames) || 0));
       return (missingGames * SCOREBOARD_MISSING_GAME_PENALTY_POINTS) / getDisplayPointsPerRawOrdinal();
-    }
-
-    function getSeasonScoreboardGameCountPenaltyPoints(games, scoreboardMaxGames, baseDisplayRating) {
-      const from = Math.max(0, Number(games) || 0);
-      const to = Math.max(from, Number(scoreboardMaxGames) || 0);
-      const underTenGames = Math.max(0, Math.min(to, 10) - Math.min(from, 10));
-      const underFiftyGames = Math.max(0, Math.min(to, 50) - Math.max(from, 10));
-      const behindLeaderGames = Number(baseDisplayRating) >= 1500
-        ? Math.max(0, to - Math.max(from, 50))
-        : 0;
-
-      return underTenGames * 10 + underFiftyGames * 5 +
-        behindLeaderGames * SEASON_SCOREBOARD_OVER_FIFTY_GAME_PENALTY_POINTS;
-    }
-
-    function getSeasonScoreboardGameCountPenaltyRaw(games, scoreboardMaxGames, baseDisplayRating) {
-      return getSeasonScoreboardGameCountPenaltyPoints(
-        games,
-        scoreboardMaxGames,
-        baseDisplayRating
-      ) / getDisplayPointsPerRawOrdinal();
     }
 
     function clamp(value, min, max) {
@@ -2738,31 +2918,28 @@
 
 
     function getExperimentalLeaderboardRaw(player, scoreboardMaxGames = null) {
-      const rawOrdinal =
-        Number.isFinite(Number(player?.mu)) && Number.isFinite(Number(player?.sigma))
-          ? Number(player.mu) - SCOREBOARD_DISPLAY_ORDINAL_SIGMA_MULTIPLIER * Number(player.sigma)
-          : typeof player.rawOrdinal === 'number'
-          ? player.rawOrdinal
-          : typeof player.rating === 'number'
-            ? player.rating
-            : 0;
+      const rawOrdinal = getSeasonRankingDisplayRawOrdinal({
+        ...player,
+        scoreboardMaxGames: null,
+      }, {
+        removeConfidencePenalty: true,
+      });
       if (player?.isLeagueContext || isLeagueContextId(player?.id)) {
         return rawOrdinal;
       }
-      const games = Math.max(0, Number(player.games) || 0);
-      const base = getOverallStandingsRawOrdinal(rawOrdinal, games);
-      if (!Number.isFinite(Number(scoreboardMaxGames))) return base;
-      return base - getSeasonScoreboardGameCountPenaltyRaw(
-        games,
+      return getSeasonRankingDisplayRawOrdinal({
+        ...player,
         scoreboardMaxGames,
-        toDisplayRating(base)
-      );
+      }, {
+        removeConfidencePenalty: activeSeasonRankingSettings.removeConfidencePenalty,
+      });
     }
 
     function isOverallStandingsEligible(
       player,
       mode = getOverallScoreboardMode(),
-      recencyMap = null
+      recencyMap = null,
+      seasonRankingSettings = getSeasonRankingSettings()
     ) {
       if (Boolean(player?.isLeagueContext) || isLeagueContextId(player?.id)) {
         return false;
@@ -2770,7 +2947,7 @@
 
       const id = String(player?.id ?? '');
       return Number(player?.games) > 0 &&
-        Boolean(recencyMap?.has(id));
+        (seasonRankingSettings.removeSeasonWindow || Boolean(recencyMap?.has(id)));
     }
 
     function getScoreboardMaxGamesForRows(rows = []) {
@@ -2870,8 +3047,12 @@
       };
     }
 
-    function shouldIncludeLeagueGamesForScoreboard(mode = getOverallScoreboardMode()) {
-      return mode === 'composite' || mode === 'bigTeam' || mode === 'smallTeam';
+    function shouldIncludeLeagueGamesForScoreboard(
+      mode = getOverallScoreboardMode(),
+      seasonRankingSettings = getSeasonRankingSettings()
+    ) {
+      return !seasonRankingSettings.hideLeagueGames &&
+        (mode === 'composite' || mode === 'bigTeam' || mode === 'smallTeam');
     }
 
     function getSeasonRankingWindowCutoffDate(games = loadGames()) {
@@ -2882,8 +3063,16 @@
       return date.toISOString().slice(0, 10);
     }
 
-    function getSeasonRankingWindowGames(games = loadGames(), mode = getOverallScoreboardMode()) {
-      const scoreboardGames = getOverallScoreboardGames(games, mode);
+    function getSeasonRankingWindowGames(
+      games = loadGames(),
+      mode = getOverallScoreboardMode(),
+      seasonRankingSettings = getSeasonRankingSettings()
+    ) {
+      const modeGames = getOverallScoreboardGames(games, mode);
+      const scoreboardGames = seasonRankingSettings.hideLeagueGames
+        ? modeGames.filter(game => !game?.isLeagueGame)
+        : modeGames;
+      if (seasonRankingSettings.removeSeasonWindow) return scoreboardGames;
       const cutoffDate = getSeasonRankingWindowCutoffDate(scoreboardGames);
       return scoreboardGames.filter(game => {
         const date = getGameDateValue(game);
@@ -2894,16 +3083,20 @@
     function getOverallReplayResult({
       games = loadGames(),
       mode = getOverallScoreboardMode(),
-      rollingWindow = false
+      rollingWindow = false,
+      seasonRankingSettings = getSeasonRankingSettings()
     } = {}) {
-      const scoreboardGames = getOverallScoreboardGames(games, mode);
+      const modeGames = getOverallScoreboardGames(games, mode);
+      const scoreboardGames = seasonRankingSettings.hideLeagueGames
+        ? modeGames.filter(game => !game?.isLeagueGame)
+        : modeGames;
       const ratingGames = rollingWindow
-        ? getSeasonRankingWindowGames(games, mode)
+        ? getSeasonRankingWindowGames(games, mode, seasonRankingSettings)
         : scoreboardGames;
       const ratingOptions = getLeagueScoreboardRatingOptions(mode);
       const replay = getReplayResultForGames(ratingGames, {
         includeLeagueDisplayEstimate: false,
-        includeLeagueGames: shouldIncludeLeagueGamesForScoreboard(mode),
+        includeLeagueGames: shouldIncludeLeagueGamesForScoreboard(mode, seasonRankingSettings),
         persist: true,
         ratingOptions,
       });
@@ -2911,6 +3104,7 @@
         mode,
         games: ratingGames,
         ratingOptions,
+        seasonRankingSettings,
         result: applyOverallScoreboardPlayerCounts(replay, ratingGames, mode)
       };
     }
@@ -5573,16 +5767,32 @@
 
 
     function updateModeDescriptions() {
-      const modes = [
-        `${getSeasonLengthMonths()}-month seasonal recency weighting`,
-        'league games included by context'
-      ];
+      const settings = getSeasonRankingSettings();
 
       if (rankingModeDescriptionEl) {
+        const rangeText = settings.removeSeasonWindow
+          ? 'Season Ranking includes all recorded games; the one-month season window is removed.'
+          : 'Season Ranking uses a one-month rolling window anchored to the latest included game date.';
+        const leagueText = settings.hideLeagueGames
+          ? 'League games are excluded.'
+          : 'League games are included.';
+        const confidenceText = settings.removeConfidencePenalty
+          ? 'Low-game confidence and missing-game volume penalties are removed.'
+          : 'The standard low-game confidence and volume penalties are applied.';
         rankingModeDescriptionEl.textContent =
-          'Season Ranking uses a one-month rolling window anchored to the latest game date. The Games column counts only games included in that calculation.';
+          `${rangeText} ${leagueText} ${confidenceText} The Games column counts only games included in this calculation.`;
       }
-      if (historyModeDescriptionEl) historyModeDescriptionEl.textContent = '';
+      if (historyModeDescriptionEl) {
+        const activeSettings = [
+          settings.hideLeagueGames ? 'league games hidden' : '',
+          settings.removeSeasonWindow ? 'season window removed' : '',
+          settings.removeConfidencePenalty ? 'confidence penalty removed' : '',
+        ].filter(Boolean);
+        historyModeDescriptionEl.textContent = activeSettings.length
+          ? `Using Season Ranking advanced settings: ${activeSettings.join(', ')}.`
+          : '';
+        historyModeDescriptionEl.classList.toggle('hidden', activeSettings.length === 0);
+      }
     }
 
     function escapeHtml(value) {
@@ -5594,20 +5804,21 @@
         .replaceAll("'", '&#039;');
     }
 
-    function formatPlayerNameCell(player) {
+    function formatPlayerNameCell(player, mode = 'composite') {
       const params = new URLSearchParams();
       params.set('id', player.id);
       params.set('seasonal', '1');
       params.set('seasonMonths', String(getSeasonLengthMonths()));
-      params.set('mode', getOverallScoreboardMode());
+      params.set('mode', OVERALL_SCOREBOARD_MODES[mode] ? mode : 'composite');
       params.set('returnTab', activeStatsTab);
       if (activeStatsTab === 'season') {
         params.set('returnSeasonTab', activeSeasonStatsTab);
       }
 
-      if (isIncludeLeagueGamesMode()) {
+      if (!activeSeasonRankingSettings.hideLeagueGames) {
         params.set('includeLeagueGames', '1');
       }
+      appendSeasonRankingSettingsToParams(params);
 
       const name = escapeHtml(player.name);
       return `<a href="trend.html?${params.toString()}" class="player-link">${name}</a>`;
@@ -6061,7 +6272,8 @@
       ratingScope = 'default',
       ratingOptions = {},
       recencyMap = null,
-      displayScale = null
+      displayScale = null,
+      mode = 'composite'
     ) {
       const div = document.createElement('div');
       div.className = 'season-mover-row';
@@ -6073,14 +6285,16 @@
         ratingOptions,
         displayScale
       );
-      const eligibilityText = isOverallStandingsEligible(player, getOverallScoreboardMode(), recencyMap)
-        ? `Shown in ${getOverallScoreboardModeLabel()} standings.`
-        : 'Needs at least one qualifying game in the current one-month window to appear in standings.';
+      const eligibilityText = isOverallStandingsEligible(player, mode, recencyMap)
+        ? `Shown in ${getOverallScoreboardModeLabel(mode)} standings.`
+        : activeSeasonRankingSettings.removeSeasonWindow
+          ? 'Needs at least one qualifying game to appear in standings.'
+          : 'Needs at least one qualifying game in the current one-month window to appear in standings.';
 
       div.innerHTML = `
         <div class="season-mover-header">
           <div class="season-mover-rank">—</div>
-          <div class="season-mover-name">${formatPlayerNameCell(player)}</div>
+          <div class="season-mover-name">${formatPlayerNameCell(player, mode)}</div>
           <div class="season-mover-score">${escapeHtml(ratingText)}</div>
         </div>
         <div class="season-mover-meta">${escapeHtml(player.games)} game${player.games === 1 ? '' : 's'} · ${escapeHtml(eligibilityText)}</div>
@@ -6094,10 +6308,11 @@
       ratingGames = loadGames(),
       ratingScope = 'default',
       ratingOptions = {},
-      displayScale = null
+      displayScale = null,
+      mode = 'composite'
     ) {
       if (!overallPlayerLookupResultEl) return;
-      const recencyMap = createOverallStandingsRecencyMap(ratingGames, getOverallScoreboardMode());
+      const recencyMap = createOverallStandingsRecencyMap(ratingGames, mode);
 
       const query = getOverallPlayerLookupQuery();
       overallPlayerLookupResultEl.innerHTML = '';
@@ -6106,7 +6321,7 @@
 
       const sourceRows = result?.standings || [];
       const eligibleRows = sourceRows
-        .filter(player => isOverallStandingsEligible(player, getOverallScoreboardMode(), recencyMap));
+        .filter(player => isOverallStandingsEligible(player, mode, recencyMap));
       const scoreboardMaxGames = getScoreboardMaxGamesForRows(eligibleRows);
       const rows = sourceRows
         .map(player => ({
@@ -6126,7 +6341,15 @@
       }
 
       overallPlayerLookupResultEl.appendChild(
-        createOverallLookupResult(match, ratingGames, ratingScope, ratingOptions, recencyMap, displayScale)
+        createOverallLookupResult(
+          match,
+          ratingGames,
+          ratingScope,
+          ratingOptions,
+          recencyMap,
+          displayScale,
+          mode
+        )
       );
     }
 
@@ -6346,6 +6569,7 @@
       return hashString(JSON.stringify({
         version: VERSION,
         mode,
+        seasonRankingSettings: getSeasonRankingSettings(),
         players: localStorage.getItem(PLAYER_STORAGE_KEY) || '',
         games: localStorage.getItem(GAME_STORAGE_KEY) || '',
         seasonStartDate: getSeasonStartDate(),
@@ -6437,11 +6661,24 @@
       const ratingOptions = replay.ratingOptions || {};
       const ratingScope = `overall:${mode}`;
       const rows = getSortedStandingsRows(result, mode, scoreboardGames);
-      renderOverallPlayerLookup(result, scoreboardGames, ratingScope, ratingOptions);
+      renderOverallPlayerLookup(result, scoreboardGames, ratingScope, ratingOptions, null, mode);
       if (rankingModeDescriptionEl) {
-        const cutoffDate = getSeasonRankingWindowCutoffDate(getOverallScoreboardGames(loadGames(), mode));
+        const settings = getSeasonRankingSettings();
+        const modeGames = getOverallScoreboardGames(loadGames(), mode);
+        const eligibleModeGames = settings.hideLeagueGames
+          ? modeGames.filter(game => !game?.isLeagueGame)
+          : modeGames;
+        const rangeText = settings.removeSeasonWindow
+          ? `The season window is removed, so all ${scoreboardGames.length} qualifying game${scoreboardGames.length === 1 ? '' : 's'} are included.`
+          : `The one-month window is anchored to the latest included game date; ${scoreboardGames.length} game${scoreboardGames.length === 1 ? '' : 's'} on or after ${getSeasonRankingWindowCutoffDate(eligibleModeGames)} are included.`;
+        const leagueText = settings.hideLeagueGames
+          ? 'League games are excluded.'
+          : 'League games are included.';
+        const confidenceText = settings.removeConfidencePenalty
+          ? 'Low-game confidence and missing-game volume penalties are removed.'
+          : 'Standard low-game confidence and volume penalties are applied.';
         rankingModeDescriptionEl.textContent =
-          `Season Ranking uses a one-month rolling window anchored to the latest game date. ${scoreboardGames.length} game${scoreboardGames.length === 1 ? '' : 's'} on or after ${cutoffDate} are included in this calculation. The Games column counts only those included games.`;
+          `${rangeText} ${leagueText} ${confidenceText} The Games column counts only included games.`;
         rankingModeDescriptionEl.classList.remove('hidden');
       }
 
@@ -6465,7 +6702,10 @@
         const tr = document.createElement('tr');
         const td = document.createElement('td');
         td.colSpan = 5;
-        td.innerHTML = `<div class="empty-state">No players have a qualifying game in the current one-month ${escapeHtml(getOverallScoreboardModeLabel(mode))} standings window.</div>`;
+        const rangeLabel = activeSeasonRankingSettings.removeSeasonWindow
+          ? 'selected'
+          : 'current one-month';
+        td.innerHTML = `<div class="empty-state">No players have a qualifying game in the ${rangeLabel} ${escapeHtml(getOverallScoreboardModeLabel(mode))} standings range.</div>`;
         tr.appendChild(td);
         statsTableBody.appendChild(tr);
         saveSeasonRankingRenderCache(renderSignature);
@@ -6496,7 +6736,7 @@
         tr.innerHTML = `
           <td>${renderTrendCell(trend)}</td>
           <td>${index + 1}</td>
-          <td class="player-cell">${formatPlayerNameCell(player)}</td>
+          <td class="player-cell">${formatPlayerNameCell(player, mode)}</td>
           <td>${getSortedFieldDisplay(player, scoreboardGames, ratingScope, ratingOptions)}</td>
           <td>${player.games}</td>
         `;
@@ -6505,10 +6745,11 @@
       saveSeasonRankingRenderCache(renderSignature);
     }
 
-    function getHistoryRenderSignature(mode = getOverallScoreboardMode()) {
+    function getHistoryRenderSignature(mode = 'composite') {
       return hashString(JSON.stringify({
         version: VERSION,
         mode,
+        seasonRankingSettings: getSeasonRankingSettings(),
         players: localStorage.getItem(PLAYER_STORAGE_KEY) || '',
         games: localStorage.getItem(GAME_STORAGE_KEY) || '',
         seasonStartDate: getSeasonStartDate(),
@@ -6518,7 +6759,7 @@
     function renderHistory({ force = false } = {}) {
       if (!historyList || historyList.offsetParent === null) return;
 
-      const mode = getOverallScoreboardMode();
+      const mode = 'composite';
       const signature = getHistoryRenderSignature(mode);
       if (!force && signature === renderedHistorySignature) return;
 
@@ -6540,6 +6781,8 @@
       const powerMap = getHistoryPowerMap(displayHistory);
       const gameCountMap = getHistoryGameCountMap(displayHistory);
       const leagueRatingMap = getHistoryLeagueRatingMap(displayHistory);
+
+      updateModeDescriptions();
 
       historyList.innerHTML = '';
 
@@ -8167,7 +8410,13 @@
     }
 
     function getCanonicalGameJson(game) {
-      return stableStringify(JSON.parse(JSON.stringify(game || {})));
+      const hasId = game?.id !== null && typeof game?.id !== 'undefined';
+      const comparableGame = hasId
+        ? game
+        : { ...(game || {}), id: '__comparison_only__' };
+      const normalized = normalizeImportedGames([comparableGame])[0] || {};
+      if (!hasId) delete normalized.id;
+      return stableStringify(normalized);
     }
 
     function getServerGamesChangedLocally(meta) {
@@ -8576,6 +8825,20 @@
       setDatabaseStatus(`Loaded newest stats from server with ${meta.players.length} players and ${meta.games.length} games. Season start date: ${getSeasonStartDate()}.`);
     }
 
+    async function refreshSeasonRankingAdvancedSettings() {
+      updateSeasonRankingAdvancedControls();
+      updateModeDescriptions();
+      renderedHistorySignature = '';
+      await runWithBusy('Updating season ranking...', async ({ updateBusyMessage, yieldToBrowser }) => {
+        updateBusyMessage('Recalculating season ranking...');
+        await yieldToBrowser();
+        renderStats('composite');
+        updateBusyMessage('Updating game history...');
+        await yieldToBrowser();
+        renderHistory({ force: true });
+      });
+    }
+
     sessionStatsTabButtonEl.addEventListener('click', () => {
       setStatsTab('session');
     });
@@ -8590,6 +8853,25 @@
     });
     seasonRankingSubTabButtonEl.addEventListener('click', async () => {
       await runSeasonStatsActionWithCachePolicy('seasonRanking', () => setSeasonStatsTab('seasonRanking'));
+    });
+
+    showSeasonRankingAdvancedSettingsEl?.addEventListener('change', () => {
+      showSeasonRankingAdvancedSettings = showSeasonRankingAdvancedSettingsEl.checked;
+      updateSeasonRankingAdvancedControls();
+    });
+
+    [
+      [hideSeasonRankingLeagueGamesEl, 'hideLeagueGames'],
+      [removeSeasonRankingWindowEl, 'removeSeasonWindow'],
+      [removeSeasonRankingConfidencePenaltyEl, 'removeConfidencePenalty'],
+    ].forEach(([control, setting]) => {
+      control?.addEventListener('change', async () => {
+        activeSeasonRankingSettings = {
+          ...activeSeasonRankingSettings,
+          [setting]: control.checked,
+        };
+        await refreshSeasonRankingAdvancedSettings();
+      });
     });
 
     calculateBayesianButtonEl?.addEventListener('click', () => {
@@ -8753,6 +9035,8 @@
     updateSeasonStartDateStatus();
     // Read URL params — sortBy forces the overall tab and sets the sort field
     const _initParams = new URLSearchParams(window.location.search);
+    loadSeasonRankingSettingsFromUrl(_initParams);
+    updateSeasonRankingAdvancedControls();
     const _modeParam = _initParams.get('mode');
     activeOverallScoreboardMode = OVERALL_SCOREBOARD_MODES[_modeParam]
       ? _modeParam

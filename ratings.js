@@ -128,6 +128,9 @@ export const PUBLIC_RATING_MIN_GAMES = 5;
 export const PUBLIC_RATING_LOW_GAME_PENALTY = 2.5;
 export const PUBLIC_RATING_LOW_GAME_PENALTY_GAMES = 8;
 export const PUBLIC_RATING_LOW_GAME_PENALTY_POWER = 1.10;
+export const SEASON_RANKING_DISPLAY_ORDINAL_SIGMA_MULTIPLIER = 3.5;
+export const SEASON_RANKING_MISSING_GAME_PENALTY_POINTS = 5;
+export const SEASON_RANKING_OVER_FIFTY_GAME_PENALTY_POINTS = 1;
 
 export const SEASONAL_FULL_WEIGHT_DAYS = 7;
 export const SEASONAL_TAPER_DAYS = 180;
@@ -274,7 +277,7 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260714-1';
+export const VERSION = 'beta-20260716-2';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Flatter team-strength weights. Forward validation favored restoring
@@ -429,6 +432,60 @@ export function getOverallStandingsRawOrdinal(rawOrdinal, games = 0, options = {
   const penalty = maxPenalty * missingConfidence;
 
   return raw - penalty;
+}
+
+export function getSeasonRankingGameCountPenaltyPoints(
+  games,
+  scoreboardMaxGames,
+  baseDisplayRating
+) {
+  if (Number(baseDisplayRating) < DISPLAY_RATING_BASE) return 0;
+
+  const from = Math.max(0, Number(games) || 0);
+  const to = Math.max(from, Number(scoreboardMaxGames) || 0);
+  const underTenGames = Math.max(0, Math.min(to, 10) - Math.min(from, 10));
+  const underFiftyGames = Math.max(0, Math.min(to, 50) - Math.max(from, 10));
+  const behindLeaderGames = Number(baseDisplayRating) >= 1500
+    ? Math.max(0, to - Math.max(from, 50))
+    : 0;
+
+  return underTenGames * 10 +
+    underFiftyGames * SEASON_RANKING_MISSING_GAME_PENALTY_POINTS +
+    behindLeaderGames * SEASON_RANKING_OVER_FIFTY_GAME_PENALTY_POINTS;
+}
+
+export function getSeasonRankingDisplayRawOrdinal(player = {}, options = {}) {
+  const mu = Number(player?.mu);
+  const sigma = Number(player?.sigma);
+  const fallbackRaw = Number(player?.rawOrdinal ?? player?.rating);
+  const rawOrdinal = Number.isFinite(mu) && Number.isFinite(sigma)
+    ? mu - SEASON_RANKING_DISPLAY_ORDINAL_SIGMA_MULTIPLIER * sigma
+    : Number.isFinite(fallbackRaw)
+      ? fallbackRaw
+      : 0;
+
+  if (
+    options.removeConfidencePenalty ||
+    toDisplayRating(rawOrdinal) < DISPLAY_RATING_BASE
+  ) {
+    return rawOrdinal;
+  }
+
+  const games = Math.max(0, Number(player?.games) || 0);
+  const confidenceAdjusted = getOverallStandingsRawOrdinal(rawOrdinal, games, options);
+  const scoreboardMaxGamesValue = player?.scoreboardMaxGames;
+  const scoreboardMaxGames = Number(scoreboardMaxGamesValue);
+  if (scoreboardMaxGamesValue === null || typeof scoreboardMaxGamesValue === 'undefined') {
+    return confidenceAdjusted;
+  }
+  if (!Number.isFinite(scoreboardMaxGames)) return confidenceAdjusted;
+
+  const penaltyPoints = getSeasonRankingGameCountPenaltyPoints(
+    games,
+    scoreboardMaxGames,
+    toDisplayRating(confidenceAdjusted)
+  );
+  return confidenceAdjusted - penaltyPoints / DISPLAY_RATING_SCALE;
 }
 
 function getRawOrdinalFromMuSigma(mu, sigma, options = {}) {

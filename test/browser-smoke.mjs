@@ -26,6 +26,11 @@ const seasonRankingWindowGames = db.games.filter(game => {
   const date = getGameDateValue(game);
   return isValidDateString(date) && date >= getSeasonRankingWindowCutoffDate(db.games);
 });
+const nonLeagueGames = db.games.filter(game => !game?.isLeagueGame);
+const nonLeagueSeasonRankingWindowGames = nonLeagueGames.filter(game => {
+  const date = getGameDateValue(game);
+  return isValidDateString(date) && date >= getSeasonRankingWindowCutoffDate(nonLeagueGames);
+});
 const snapshotKey = 'gameDayBayesianScoreboardSnapshotV1:composite';
 const bigTeamSnapshotKey = 'gameDayBayesianScoreboardSnapshotV1:bigTeam';
 const smallTeamSnapshotKey = 'gameDayBayesianScoreboardSnapshotV1:smallTeam';
@@ -115,6 +120,7 @@ await evaluate(client, `
   localStorage.removeItem(${JSON.stringify(snapshotKey)});
   localStorage.removeItem(${JSON.stringify(bigTeamSnapshotKey)});
   localStorage.removeItem(${JSON.stringify(smallTeamSnapshotKey)});
+  localStorage.setItem('gameDayAllTimeBayesianScoreboardMode', 'smallTeam');
   sessionStorage.removeItem('statsActiveTab');
   sessionStorage.removeItem('seasonStatsActiveTab');
 `);
@@ -177,11 +183,12 @@ const firstSeasonRankingRow = await evaluate(client, `(() => {
     rank: cells[1]?.textContent?.trim() || '',
     rating: cells[3]?.textContent?.trim() || '',
     games: cells[4]?.textContent?.trim() || '',
-    href: link ? new URL(link.getAttribute('href'), window.location.href).href : ''
+    href: link ? new URL(link.getAttribute('href'), window.location.href).href : '',
+    mode: link ? new URL(link.getAttribute('href'), window.location.href).searchParams.get('mode') : ''
   };
 })()`);
 
-if (!firstSeasonRankingRow.href || !firstSeasonRankingRow.rating) {
+if (!firstSeasonRankingRow.href || !firstSeasonRankingRow.rating || firstSeasonRankingRow.mode !== 'composite') {
   throw new Error(`Could not read first Season Ranking row: ${JSON.stringify(firstSeasonRankingRow)}`);
 }
 
@@ -260,7 +267,239 @@ if (
 }
 
 load = waitForLoad(client);
-await client.send('Page.navigate', { url: `${baseUrl}/stats.html?tab=bayesian` });
+await client.send('Page.navigate', { url: `${baseUrl}/stats.html` });
+await load;
+
+const advancedDefaults = await evaluate(client, `
+  new Promise(resolve => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const rows = document.querySelectorAll('#statsTableBody tr').length;
+      if (rows > 0 || Date.now() - started > 10000) {
+        clearInterval(timer);
+        resolve({
+          rows,
+          showChecked: Boolean(document.getElementById('showSeasonRankingAdvancedSettings')?.checked),
+          optionsHidden: document.getElementById('seasonRankingAdvancedOptions')?.classList.contains('hidden'),
+          hideLeagueChecked: Boolean(document.getElementById('hideSeasonRankingLeagueGames')?.checked),
+          removeWindowChecked: Boolean(document.getElementById('removeSeasonRankingWindow')?.checked),
+          removePenaltyChecked: Boolean(document.getElementById('removeSeasonRankingConfidencePenalty')?.checked),
+        });
+      }
+    }, 100);
+  })
+`, true);
+
+if (
+  advancedDefaults.rows < 1 ||
+  advancedDefaults.showChecked ||
+  !advancedDefaults.optionsHidden ||
+  advancedDefaults.hideLeagueChecked ||
+  advancedDefaults.removeWindowChecked ||
+  advancedDefaults.removePenaltyChecked
+) {
+  throw new Error(`Season Ranking advanced settings did not default off: ${JSON.stringify(advancedDefaults)}`);
+}
+
+const advancedExpanded = await evaluate(client, `(() => {
+  document.getElementById('showSeasonRankingAdvancedSettings').click();
+  return {
+    showChecked: document.getElementById('showSeasonRankingAdvancedSettings').checked,
+    optionsHidden: document.getElementById('seasonRankingAdvancedOptions').classList.contains('hidden'),
+    switches: [...document.querySelectorAll('#seasonRankingAdvancedOptions input[type="checkbox"]')]
+      .map(input => ({ id: input.id, checked: input.checked })),
+  };
+})()`);
+
+if (
+  !advancedExpanded.showChecked ||
+  advancedExpanded.optionsHidden ||
+  advancedExpanded.switches.length !== 3 ||
+  advancedExpanded.switches.some(input => input.checked)
+) {
+  throw new Error(`Season Ranking advanced settings did not expand with switches off: ${JSON.stringify(advancedExpanded)}`);
+}
+
+const leagueHidden = await evaluate(client, `
+  new Promise(resolve => {
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    document.getElementById('hideSeasonRankingLeagueGames').click();
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const description = document.getElementById('rankingModeDescription')?.textContent || '';
+      const cards = document.querySelectorAll('#historyList .game-card').length;
+      const busy = !document.getElementById('busyOverlay')?.classList.contains('hidden');
+      if ((!busy && description.includes('League games are excluded') &&
+          cards === ${nonLeagueSeasonRankingWindowGames.length}) || Date.now() - started > 15000) {
+        clearInterval(timer);
+        resolve({
+          cards,
+          busy,
+          description,
+          hideLeagueChecked: document.getElementById('hideSeasonRankingLeagueGames')?.checked,
+          historyContainsLeague: [...document.querySelectorAll('#historyList .game-card')]
+            .some(card => (card.textContent || '').includes(' League ')),
+        });
+      }
+    }, 100);
+  })
+`, true);
+
+if (
+  !leagueHidden.hideLeagueChecked ||
+  leagueHidden.cards !== nonLeagueSeasonRankingWindowGames.length ||
+  leagueHidden.historyContainsLeague ||
+  !leagueHidden.description.includes('League games are excluded')
+) {
+  throw new Error(`Hide league games did not update Season Ranking and Game History: ${JSON.stringify(leagueHidden)}`);
+}
+
+const seasonWindowRemoved = await evaluate(client, `
+  new Promise(resolve => {
+    document.getElementById('removeSeasonRankingWindow').click();
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const description = document.getElementById('rankingModeDescription')?.textContent || '';
+      const cards = document.querySelectorAll('#historyList .game-card').length;
+      const busy = !document.getElementById('busyOverlay')?.classList.contains('hidden');
+      if ((!busy && description.includes('season window is removed') &&
+          cards === ${nonLeagueGames.length}) || Date.now() - started > 15000) {
+        clearInterval(timer);
+        const ratings = Object.fromEntries([...document.querySelectorAll('#statsTableBody tr')]
+          .map(row => {
+            const cells = [...row.querySelectorAll('td')];
+            const name = row.querySelector('a[href*="trend.html"]')?.textContent?.trim() || '';
+            return name ? [name, Number(cells[3]?.textContent?.trim())] : null;
+          })
+          .filter(Boolean));
+        resolve({
+          cards,
+          busy,
+          description,
+          removeWindowChecked: document.getElementById('removeSeasonRankingWindow')?.checked,
+          ratings,
+        });
+      }
+    }, 100);
+  })
+`, true);
+
+if (
+  !seasonWindowRemoved.removeWindowChecked ||
+  seasonWindowRemoved.cards !== nonLeagueGames.length ||
+  !seasonWindowRemoved.description.includes('season window is removed')
+) {
+  throw new Error(`Remove season window did not include all non-league history: ${JSON.stringify(seasonWindowRemoved)}`);
+}
+
+const confidencePenaltyRemoved = await evaluate(client, `
+  new Promise(resolve => {
+    document.getElementById('removeSeasonRankingConfidencePenalty').click();
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const description = document.getElementById('rankingModeDescription')?.textContent || '';
+      const busy = !document.getElementById('busyOverlay')?.classList.contains('hidden');
+      if ((!busy && description.includes('penalties are removed')) || Date.now() - started > 15000) {
+        clearInterval(timer);
+        const rows = [...document.querySelectorAll('#statsTableBody tr')].map(row => {
+          const cells = [...row.querySelectorAll('td')];
+          const link = row.querySelector('a[href*="trend.html"]');
+          return {
+            name: link?.textContent?.trim() || '',
+            rating: Number(cells[3]?.textContent?.trim()),
+            games: cells[4]?.textContent?.trim() || '',
+            href: link ? new URL(link.getAttribute('href'), window.location.href).href : '',
+          };
+        }).filter(row => row.name);
+        resolve({
+          busy,
+          description,
+          removePenaltyChecked: document.getElementById('removeSeasonRankingConfidencePenalty')?.checked,
+          rows,
+        });
+      }
+    }, 100);
+  })
+`, true);
+
+const confidenceIncreases = confidencePenaltyRemoved.rows.filter(row =>
+  Number.isFinite(seasonWindowRemoved.ratings[row.name]) &&
+  row.rating > seasonWindowRemoved.ratings[row.name]
+);
+const under1500Rows = confidencePenaltyRemoved.rows.filter(row => row.rating < 1500);
+const under1500PenaltyChanges = under1500Rows.filter(row =>
+  Number.isFinite(seasonWindowRemoved.ratings[row.name]) &&
+  row.rating !== seasonWindowRemoved.ratings[row.name]
+);
+const advancedSeasonRankingRow = confidencePenaltyRemoved.rows[0];
+const advancedRowUrl = new URL(advancedSeasonRankingRow?.href || baseUrl);
+if (
+  !confidencePenaltyRemoved.removePenaltyChecked ||
+  !confidencePenaltyRemoved.description.includes('penalties are removed') ||
+  confidenceIncreases.length < 1 ||
+  under1500Rows.length < 1 ||
+  under1500PenaltyChanges.length > 0 ||
+  advancedRowUrl.searchParams.get('hideLeagueGames') !== '1' ||
+  advancedRowUrl.searchParams.get('removeSeasonWindow') !== '1' ||
+  advancedRowUrl.searchParams.get('removeConfidencePenalty') !== '1'
+) {
+  throw new Error(`Remove confidence penalty did not update or propagate advanced ratings: ${JSON.stringify({ confidencePenaltyRemoved, confidenceIncreases, under1500Rows, under1500PenaltyChanges })}`);
+}
+
+const advancedHistoryAlignment = await evaluate(client, `(() => {
+  const name = ${JSON.stringify(advancedSeasonRankingRow?.name || '')};
+  const marker = name + ' (';
+  for (const card of document.querySelectorAll('#historyList .game-card')) {
+    const text = card.textContent || '';
+    const start = text.indexOf(marker);
+    if (start < 0) continue;
+    const match = text.slice(start + marker.length).match(/^(\\d+)\\s*→\\s*(\\d+)\\)/);
+    if (!match) continue;
+    return { historyRating: match[2], cardDate: card.querySelector('strong')?.textContent || '' };
+  }
+  return { historyRating: '', cardDate: '' };
+})()`);
+
+if (advancedHistoryAlignment.historyRating !== String(advancedSeasonRankingRow.rating)) {
+  throw new Error(`Advanced Game History rating does not match Season Ranking: ${JSON.stringify({ advancedSeasonRankingRow, advancedHistoryAlignment })}`);
+}
+
+load = waitForLoad(client);
+await client.send('Page.navigate', { url: advancedSeasonRankingRow.href });
+await load;
+
+const advancedTrendAlignment = await evaluate(client, `
+  new Promise(resolve => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const text = document.getElementById('statusMessage')?.textContent || '';
+      const ratingMatch = text.match(/^Rating:\\s*(\\d+)/m);
+      const gamesMatch = text.match(/^Games included:\\s*(\\d+)/m);
+      if (ratingMatch || Date.now() - started > 15000) {
+        clearInterval(timer);
+        resolve({
+          rating: ratingMatch?.[1] || '',
+          games: gamesMatch?.[1] || '',
+          status: text,
+          rangeButton: document.getElementById('trendMonthRangeButton')?.textContent || '',
+        });
+      }
+    }, 100);
+  })
+`, true);
+
+if (
+  advancedTrendAlignment.rating !== String(advancedSeasonRankingRow.rating) ||
+  advancedTrendAlignment.games !== advancedSeasonRankingRow.games ||
+  !advancedTrendAlignment.status.includes('League games excluded') ||
+  !advancedTrendAlignment.status.includes('Low-game penalties removed') ||
+  advancedTrendAlignment.rangeButton !== 'Season Ranking'
+) {
+  throw new Error(`Advanced Trend does not match Season Ranking: ${JSON.stringify({ advancedSeasonRankingRow, advancedTrendAlignment })}`);
+}
+
+load = waitForLoad(client);
+await client.send('Page.navigate', { url: `${baseUrl}/stats.html?tab=bayesian&mode=composite` });
 await load;
 
 const beforeClick = await evaluate(client, `({
@@ -537,6 +776,60 @@ if (
   throw new Error(`Team balancing did not resume after sync: ${JSON.stringify(balanceAfterSync)}`);
 }
 
+await evaluate(client, `(() => {
+  const games = JSON.parse(localStorage.getItem('gameDayGames') || '[]');
+  if (games[0]) delete games[0].isTournamentGame;
+  localStorage.setItem('gameDayGames', JSON.stringify(games));
+})()`);
+
+load = waitForLoad(client);
+await client.send('Page.navigate', { url: `${baseUrl}/stats.html` });
+await load;
+
+const statsSemanticCorrectionCheck = await evaluate(client, `
+  new Promise(resolve => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const buttonText = document.getElementById('loadDefaultDatabaseButton')?.textContent || '';
+      if (buttonText === 'you are up to date' || Date.now() - started > 10000) {
+        clearInterval(timer);
+        resolve({ buttonText, serverFetches: window.__playSafetyServerFetchCount });
+      }
+    }, 100);
+  })
+`, true);
+
+if (statsSemanticCorrectionCheck.buttonText !== 'you are up to date') {
+  throw new Error(`Stats reported a correction for an omitted false default: ${JSON.stringify(statsSemanticCorrectionCheck)}`);
+}
+
+await evaluate(client, `(() => {
+  const games = JSON.parse(localStorage.getItem('gameDayGames') || '[]');
+  if (games[0]) games[0].scoreRed = Number(games[0].scoreRed || 0) + 1;
+  localStorage.setItem('gameDayGames', JSON.stringify(games));
+})()`);
+
+load = waitForLoad(client);
+await client.send('Page.navigate', { url: `${baseUrl}/stats.html` });
+await load;
+
+const genuineCorrectionCheck = await evaluate(client, `
+  new Promise(resolve => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const buttonText = document.getElementById('loadDefaultDatabaseButton')?.textContent || '';
+      if (buttonText === 'server corrections available' || Date.now() - started > 10000) {
+        clearInterval(timer);
+        resolve({ buttonText, serverFetches: window.__playSafetyServerFetchCount });
+      }
+    }, 100);
+  })
+`, true);
+
+if (genuineCorrectionCheck.buttonText !== 'server corrections available') {
+  throw new Error(`Stats did not detect a genuine score correction: ${JSON.stringify(genuineCorrectionCheck)}`);
+}
+
 client.close();
 
 if (!completed.saved) throw new Error('Bayesian worker did not persist a snapshot.');
@@ -548,6 +841,20 @@ console.log(JSON.stringify({
   defaultTab,
   historyAlignment,
   trendAlignment,
+  advancedDefaults,
+  advancedExpanded,
+  leagueHidden,
+  seasonWindowRemoved: {
+    cards: seasonWindowRemoved.cards,
+    description: seasonWindowRemoved.description,
+  },
+  confidencePenaltyRemoved: {
+    description: confidencePenaltyRemoved.description,
+    increasedPlayers: confidenceIncreases.length,
+    unchangedUnder1500Players: under1500Rows.length,
+  },
+  advancedHistoryAlignment,
+  advancedTrendAlignment,
   beforeClick,
   completed,
   registrationBlocked,
@@ -555,4 +862,6 @@ console.log(JSON.stringify({
   afterSafetySync,
   registrationAfterSync,
   balanceAfterSync,
+  statsSemanticCorrectionCheck,
+  genuineCorrectionCheck,
 }, null, 2));

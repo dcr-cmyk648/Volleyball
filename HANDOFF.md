@@ -1,10 +1,111 @@
 # Volleyball App — Session Handoff
 
-Working doc to resume balancing/algorithm work in a fresh thread. Read this first.
+Working doc for resuming this repository in a fresh CLI session. Read the newest
+snapshot first; older sections are retained only as historical background.
 
 ---
 
-## 0. Latest state — June 22, 2026
+## 0. Authoritative restart snapshot — July 16, 2026
+
+This section supersedes every older branch, data, test, and uncommitted-state
+note below when they conflict.
+
+### Resume state
+
+- Repo: `/Users/dustinrowland/Projects/Volleyball`
+- Branch: `mac-beta`
+- HEAD: `b06eac6 Ship play rotations, sync safeguards, and ranking polish`
+- `HEAD` matches `origin/main`; local `mac-beta` is 21 commits ahead of the
+  older `origin/mac-beta` pointer.
+- Do not switch branches, commit, stage, discard, or push unless the user asks.
+- Current work is intentionally uncommitted. Modified files:
+  `AGENTS.md`, `default_database`, `index.html`, `ratings.js`, `stats.html`,
+  `sw.js`, `test/browser-smoke.mjs`, and `trend.html`.
+- `HANDOFF.md` is being modified only to preserve this restart context.
+
+### Current uncommitted feature batch
+
+- Season Ranking now has a `show advanced settings` switch. Expanding it shows
+  three off-by-default switches:
+  - `hide league games`
+  - `remove season window`
+  - `remove confidence penalty`
+- These options propagate to Season Ranking, Player Trend, and Game History so
+  all three use the same league inclusion, rolling window, game set, game count,
+  and visible rating transform.
+- Fixed a real cross-view divergence: Season Ranking always rendered composite
+  ratings, but Trend links and Game History silently inherited the last saved
+  All-Time Bayesian mode (`smallTeam` or `bigTeam`). Season Ranking links,
+  lookups, History, and Trend now explicitly use composite mode.
+- Shared Season Ranking display logic now lives in `ratings.js`.
+- The user-approved missing-game volume tiers are:
+  - 10 points per missing game below 10 games
+  - 5 points per missing game from 10 through 50 games
+  - 1 point per missing game above 50 games
+- No confidence or missing-game display penalty applies when the player's
+  pre-penalty displayed rating is below 1500. At exactly 1500, penalties may
+  apply. Turning on `remove confidence penalty` removes all low-game and
+  missing-game display penalties regardless of rating.
+- Fixed false `server corrections available` notices in both `index.html` and
+  `stats.html`. The comparison previously treated omitted optional defaults
+  (for example, no `isTournamentGame` property) as different from explicit
+  `isTournamentGame: false`. Comparable games are now normalized before stable
+  comparison. A genuine score edit still reports server corrections.
+- No function was found corrupting stored ratings. Sync normalizes the server
+  response and fully replaces local `players` and `games`; ratings are replayed
+  from those canonical games rather than persisted. The apparent correction was
+  caused by raw JSON-shape comparison, and syncing canonicalized the shape.
+- Cache/version markers for this batch:
+  - `ratings.js`: `beta-20260716-2`
+  - `sw.js`: `vball-static-v13-season-ranking-consistency`
+
+### Current data state
+
+- The required new-day Google Drive refresh was completed on July 16.
+- `default_database` was refreshed from
+  `vballstats_2026-07-16.json`: 61 players, 220 games, latest game 2026-07-15.
+- Relative to the old fallback, the server had 36 new games. Six apparent
+  "corrections" were only omitted `isTournamentGame` versus explicit `false`;
+  there were no score, roster, or result changes in those six games.
+- Keep `default_database` uncommitted unless the user explicitly asks to include
+  the refreshed fallback.
+
+### Verification completed
+
+- `git diff --check`: passed.
+- `node --check ratings.js`: passed.
+- `node --check test/browser-smoke.mjs`: passed.
+- `npm test`: 23 passed, 0 failed.
+- Full browser regression passed against `http://127.0.0.1:5173`:
+  - With saved All-Time mode forced to `smallTeam`, default Season Ranking,
+    History, and Trend all showed JoeM at rating 2258 with 55 games.
+  - With all advanced switches enabled, all three showed JoeM at rating 2409
+    with 49 games.
+  - 24 players increased when penalties were removed; all 22 sampled players
+    whose unpenalized rating was below 1500 were unchanged.
+  - An omitted optional `false` field displayed `you are up to date`.
+  - A genuine score change displayed `server corrections available`.
+  - Existing Play-page stale-data hard stops and post-sync registration/team
+    assignment flows also passed.
+- Headless Chrome used for the regression was stopped afterward.
+- The local development server is still responding at:
+  `http://127.0.0.1:5173/stats.html`
+  If it does not survive the CLI restart, run `PORT=5173 npm run dev` from the
+  repo root.
+
+### Recommended first actions after restart
+
+1. Read `AGENTS.md` and this section.
+2. Run `git status --short --branch`; preserve all modified files listed above.
+3. Open `http://127.0.0.1:5173/stats.html` or restart the server as described.
+4. Ask the user what external project/system they want connected, then inspect
+   that target before changing this feature batch.
+5. Before any future rating/display change, rerun the required Season Ranking,
+   Trend, and Game History consistency audit.
+
+---
+
+## Archived snapshot — June 22, 2026
 
 This section supersedes stale branch/model notes below when they conflict.
 

@@ -4868,7 +4868,13 @@
   }
 
   function getCanonicalGameJson(game) {
-    return stableStringify(JSON.parse(JSON.stringify(game || {})));
+    const hasId = game?.id !== null && typeof game?.id !== 'undefined';
+    const comparableGame = hasId
+      ? game
+      : { ...(game || {}), id: '__comparison_only__' };
+    const normalized = normalizeImportedGames([comparableGame])[0] || {};
+    if (!hasId) delete normalized.id;
+    return stableStringify(normalized);
   }
 
   function getServerGamesChangedLocally(meta) {

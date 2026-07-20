@@ -86,6 +86,17 @@ note below when they conflict.
   no-negative-winning-display guard.
 - The audit server remains available at
   `http://127.0.0.1:5173/stats.html`.
+- The user-facing scoreboard and Trend descriptions retain their prior concise
+  wording. `AGENTS.md` now forbids adding or expanding scoreboard explanation,
+  help, label, or instructional copy during behavior changes unless the user
+  explicitly requests a copy change.
+- Season Ranking movement arrows now compare the current board with the board
+  that actually existed before the exact latest play date shown in the Session
+  tab. The prior board uses its own rolling-window anchor instead of today's
+  cutoff, and consecutive dates are no longer merged into one session. On the
+  July 19 data, RichaP is rank 16 before and after the session, so her corrected
+  arrow is stable rather than down two. The app-shell cache is
+  `vball-static-v17-session-rank-arrows`.
 
 ### Game-day fun facts protocol
 

@@ -153,6 +153,104 @@ if (!defaultTab.seasonActive || !defaultTab.seasonRankingActive || defaultTab.se
   throw new Error(`Stats did not default to Season Ranking: ${JSON.stringify(defaultTab)}`);
 }
 
+const makeTeamPlayer = player => ({ id: player.id, name: player.name });
+const sessionArrowBoundaryGame = {
+  id: 9900000000001,
+  createdAt: 9900000000001,
+  date: '2026-05-18',
+  redTeam: db.players.slice(0, 2).map(makeTeamPlayer),
+  blueTeam: db.players.slice(2, 4).map(makeTeamPlayer),
+  scoreRed: 25,
+  scoreBlue: 17,
+  winner: 'red',
+  isLeagueGame: false,
+  courtType: 'indoor',
+};
+const sessionArrowLatestGame = {
+  id: 9900000000002,
+  createdAt: 9900000000002,
+  date: '2026-06-19',
+  redTeam: db.players.slice(2, 4).map(makeTeamPlayer),
+  blueTeam: db.players.slice(0, 2).map(makeTeamPlayer),
+  scoreRed: 25,
+  scoreBlue: 19,
+  winner: 'red',
+  isLeagueGame: false,
+  courtType: 'indoor',
+};
+const sessionArrowPriorGames = [...db.games, sessionArrowBoundaryGame];
+const sessionArrowCurrentGames = [...sessionArrowPriorGames, sessionArrowLatestGame];
+
+async function loadSeasonRankingRows(games) {
+  await evaluate(client, `
+    localStorage.setItem('gameDayGames', ${JSON.stringify(JSON.stringify(games))});
+    sessionStorage.clear();
+  `);
+  const pageLoad = waitForLoad(client);
+  await client.send('Page.navigate', { url: `${baseUrl}/stats.html` });
+  await pageLoad;
+  return evaluate(client, `
+    new Promise(resolve => {
+      const started = Date.now();
+      const timer = setInterval(() => {
+        const rows = [...document.querySelectorAll('#statsTableBody tr')].map(row => {
+          const cells = [...row.querySelectorAll('td')];
+          return {
+            trend: cells[0]?.textContent?.trim() || '',
+            rank: Number(cells[1]?.textContent?.trim()) || 0,
+            name: row.querySelector('a[href*="trend.html"]')?.textContent?.trim() || '',
+          };
+        }).filter(row => row.name);
+        if (rows.length > 0 || Date.now() - started > 10000) {
+          clearInterval(timer);
+          resolve(rows);
+        }
+      }, 100);
+    })
+  `, true);
+}
+
+const sessionArrowPriorRows = await loadSeasonRankingRows(sessionArrowPriorGames);
+const sessionArrowCurrentRows = await loadSeasonRankingRows(sessionArrowCurrentGames);
+const sessionArrowPriorRankMap = new Map(
+  sessionArrowPriorRows.map(row => [row.name, row.rank])
+);
+const sessionArrowMismatches = sessionArrowCurrentRows.map(row => {
+  const priorRank = sessionArrowPriorRankMap.get(row.name);
+  const expected = typeof priorRank === 'number'
+    ? priorRank > row.rank
+      ? `▲ ${priorRank - row.rank}`
+      : priorRank < row.rank
+        ? `▼ ${row.rank - priorRank}`
+        : '—'
+    : 'NEW';
+  return row.trend === expected ? null : { ...row, priorRank, expected };
+}).filter(Boolean);
+
+const sessionArrowSessionTab = await evaluate(client, `
+  new Promise(resolve => {
+    document.getElementById('sessionStatsTabButton').click();
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const summary = document.getElementById('sessionStatsSummary')?.textContent || '';
+      const rows = document.querySelectorAll('#sessionStatsTableBody tr').length;
+      if ((summary.includes('2026-06-19') && rows > 0) || Date.now() - started > 10000) {
+        clearInterval(timer);
+        resolve({ summary, rows });
+      }
+    }, 100);
+  })
+`, true);
+
+if (
+  sessionArrowMismatches.length > 0 ||
+  !sessionArrowSessionTab.summary.includes('2026-06-19')
+) {
+  throw new Error(`Season Ranking arrows did not match the exact Session tab play date: ${JSON.stringify({ sessionArrowMismatches, sessionArrowSessionTab })}`);
+}
+
+await loadSeasonRankingRows(db.games);
+
 const historyLoaded = await evaluate(client, `
   new Promise(resolve => {
     window.scrollTo(0, document.documentElement.scrollHeight);

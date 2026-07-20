@@ -2126,8 +2126,8 @@
     let defaultDatabaseDialogRequestInFlight = false;
     let isLoadingDefaultDatabase = false;
     const REPLAY_RESULT_CACHE_PREFIX = 'vballReplayResult:';
-    const SEASON_MOVERS_RENDER_CACHE_KEY = 'vballSeasonMoversRenderCacheV4';
-    const SEASON_RANKING_RENDER_CACHE_KEY = 'vballSeasonRankingRenderCacheV1';
+    const SEASON_MOVERS_RENDER_CACHE_KEY = 'vballSeasonMoversRenderCacheV5';
+    const SEASON_RANKING_RENDER_CACHE_KEY = 'vballSeasonRankingRenderCacheV2';
     const replayResultMemoryCache = new Map();
     const MAX_REPLAY_RESULT_MEMORY_ENTRIES = 180;
     const ALL_TIME_SCOREBOARD_MODE_STORAGE_KEY = 'gameDayAllTimeBayesianScoreboardMode';
@@ -3156,48 +3156,8 @@
       }, { persist });
     }
 
-    function isScoredNonLeagueGame(game) {
-      return (
-        game && !game.isLeagueGame &&
-        Array.isArray(game.redTeam) && game.redTeam.length > 0 &&
-        Array.isArray(game.blueTeam) && game.blueTeam.length > 0 &&
-        typeof game.scoreRed === 'number' && typeof game.scoreBlue === 'number' &&
-        (game.winner === 'red' || game.winner === 'blue')
-      );
-    }
-
-    function getPreviousDateString(dateString) {
-      if (!isValidDateString(dateString)) return '';
-      const date = new Date(`${dateString}T00:00:00`);
-      date.setDate(date.getDate() - 1);
-      return date.toISOString().slice(0, 10);
-    }
-
-    function isScoredSeasonMoverGame(game) {
-      return (
-        game &&
-        Array.isArray(game.redTeam) && game.redTeam.length > 0 &&
-        typeof game.scoreRed === 'number' && typeof game.scoreBlue === 'number' &&
-        (game.winner === 'red' || game.winner === 'blue') &&
-        (!game.isLeagueGame || game.redTeam.some(player => player?.id || player?.name))
-      );
-    }
-
-    function getRecentSessionGames(allGames, { includeLeagueGames = false } = {}) {
-      const scored = getGamesSortedOldestFirst(allGames).filter(
-        includeLeagueGames ? isScoredSeasonMoverGame : isScoredNonLeagueGame
-      );
-      const dates = [...new Set(scored.map(getGameDateValue).filter(isValidDateString))].sort();
-      const latestDate = dates.at(-1);
-      if (!latestDate) return [];
-
-      const sessionDates = new Set([latestDate]);
-      const previousDate = getPreviousDateString(latestDate);
-      if (dates.includes(previousDate)) {
-        sessionDates.add(previousDate);
-      }
-
-      return scored.filter(game => sessionDates.has(getGameDateValue(game)));
+    function getRecentSessionGames(allGames) {
+      return getLatestPlayDateGames(allGames).games;
     }
 
     function getLeaderboardSnapshotExcludingGames(excludedGames, allGames) {
@@ -5815,7 +5775,7 @@
           : 'League games are included.';
         const confidenceText = settings.removeConfidencePenalty
           ? 'Low-game confidence and missing-game volume penalties are removed.'
-          : 'Low-game confidence and volume penalties phase in linearly from 1500 to the highest unpenalized rating on the board.';
+          : 'The standard low-game confidence and volume penalties are applied.';
         rankingModeDescriptionEl.textContent =
           `${rangeText} ${leagueText} ${confidenceText} The Games column counts only games included in this calculation.`;
       }
@@ -6727,7 +6687,7 @@
           : 'League games are included.';
         const confidenceText = settings.removeConfidencePenalty
           ? 'Low-game confidence and missing-game volume penalties are removed.'
-          : 'Low-game confidence and volume penalties phase in linearly from 1500 to the highest unpenalized rating on the board.';
+          : 'Standard low-game confidence and volume penalties are applied.';
         rankingModeDescriptionEl.textContent =
           `${rangeText} ${leagueText} ${confidenceText} The Games column counts only included games.`;
         rankingModeDescriptionEl.classList.remove('hidden');
@@ -6763,23 +6723,26 @@
         return;
       }
 
-      // Snapshot rank maps for Trend around the latest session.
-      const allGames = scoreboardGames;
+      // Compare against the board that actually existed before the exact play date
+      // shown in the Session tab, including that prior board's own rolling window.
+      const allGames = loadGames();
       const recentSessionGames = getRecentSessionGames(allGames);
-      const priorGames = allGames.filter(game =>
-        !recentSessionGames.some(recentGame => recentGame?.id === game?.id)
+      const recentSessionIds = new Set(recentSessionGames.map(game => String(game?.id)));
+      const priorSourceGames = allGames.filter(game =>
+        game && !recentSessionIds.has(String(game.id))
       );
-      const priorResult = applyOverallScoreboardPlayerCounts(
-        getReplayResultForGames(priorGames, {
-          includeLeagueGames: shouldIncludeLeagueGamesForScoreboard(mode),
-          persist: true,
-          ratingOptions,
-        }),
-        priorGames,
-        mode
+      const priorReplay = getOverallReplayResult({
+        games: priorSourceGames,
+        mode,
+        rollingWindow: true,
+        seasonRankingSettings: replay.seasonRankingSettings,
+      });
+      const currentMap = getRatingBasedRankMap(result, mode, scoreboardGames);
+      const priorSessionMap = getRatingBasedRankMap(
+        priorReplay.result,
+        mode,
+        priorReplay.games
       );
-      const currentMap = getRatingBasedRankMap(result, mode, allGames);
-      const priorSessionMap = getRatingBasedRankMap(priorResult, mode, priorGames);
 
       rows.forEach((player, index) => {
         const trend      = computeTrend(player.id, currentMap, priorSessionMap);

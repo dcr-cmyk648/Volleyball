@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v15-season-ranking-penalty-phase';
+const CACHE_VERSION = 'vball-static-v17-session-rank-arrows';
 const APP_SHELL = [
   './',
   './index.html',

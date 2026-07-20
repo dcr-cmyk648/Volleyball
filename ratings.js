@@ -277,7 +277,7 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260716-2';
+export const VERSION = 'beta-20260720-1';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Flatter team-strength weights. Forward validation favored restoring
@@ -454,25 +454,66 @@ export function getSeasonRankingGameCountPenaltyPoints(
     behindLeaderGames * SEASON_RANKING_OVER_FIFTY_GAME_PENALTY_POINTS;
 }
 
-export function getSeasonRankingDisplayRawOrdinal(player = {}, options = {}) {
+export function getSeasonRankingUnpenalizedRawOrdinal(player = {}) {
   const mu = Number(player?.mu);
   const sigma = Number(player?.sigma);
   const fallbackRaw = Number(player?.rawOrdinal ?? player?.rating);
-  const rawOrdinal = Number.isFinite(mu) && Number.isFinite(sigma)
+
+  return Number.isFinite(mu) && Number.isFinite(sigma)
     ? mu - SEASON_RANKING_DISPLAY_ORDINAL_SIGMA_MULTIPLIER * sigma
     : Number.isFinite(fallbackRaw)
       ? fallbackRaw
       : 0;
+}
 
-  if (
-    options.removeConfidencePenalty ||
-    toDisplayRating(rawOrdinal) < DISPLAY_RATING_BASE
-  ) {
+export function getSeasonRankingMaxUnpenalizedDisplayRating(players = []) {
+  return (Array.isArray(players) ? players : []).reduce(
+    (max, player) => Math.max(
+      max,
+      toDisplayRating(getSeasonRankingUnpenalizedRawOrdinal(player))
+    ),
+    DISPLAY_RATING_BASE
+  );
+}
+
+export function getSeasonRankingPenaltyPhase(
+  unpenalizedDisplayRating,
+  scoreboardMaxUnpenalizedDisplayRating
+) {
+  const rating = Number(unpenalizedDisplayRating);
+  const boardMax = Number(scoreboardMaxUnpenalizedDisplayRating);
+  if (!Number.isFinite(rating) || rating <= DISPLAY_RATING_BASE) return 0;
+  if (!Number.isFinite(boardMax) || boardMax <= DISPLAY_RATING_BASE) return 0;
+
+  return clamp(
+    (rating - DISPLAY_RATING_BASE) / (boardMax - DISPLAY_RATING_BASE),
+    0,
+    1
+  );
+}
+
+export function getSeasonRankingDisplayRawOrdinal(player = {}, options = {}) {
+  const rawOrdinal = getSeasonRankingUnpenalizedRawOrdinal(player);
+
+  if (options.removeConfidencePenalty) {
     return rawOrdinal;
   }
 
+  const unpenalizedDisplayRating = toDisplayRating(rawOrdinal);
+  const scoreboardMaxRatingValue = player?.scoreboardMaxUnpenalizedDisplayRating;
+  const scoreboardMaxUnpenalizedDisplayRating = Number.isFinite(Number(scoreboardMaxRatingValue))
+    ? Number(scoreboardMaxRatingValue)
+    : unpenalizedDisplayRating;
+  const penaltyPhase = getSeasonRankingPenaltyPhase(
+    unpenalizedDisplayRating,
+    scoreboardMaxUnpenalizedDisplayRating
+  );
+  if (penaltyPhase <= 0) return rawOrdinal;
+
   const games = Math.max(0, Number(player?.games) || 0);
-  const confidenceAdjusted = getOverallStandingsRawOrdinal(rawOrdinal, games, options);
+  const fullyConfidenceAdjusted = getOverallStandingsRawOrdinal(rawOrdinal, games, options);
+  const confidenceAdjusted = rawOrdinal -
+    (rawOrdinal - fullyConfidenceAdjusted) * penaltyPhase;
   const scoreboardMaxGamesValue = player?.scoreboardMaxGames;
   const scoreboardMaxGames = Number(scoreboardMaxGamesValue);
   if (scoreboardMaxGamesValue === null || typeof scoreboardMaxGamesValue === 'undefined') {
@@ -485,7 +526,7 @@ export function getSeasonRankingDisplayRawOrdinal(player = {}, options = {}) {
     scoreboardMaxGames,
     toDisplayRating(confidenceAdjusted)
   );
-  return confidenceAdjusted - penaltyPoints / DISPLAY_RATING_SCALE;
+  return confidenceAdjusted - penaltyPoints * penaltyPhase / DISPLAY_RATING_SCALE;
 }
 
 function getRawOrdinalFromMuSigma(mu, sigma, options = {}) {

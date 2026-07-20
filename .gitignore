@@ -12,3 +12,8 @@ broken-*.patch
 # Eval harness dependencies
 eval/node_modules/
 eval/.cache/
+
+# Repository-local Codex thread lease
+.codex-handoff.local.json
+.codex-handoff.local.lock
+.codex-handoff.local.tmp

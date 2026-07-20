@@ -5,6 +5,147 @@ snapshot first; older sections are retained only as historical background.
 
 ---
 
+## 0. Authoritative restart snapshot — July 19, 2026
+
+This section supersedes every older branch, data, test, and uncommitted-state
+note below when they conflict.
+
+### Resume state
+
+- Repo: `/Users/dustinrowland/Projects/Volleyball`
+- Branch: `mac-beta`
+- The baseline before this combined batch was `93347a5`, which matched
+  `origin/main`; local `mac-beta` was 22 commits ahead of the older
+  `origin/mac-beta` pointer.
+- Preserve the pre-existing uncommitted Codex handoff workflow in
+  `.codex/hooks.json`, `.gitignore`, `AGENTS.md`, this file,
+  `docs/CODEX_THREAD_HANDOFF.md`, `package.json`, `scripts/codex-handoff`,
+  `scripts/codex_handoff.py`, and `test/test_codex_handoff.py`.
+- The current Bayesian league-pooling change additionally modifies
+  `bayesian-ratings.js`, `stats.html`, `sw.js`, `test/bayesian-ratings.test.js`,
+  and `test/browser-smoke.mjs`.
+- The game-day fun-facts work additionally adds
+  `docs/FUN_FACTS_PROTOCOL.md` and refreshes `default_database` from the latest
+  direct Google Drive export.
+- The Season Ranking penalty-phase change additionally modifies `ratings.js`,
+  `stats.html`, `trend.html`, `sw.js`, and `test/browser-smoke.mjs`, and adds
+  `test/season-ranking-display.test.js`.
+- The reviewed combined batch is committed on `mac-beta` and pushed directly
+  to `origin/main`; the worktree is clean after publication.
+
+### Bayesian league pooling
+
+- All league games in every Bayesian scoreboard mode now use one latent
+  opponent ID, `league_team_bayesian_pooled`, instead of separate actual,
+  level, court, or bracket identities.
+- The composite Bayesian scoreboard displays one `League Team` row containing
+  every included league game. Big Team uses the same pooled identity internally;
+  Small Team does too when that mode includes league games.
+- `BAYESIAN_MODEL_VERSION` is now `bayesian-scoreboard-v2-pooled-league`, so old
+  saved snapshots are rejected and must be recalculated. The later Season
+  Ranking phase change advances the final app-shell cache to
+  `vball-static-v15-season-ranking-penalty-phase`.
+- This is scoped to the retrospective Bayesian scoreboards. The Season Ranking,
+  Trend, Game History, live OpenSkill replay, and team balancer retain their
+  existing league model and options.
+
+### Data and verification
+
+- A later direct Google Drive refresh found `vballstats_2026-07-20.json`: 63
+  players, 231 games, latest play date 2026-07-19. It contains 11 new games
+  involving 17 players, and `default_database` was refreshed byte-for-byte
+  from that source.
+- On the fresh database, pooling reduced four Bayesian league rows to one
+  52-game `League Team` row. Top-10 membership stayed 10/10; only AlexaY and
+  JackT exchanged order.
+- `node --check bayesian-ratings.js`, `node --check test/browser-smoke.mjs`, and
+  `git diff --check` passed.
+- `npm test`: 24 passed, 0 failed.
+- Full browser regression passed. The fixture produced one pooled 28-game
+  `League Team` row. Season Ranking, Trend, and Game History remained aligned
+  for JoeM at 2258/55 games by default and 2409/49 games with league games,
+  season window, and confidence penalties removed.
+- The local audit server is running at
+  `http://127.0.0.1:5173/stats.html?tab=bayesian&mode=composite`.
+
+### Season Ranking penalty phase
+
+- The display-only low-game confidence and tiered missing-game penalties now
+  phase in linearly: 0% at an unpenalized rating of 1500 and 100% at the
+  highest eligible unpenalized rating on the current board. The approved
+  `10`/`5`/`1` missing-game tiers are unchanged.
+- The existing `Remove confidence penalty` switch still removes both penalty
+  components. The phase is applied consistently to Season Ranking, Trend, Game
+  History, player lookup, rank snapshots, and awards ranking.
+- RichaP's 25-23 upset win now displays as 1457 → 1547 instead of 1457 → 1370;
+  her current Season Ranking, latest Game History value, and Trend all show
+  1576 over 22 included games. The current one-month history has no winning
+  player whose displayed rating goes down.
+- `npm test` passes 29/29. The full browser regression passes, including
+  default and advanced Season Ranking/Trend/Game History consistency and the
+  no-negative-winning-display guard.
+- The audit server remains available at
+  `http://127.0.0.1:5173/stats.html`.
+
+### Game-day fun facts protocol
+
+- `docs/FUN_FACTS_PROTOCOL.md` defines the user-triggered workflow for ten
+  positive facts focused on the latest valid play date and compared only with
+  earlier games.
+- Selection maximizes distinct player recognition after accuracy, positivity,
+  and interestingness. It must not use lame participation filler, contrived
+  micro-records, awkward name lists, or negative facts to increase coverage.
+- Publishing fails closed unless the run obtains a direct, demonstrably fresh
+  Google Drive source no more than two calendar days old. Cached data and
+  `default_database` are forbidden fallbacks for fun-facts generation.
+- Output is a concise copy-and-paste group text plus a verified native Google
+  Doc named `Volleyball Fun Facts — YYYY-MM-DD`.
+- The first requested audit run created an exact `Fun Facts` subfolder under
+  the existing `Volleyball` project folder and a clearly labeled test document
+  for the 2026-07-19 play date. Private Drive IDs are not persisted here.
+- The test text passed a fact-by-fact audit: exactly 10 facts, 17 of 17 players
+  named, 11 focus games, 220 historical comparison games, and 1,011 message
+  characters. It was not promoted to the canonical dated publication.
+
+---
+
+## 0. Authoritative restart snapshot — July 17, 2026
+
+This section supersedes every older branch, data, test, and uncommitted-state
+note below when they conflict.
+
+### Resume state
+
+- Repo: `/Users/dustinrowland/Projects/Volleyball`
+- Branch: `mac-beta`
+- Baseline HEAD before the handoff-workflow task: `93347a5`; it matched
+  `origin/main`, and local `mac-beta` was 22 commits ahead of the older
+  `origin/mac-beta` pointer.
+- The worktree was clean at task start. This contradicted the July 16 snapshot,
+  which still described intentional modifications at `b06eac6`; those changes
+  had already been incorporated into newer history.
+- Current uncommitted changes are limited to the repository-local Codex thread
+  handoff workflow: `.codex/hooks.json`, `.gitignore`, `AGENTS.md`, this file,
+  `docs/CODEX_THREAD_HANDOFF.md`, `package.json`, `scripts/codex-handoff`,
+  `scripts/codex_handoff.py`, and `test/test_codex_handoff.py`.
+- Preserve those files without staging, committing, discarding, or pushing
+  unless the user explicitly asks.
+
+### Codex thread handoff setup
+
+- The implementation is repository-local and has no runtime dependency on the
+  reference repository.
+- Local lease, lock, and atomic-write files are gitignored. The lease stores
+  thread coordination metadata and repository fingerprints, never prompts,
+  repository content, or secrets.
+- Project hooks have not been trusted or enabled, and the real worktree lease
+  remains uninitialized during review. Do not ask the user to trust `/hooks`
+  until the implementation and verification results have been presented.
+- The workflow never automatically stages, commits, resets, restores, or
+  pushes Git state. There is no timed lease expiry.
+
+---
+
 ## 0. Authoritative restart snapshot — July 16, 2026
 
 This section supersedes every older branch, data, test, and uncommitted-state

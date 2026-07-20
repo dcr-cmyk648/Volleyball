@@ -1,0 +1,54 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/scripts/codex_handoff.py\" hook",
+            "timeout": 15,
+            "statusMessage": "Checking canonical thread"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/scripts/codex_handoff.py\" hook",
+            "timeout": 15,
+            "statusMessage": "Reconciling thread handoff"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/scripts/codex_handoff.py\" hook",
+            "timeout": 15,
+            "statusMessage": "Checking thread write lease"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/scripts/codex_handoff.py\" hook",
+            "timeout": 15,
+            "statusMessage": "Recording handoff snapshot"
+          }
+        ]
+      }
+    ]
+  }
+}

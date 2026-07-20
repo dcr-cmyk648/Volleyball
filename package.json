@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "node local-server.mjs",
     "start": "node local-server.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "test:handoff": "/usr/bin/python3 -m unittest test/test_codex_handoff.py",
+    "test:all": "npm test && npm run test:handoff"
   }
 }

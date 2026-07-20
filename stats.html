@@ -1931,6 +1931,7 @@
       saveBayesianSnapshot,
       sortBayesianRatings,
       validateBayesianSnapshot,
+      getPooledBayesianLeagueOpponent,
     } from './bayesian-ratings.js';
     import {
       VERSION,
@@ -1944,6 +1945,7 @@
       toDisplayRating,
       getOverallStandingsRawOrdinal,
       getSeasonRankingDisplayRawOrdinal,
+      getSeasonRankingMaxUnpenalizedDisplayRating,
       getLeagueContext,
       getLeagueRatingContext,
       isLeagueContextId,
@@ -2752,7 +2754,11 @@
     ) {
       const raw = Number.isFinite(Number(player?.experimentalLeaderboardRaw))
         ? Number(player.experimentalLeaderboardRaw)
-        : getExperimentalLeaderboardRaw(player, player?.scoreboardMaxGames);
+        : getExperimentalLeaderboardRaw(
+            player,
+            player?.scoreboardMaxGames,
+            player?.scoreboardMaxUnpenalizedDisplayRating
+          );
       return formatDisplayedRating(raw);
     }
 
@@ -2917,7 +2923,11 @@
     }
 
 
-    function getExperimentalLeaderboardRaw(player, scoreboardMaxGames = null) {
+    function getExperimentalLeaderboardRaw(
+      player,
+      scoreboardMaxGames = null,
+      scoreboardMaxUnpenalizedDisplayRating = null
+    ) {
       const rawOrdinal = getSeasonRankingDisplayRawOrdinal({
         ...player,
         scoreboardMaxGames: null,
@@ -2930,6 +2940,7 @@
       return getSeasonRankingDisplayRawOrdinal({
         ...player,
         scoreboardMaxGames,
+        scoreboardMaxUnpenalizedDisplayRating,
       }, {
         removeConfidencePenalty: activeSeasonRankingSettings.removeConfidencePenalty,
       });
@@ -2957,6 +2968,10 @@
       );
     }
 
+    function getScoreboardMaxUnpenalizedDisplayRatingForRows(rows = []) {
+      return getSeasonRankingMaxUnpenalizedDisplayRating(rows);
+    }
+
     function getSortedStandingsRows(result, mode = getOverallScoreboardMode(), games = loadGames()) {
       const cfg = SORT_CONFIGS[activeSortBy] || null;
       const recencyMap = createOverallStandingsRecencyMap(games, mode);
@@ -2964,12 +2979,19 @@
       const eligibleRows = (result.standings || [])
         .filter(player => isOverallStandingsEligible(player, mode, recencyMap));
       const scoreboardMaxGames = getScoreboardMaxGamesForRows(eligibleRows);
+      const scoreboardMaxUnpenalizedDisplayRating =
+        getScoreboardMaxUnpenalizedDisplayRatingForRows(eligibleRows);
 
       return eligibleRows
         .map(player => ({
           ...player,
           scoreboardMaxGames,
-          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player, scoreboardMaxGames)
+          scoreboardMaxUnpenalizedDisplayRating,
+          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(
+            player,
+            scoreboardMaxGames,
+            scoreboardMaxUnpenalizedDisplayRating
+          )
         }))
         .sort((a, b) => {
           if (cfg) {
@@ -3190,11 +3212,18 @@
       const eligibleRows = result.standings
         .filter(player => isOverallStandingsEligible(player, mode, recencyMap));
       const scoreboardMaxGames = getScoreboardMaxGamesForRows(eligibleRows);
+      const scoreboardMaxUnpenalizedDisplayRating =
+        getScoreboardMaxUnpenalizedDisplayRatingForRows(eligibleRows);
       const rows = eligibleRows
         .map(p => ({
           ...p,
           scoreboardMaxGames,
-          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(p, scoreboardMaxGames)
+          scoreboardMaxUnpenalizedDisplayRating,
+          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(
+            p,
+            scoreboardMaxGames,
+            scoreboardMaxUnpenalizedDisplayRating
+          )
         }))
         .sort((a, b) => {
           if (b.experimentalLeaderboardRaw !== a.experimentalLeaderboardRaw)
@@ -4796,11 +4825,19 @@
           isOverallStandingsEligible(player, 'composite', overallRecencyMap)
         );
       const topRankedScoreboardMaxGames = getScoreboardMaxGamesForRows(topRankedEligibleRows);
+      const topRankedScoreboardMaxUnpenalizedDisplayRating =
+        getScoreboardMaxUnpenalizedDisplayRatingForRows(topRankedEligibleRows);
       const topRankedPlayer = topRankedEligibleRows
         .map(player => ({
           ...player,
           scoreboardMaxGames: topRankedScoreboardMaxGames,
-          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player, topRankedScoreboardMaxGames)
+          scoreboardMaxUnpenalizedDisplayRating:
+            topRankedScoreboardMaxUnpenalizedDisplayRating,
+          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(
+            player,
+            topRankedScoreboardMaxGames,
+            topRankedScoreboardMaxUnpenalizedDisplayRating
+          )
         }))
         .sort((a, b) => {
           if (b.experimentalLeaderboardRaw !== a.experimentalLeaderboardRaw) {
@@ -5778,7 +5815,7 @@
           : 'League games are included.';
         const confidenceText = settings.removeConfidencePenalty
           ? 'Low-game confidence and missing-game volume penalties are removed.'
-          : 'The standard low-game confidence and volume penalties are applied.';
+          : 'Low-game confidence and volume penalties phase in linearly from 1500 to the highest unpenalized rating on the board.';
         rankingModeDescriptionEl.textContent =
           `${rangeText} ${leagueText} ${confidenceText} The Games column counts only games included in this calculation.`;
       }
@@ -6100,13 +6137,20 @@
       });
     }
 
-    function formatHistoryPlayerRating(rawOrdinal, games, player = null, scoreboardMaxGames = null) {
+    function formatHistoryPlayerRating(
+      rawOrdinal,
+      games,
+      player = null,
+      scoreboardMaxGames = null,
+      scoreboardMaxUnpenalizedDisplayRating = null
+    ) {
       return formatOverallRatingDisplay({
         mu: player?.mu,
         sigma: player?.sigma,
         rawOrdinal,
         games,
-        scoreboardMaxGames
+        scoreboardMaxGames,
+        scoreboardMaxUnpenalizedDisplayRating,
       });
     }
 
@@ -6323,11 +6367,18 @@
       const eligibleRows = sourceRows
         .filter(player => isOverallStandingsEligible(player, mode, recencyMap));
       const scoreboardMaxGames = getScoreboardMaxGamesForRows(eligibleRows);
+      const scoreboardMaxUnpenalizedDisplayRating =
+        getScoreboardMaxUnpenalizedDisplayRatingForRows(eligibleRows);
       const rows = sourceRows
         .map(player => ({
           ...player,
           scoreboardMaxGames,
-          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(player, scoreboardMaxGames)
+          scoreboardMaxUnpenalizedDisplayRating,
+          experimentalLeaderboardRaw: getExperimentalLeaderboardRaw(
+            player,
+            scoreboardMaxGames,
+            scoreboardMaxUnpenalizedDisplayRating
+          )
         }));
 
       const match = findOverallLookupPlayer(rows, query);
@@ -6676,7 +6727,7 @@
           : 'League games are included.';
         const confidenceText = settings.removeConfidencePenalty
           ? 'Low-game confidence and missing-game volume penalties are removed.'
-          : 'Standard low-game confidence and volume penalties are applied.';
+          : 'Low-game confidence and volume penalties phase in linearly from 1500 to the highest unpenalized rating on the board.';
         rankingModeDescriptionEl.textContent =
           `${rangeText} ${leagueText} ${confidenceText} The Games column counts only included games.`;
         rankingModeDescriptionEl.classList.remove('hidden');
@@ -6775,6 +6826,8 @@
       const eligibleRows = (countedResult.standings || [])
         .filter(player => isOverallStandingsEligible(player, mode, recencyMap));
       const scoreboardMaxGames = getScoreboardMaxGamesForRows(eligibleRows);
+      const scoreboardMaxUnpenalizedDisplayRating =
+        getScoreboardMaxUnpenalizedDisplayRatingForRows(eligibleRows);
       renderedHistorySignature = signature;
       const displayHistory = expandLeagueSeriesHistory(result.history);
       const historyData = [...displayHistory].reverse();
@@ -6820,7 +6873,7 @@
           const name =
             (game.redTeam || []).find(player => String(player.id) === String(p.id))?.name || p.id;
           const counts = getHistoryPlayerCounts(gameCountMap, entry, p.id);
-          return `${name} (${formatHistoryPlayerRating(p.rating, counts.before, p, scoreboardMaxGames)} → ${formatHistoryPlayerRating(after.rating, counts.after, after, scoreboardMaxGames)})`;
+          return `${name} (${formatHistoryPlayerRating(p.rating, counts.before, p, scoreboardMaxGames, scoreboardMaxUnpenalizedDisplayRating)} → ${formatHistoryPlayerRating(after.rating, counts.after, after, scoreboardMaxGames, scoreboardMaxUnpenalizedDisplayRating)})`;
         }).join(', ') || '(none)';
 
         const blueNames = game.isLeagueGame
@@ -6851,7 +6904,7 @@
               const name =
                 (game.blueTeam || []).find(player => String(player.id) === String(p.id))?.name || p.id;
               const counts = getHistoryPlayerCounts(gameCountMap, entry, p.id);
-              return `${name} (${formatHistoryPlayerRating(p.rating, counts.before, p, scoreboardMaxGames)} → ${formatHistoryPlayerRating(after.rating, counts.after, after, scoreboardMaxGames)})`;
+              return `${name} (${formatHistoryPlayerRating(p.rating, counts.before, p, scoreboardMaxGames, scoreboardMaxUnpenalizedDisplayRating)} → ${formatHistoryPlayerRating(after.rating, counts.after, after, scoreboardMaxGames, scoreboardMaxUnpenalizedDisplayRating)})`;
             }).join(', ') || '(none)';
 
         const modeBits = [];
@@ -7821,38 +7874,16 @@
       return games.filter(game => game && !excludeIds.has(game.id));
     }
 
-    function getBayesianLeagueTeamOpponent(game) {
-      const isIntermediate = game?.level === 'intermediate';
-      const levelKey = isIntermediate ? 'intermediate' : 'rec';
-      const levelLabel = isIntermediate ? 'Intermediate' : 'Rec';
-      const bucketKey = game?.leaguePhase === 'bracket'
-        ? 'bracket'
-        : game?.courtType === 'sand'
-          ? 'sand'
-          : 'indoor';
-      const bucketLabel = bucketKey === 'bracket'
-        ? 'Bracket'
-        : bucketKey === 'sand'
-          ? 'Sand'
-          : 'Indoor';
-
-      return {
-        ...(game?.leagueOpponent || {}),
-        id: `${LEAGUE_TEAM_ID}_bayesian_${levelKey}_${bucketKey}`,
-        name: `${levelLabel} League ${bucketLabel} Team`,
-        size: getLeagueOpponentSizeForGame(game),
-      };
-    }
-
     function getBayesianModelGamesForMode(mode = getOverallScoreboardMode()) {
       const games = getBayesianGamesForMode(mode);
-      if (mode !== 'composite') return games;
-
       return games.map(game => {
         if (!game?.isLeagueGame) return game;
         return {
           ...game,
-          leagueOpponent: getBayesianLeagueTeamOpponent(game),
+          leagueOpponent: getPooledBayesianLeagueOpponent(
+            game,
+            getLeagueOpponentSizeForGame(game)
+          ),
         };
       });
     }

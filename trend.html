@@ -586,7 +586,7 @@
         <h2>Rating Over Time</h2>
       </div>
       <div id="chartRangeDescription" class="small">
-        This graph shows the same one-month rolling, confidence-adjusted Rating used by Season Ranking. It is display-only and is not used for backend updates or team balancing.
+        This graph shows the same one-month rolling Rating used by Season Ranking, with display penalties phased linearly from 1500 to the board's highest unpenalized rating. It is display-only and is not used for backend updates or team balancing.
       </div>
       <div id="summaryGrid" class="summary-grid"></div>
       <div id="statusMessage" class="status">Loading trend...</div>
@@ -645,6 +645,7 @@
       getPlayerRatingTimeline,
       getLeagueContextById,
       getSeasonRankingDisplayRawOrdinal,
+      getSeasonRankingMaxUnpenalizedDisplayRating,
       replayRatings,
       toDisplayRating as toLinearDisplayRating,
       formatMu,
@@ -1094,11 +1095,17 @@
       return toLinearDisplayRating(rawOrdinal);
     }
 
-    function getOverallLeaderboardRaw(rawOrdinal, games, scoreboardMaxGames = null) {
+    function getOverallLeaderboardRaw(
+      rawOrdinal,
+      games,
+      scoreboardMaxGames = null,
+      scoreboardMaxUnpenalizedDisplayRating = null
+    ) {
       return getSeasonRankingDisplayRawOrdinal({
         rawOrdinal,
         games,
         scoreboardMaxGames,
+        scoreboardMaxUnpenalizedDisplayRating,
       }, {
         removeConfidencePenalty: trendSeasonRankingSettings.removeConfidencePenalty,
       });
@@ -1115,33 +1122,57 @@
       });
     }
 
-    function getTimelineRatingBefore(row, timelineIndex, scoreboardMaxGames = null) {
+    function getTimelineRatingBefore(
+      row,
+      timelineIndex,
+      scoreboardMaxGames = null,
+      scoreboardMaxUnpenalizedDisplayRating = null
+    ) {
       return toDisplayRating(getOverallLeaderboardRaw(
         getDisplayRawOrdinalFromMuSigma(row.muBefore, row.sigmaBefore, row.ratingBefore),
         timelineIndex,
-        scoreboardMaxGames
+        scoreboardMaxGames,
+        scoreboardMaxUnpenalizedDisplayRating
       ));
     }
 
-    function getTimelineRatingAfter(row, timelineIndex, scoreboardMaxGames = null) {
+    function getTimelineRatingAfter(
+      row,
+      timelineIndex,
+      scoreboardMaxGames = null,
+      scoreboardMaxUnpenalizedDisplayRating = null
+    ) {
       return toDisplayRating(getOverallLeaderboardRaw(
         getDisplayRawOrdinalFromMuSigma(row.muAfter, row.sigmaAfter, row.ratingAfter),
         timelineIndex + 1,
-        scoreboardMaxGames
+        scoreboardMaxGames,
+        scoreboardMaxUnpenalizedDisplayRating
       ));
     }
 
-    function getCurrentStandingRating(standingsEntry, latest, timelineLength, scoreboardMaxGames = null) {
+    function getCurrentStandingRating(
+      standingsEntry,
+      latest,
+      timelineLength,
+      scoreboardMaxGames = null,
+      scoreboardMaxUnpenalizedDisplayRating = null
+    ) {
       if (standingsEntry && typeof standingsEntry.rawOrdinal === 'number') {
         return toDisplayRating(
           getOverallLeaderboardRaw(
             getDisplayRawOrdinalFromMuSigma(standingsEntry.mu, standingsEntry.sigma, standingsEntry.rawOrdinal),
             standingsEntry.games,
-            scoreboardMaxGames
+            scoreboardMaxGames,
+            scoreboardMaxUnpenalizedDisplayRating
           )
         );
       }
-      return getTimelineRatingAfter(latest, timelineLength - 1, scoreboardMaxGames);
+      return getTimelineRatingAfter(
+        latest,
+        timelineLength - 1,
+        scoreboardMaxGames,
+        scoreboardMaxUnpenalizedDisplayRating
+      );
     }
 
     function getCourtTypeLabel(row) {
@@ -1344,6 +1375,10 @@
       return rows.reduce((max, player) => Math.max(max, Number(player.games) || 0), 0);
     }
 
+    function getTrendScoreboardMaxUnpenalizedDisplayRatingForRows(rows = []) {
+      return getSeasonRankingMaxUnpenalizedDisplayRating(rows);
+    }
+
     function getTrendEligibleRowsForScoreboard(replay, games, mode, range = activeChartRange) {
       return (replay?.standings || [])
         .filter(player => isTrendStandingsEligible(player, mode, games, range));
@@ -1374,15 +1409,19 @@
       }), scoreboardGames, mode);
       const eligibleRows = getTrendEligibleRowsForScoreboard(replay, scoreboardGames, mode, range);
       const scoreboardMaxGames = getTrendScoreboardMaxGamesForRows(eligibleRows);
+      const scoreboardMaxUnpenalizedDisplayRating =
+        getTrendScoreboardMaxUnpenalizedDisplayRatingForRows(eligibleRows);
 
       return eligibleRows
         .map(player => ({
           ...player,
           scoreboardMaxGames,
+          scoreboardMaxUnpenalizedDisplayRating,
           leaderboardRaw: getOverallLeaderboardRaw(
             getDisplayRawOrdinalFromMuSigma(player.mu, player.sigma, player.rawOrdinal),
             player.games,
-            scoreboardMaxGames
+            scoreboardMaxGames,
+            scoreboardMaxUnpenalizedDisplayRating
           )
         }))
         .sort((a, b) => {
@@ -1414,6 +1453,16 @@
     function getTrendScoreboardMaxGames(replay, games, mode = getTrendScoreboardMode(), range = activeChartRange) {
       const eligibleRows = getTrendEligibleRowsForScoreboard(replay, games, mode, range);
       return getTrendScoreboardMaxGamesForRows(eligibleRows);
+    }
+
+    function getTrendScoreboardMaxUnpenalizedDisplayRating(
+      replay,
+      games,
+      mode = getTrendScoreboardMode(),
+      range = activeChartRange
+    ) {
+      const eligibleRows = getTrendEligibleRowsForScoreboard(replay, games, mode, range);
+      return getTrendScoreboardMaxUnpenalizedDisplayRatingForRows(eligibleRows);
     }
 
     function getLeagueContextName(row) {
@@ -1651,6 +1700,9 @@
         scoreboardMaxGames: rollingWindow
           ? getTrendScoreboardMaxGames(replay, scoreboardGames, mode, 'month')
           : null,
+        scoreboardMaxUnpenalizedDisplayRating: rollingWindow
+          ? getTrendScoreboardMaxUnpenalizedDisplayRating(replay, scoreboardGames, mode, 'month')
+          : null,
       };
     }
 
@@ -1659,7 +1711,13 @@
       return `#${rankRow.rank} of ${rankRow.total}`;
     }
 
-    function renderSummary(timeline, standingsEntry, scoreboardMaxGames = null, rankSummary = []) {
+    function renderSummary(
+      timeline,
+      standingsEntry,
+      scoreboardMaxGames = null,
+      scoreboardMaxUnpenalizedDisplayRating = null,
+      rankSummary = []
+    ) {
       summaryGridEl.innerHTML = '';
 
       if (timeline.length === 0) {
@@ -1671,8 +1729,19 @@
       const wins = timeline.filter(row => row.won).length;
       const losses = timeline.length - wins;
       const winRate = timeline.length > 0 ? wins / timeline.length : 0;
-      const startingRating = getTimelineRatingBefore(first, 0, scoreboardMaxGames);
-      const currentRating = getCurrentStandingRating(standingsEntry, latest, timeline.length, scoreboardMaxGames);
+      const startingRating = getTimelineRatingBefore(
+        first,
+        0,
+        scoreboardMaxGames,
+        scoreboardMaxUnpenalizedDisplayRating
+      );
+      const currentRating = getCurrentStandingRating(
+        standingsEntry,
+        latest,
+        timeline.length,
+        scoreboardMaxGames,
+        scoreboardMaxUnpenalizedDisplayRating
+      );
       const ratingChange = currentRating - startingRating;
       const displayedGames = Number.isFinite(Number(standingsEntry?.games))
         ? Number(standingsEntry.games)
@@ -1799,6 +1868,7 @@
         selected?.timeline || [],
         chartRenderState.entityName,
         selected?.scoreboardMaxGames ?? null,
+        selected?.scoreboardMaxUnpenalizedDisplayRating ?? null,
         activeChartRange
       );
     }
@@ -1817,6 +1887,7 @@
       timeline,
       standingsEntry,
       scoreboardMaxGames,
+      scoreboardMaxUnpenalizedDisplayRating,
     }) {
       if (!timeline?.length) {
         return `${entity.name} has no included games under the current model settings.`;
@@ -1826,8 +1897,19 @@
       const latest = timeline[timeline.length - 1];
       const wins = timeline.filter(row => row.won).length;
       const losses = timeline.length - wins;
-      const startingRating = getTimelineRatingBefore(first, 0, scoreboardMaxGames);
-      const currentRating = getCurrentStandingRating(standingsEntry, latest, timeline.length, scoreboardMaxGames);
+      const startingRating = getTimelineRatingBefore(
+        first,
+        0,
+        scoreboardMaxGames,
+        scoreboardMaxUnpenalizedDisplayRating
+      );
+      const currentRating = getCurrentStandingRating(
+        standingsEntry,
+        latest,
+        timeline.length,
+        scoreboardMaxGames,
+        scoreboardMaxUnpenalizedDisplayRating
+      );
       const ratingChange = currentRating - startingRating;
       const carryScore = standingsEntry?.carryScore;
       const carryGames = standingsEntry?.carryGames ?? 0;
@@ -1856,13 +1938,19 @@
       const selected = getActiveRangeData();
 
       if (!selected) {
-        renderSummary([], null, null, []);
+        renderSummary([], null, null, null, []);
         renderActiveChart();
-        renderTable([], false, null);
+        renderTable([], false, null, null);
         return;
       }
 
-      const { timeline, standingsEntry, scoreboardMaxGames, rankSummary } = selected;
+      const {
+        timeline,
+        standingsEntry,
+        scoreboardMaxGames,
+        scoreboardMaxUnpenalizedDisplayRating,
+        rankSummary,
+      } = selected;
       statusMessageEl.textContent = getTrendStatusText({
         entity: chartRenderState.entity,
         isLeagueContext: chartRenderState.isLeagueContext,
@@ -1870,13 +1958,31 @@
         timeline,
         standingsEntry,
         scoreboardMaxGames,
+        scoreboardMaxUnpenalizedDisplayRating,
       });
-      renderSummary(timeline, standingsEntry, scoreboardMaxGames, rankSummary);
+      renderSummary(
+        timeline,
+        standingsEntry,
+        scoreboardMaxGames,
+        scoreboardMaxUnpenalizedDisplayRating,
+        rankSummary
+      );
       renderActiveChart();
-      renderTable(timeline, chartRenderState.isLeagueContext, scoreboardMaxGames);
+      renderTable(
+        timeline,
+        chartRenderState.isLeagueContext,
+        scoreboardMaxGames,
+        scoreboardMaxUnpenalizedDisplayRating
+      );
     }
 
-    function renderChart(timeline, entityName, scoreboardMaxGames = null, range = activeChartRange) {
+    function renderChart(
+      timeline,
+      entityName,
+      scoreboardMaxGames = null,
+      scoreboardMaxUnpenalizedDisplayRating = null,
+      range = activeChartRange
+    ) {
       if (chart) {
         chart.destroy();
       }
@@ -1891,8 +1997,18 @@
       ];
 
       const data = [
-        Math.round(getTimelineRatingBefore(timeline[0], 0, scoreboardMaxGames)),
-        ...timeline.map((row, index) => Math.round(getTimelineRatingAfter(row, index, scoreboardMaxGames)))
+        Math.round(getTimelineRatingBefore(
+          timeline[0],
+          0,
+          scoreboardMaxGames,
+          scoreboardMaxUnpenalizedDisplayRating
+        )),
+        ...timeline.map((row, index) => Math.round(getTimelineRatingAfter(
+          row,
+          index,
+          scoreboardMaxGames,
+          scoreboardMaxUnpenalizedDisplayRating
+        )))
       ];
 
       chart = new Chart(chartCanvas, {
@@ -1942,7 +2058,7 @@
                     `Side: ${formatSide(row, Boolean(row.leagueContext && row.side === 'blue'))}`,
                     `Court: ${getCourtTypeLabel(row)}`,
                     `Score: ${score}`,
-                    `Rating: ${formatRating(getTimelineRatingBefore(row, context.dataIndex - 1, scoreboardMaxGames))} → ${formatRating(getTimelineRatingAfter(row, context.dataIndex - 1, scoreboardMaxGames))}`,
+                    `Rating: ${formatRating(getTimelineRatingBefore(row, context.dataIndex - 1, scoreboardMaxGames, scoreboardMaxUnpenalizedDisplayRating))} → ${formatRating(getTimelineRatingAfter(row, context.dataIndex - 1, scoreboardMaxGames, scoreboardMaxUnpenalizedDisplayRating))}`,
                     `Mu: ${formatMu(row.muBefore)} → ${formatMu(row.muAfter)}`,
                     `Sigma: ${formatSigma(row.sigmaBefore)} → ${formatSigma(row.sigmaAfter)}`,
                     `Raw ordinal: ${formatRawOrdinal(row.ratingBefore)} → ${formatRawOrdinal(row.ratingAfter)}`,
@@ -2007,7 +2123,12 @@
       `;
     }
 
-    function renderTable(timeline, isLeagueContext, scoreboardMaxGames = null) {
+    function renderTable(
+      timeline,
+      isLeagueContext,
+      scoreboardMaxGames = null,
+      scoreboardMaxUnpenalizedDisplayRating = null
+    ) {
       timelineTableBodyEl.innerHTML = '';
 
       if (timeline.length === 0) {
@@ -2028,8 +2149,18 @@
         const tr = document.createElement('tr');
         const resultClass = row.won ? 'result-win' : 'result-loss';
         const resultText = row.won ? 'Win' : 'Loss';
-        const ratingBefore = getTimelineRatingBefore(row, timelineIndex, scoreboardMaxGames);
-        const ratingAfter = getTimelineRatingAfter(row, timelineIndex, scoreboardMaxGames);
+        const ratingBefore = getTimelineRatingBefore(
+          row,
+          timelineIndex,
+          scoreboardMaxGames,
+          scoreboardMaxUnpenalizedDisplayRating
+        );
+        const ratingAfter = getTimelineRatingAfter(
+          row,
+          timelineIndex,
+          scoreboardMaxGames,
+          scoreboardMaxUnpenalizedDisplayRating
+        );
         const ratingChange = ratingAfter - ratingBefore;
         const sideColor = getSideColor(row, isLeagueContext);
         const sideText = formatSide(row, isLeagueContext);
@@ -2069,6 +2200,8 @@
             }),
             standingsEntry: replayData.standingsEntry,
             scoreboardMaxGames: replayData.scoreboardMaxGames,
+            scoreboardMaxUnpenalizedDisplayRating:
+              replayData.scoreboardMaxUnpenalizedDisplayRating,
             rankSummary: chartRenderState.isLeagueContext ? [] : getTrendRankSummary({
               ...chartRenderState.replayParams,
               range: 'allTime',
@@ -2133,7 +2266,11 @@
       // Run the full replay first to get calibrated starting ratings, then use
       // those starts for the timeline so both views are consistent.
       const replayData = getReplayData(replayParams);
-      const { standingsEntry, scoreboardMaxGames } = replayData;
+      const {
+        standingsEntry,
+        scoreboardMaxGames,
+        scoreboardMaxUnpenalizedDisplayRating,
+      } = replayData;
       const timeline = buildTrendTimeline({
         ...timelineParams,
         replayData,
@@ -2149,6 +2286,7 @@
           timeline,
           standingsEntry,
           scoreboardMaxGames,
+          scoreboardMaxUnpenalizedDisplayRating,
           rankSummary: isLeagueContext ? [] : getTrendRankSummary({
             ...replayParams,
             range: 'month',

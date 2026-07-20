@@ -1,34 +1,7 @@
 {
   "seasonStartDate": "2026-07-01",
   "metadata": {
-    "seasonStartDate": "2026-07-01",
-    "source": {
-      "fileId": "1r3-Ugnl521uOdyVxPJfJSPU9JmB3vmQZ",
-      "fileName": "vballstats_2026-07-16.json",
-      "lastUpdated": "2026-07-16T01:44:44.762Z",
-      "mergedFileCount": 3,
-      "mergedGameCount": 220,
-      "mergedFiles": [
-        {
-          "fileId": "1r3-Ugnl521uOdyVxPJfJSPU9JmB3vmQZ",
-          "fileName": "vballstats_2026-07-16.json",
-          "lastUpdated": "2026-07-16T01:44:44.762Z",
-          "gameCount": 220
-        },
-        {
-          "fileId": "1eQPaxCHEw6AWziwSWMFO6P8EIUNIE2O3",
-          "fileName": "vballstats_2026-07-16.json",
-          "lastUpdated": "2026-07-16T00:16:52.511Z",
-          "gameCount": 216
-        },
-        {
-          "fileId": "1FewCY4TArkqpH7fQBf0JO14F9PJatCXd",
-          "fileName": "vballstats_2026-07-13_merged_corrected.json",
-          "lastUpdated": "2026-07-13T18:14:32.835Z",
-          "gameCount": 210
-        }
-      ]
-    }
+    "seasonStartDate": "2026-07-01"
   },
   "players": [
     {
@@ -52,6 +25,10 @@
       "name": "AmandaA"
     },
     {
+      "id": 1783895858085,
+      "name": "AmandaG"
+    },
+    {
       "id": 1783642949116,
       "name": "AnnaK"
     },
@@ -66,6 +43,10 @@
     {
       "id": 1776129708712,
       "name": "CarliR"
+    },
+    {
+      "id": 1784500982572,
+      "name": "CarolineA"
     },
     {
       "id": 1778460338950,
@@ -164,6 +145,10 @@
       "name": "JoshR"
     },
     {
+      "id": 1783642958701,
+      "name": "JustinE"
+    },
+    {
       "id": 1776031804546,
       "name": "KellieM"
     },
@@ -236,6 +221,10 @@
       "name": "SeanSPARC"
     },
     {
+      "id": 1783895845872,
+      "name": "SebastianP"
+    },
+    {
       "id": 1776129662289,
       "name": "ShivP"
     },
@@ -264,19 +253,534 @@
       "name": "ValerieG"
     },
     {
-      "id": 1783642958701,
-      "name": "JustinE"
-    },
-    {
-      "id": 1783895858085,
-      "name": "AmandaG"
-    },
-    {
-      "id": 1783895845872,
-      "name": "SebastianP"
+      "id": 1784502738534,
+      "name": "StevenS"
     }
   ],
   "games": [
+    {
+      "id": 1784511199410,
+      "date": "2026-07-19",
+      "redTeam": [
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1776129650814,
+          "name": "RichaP"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1782348849249,
+          "name": "JoeC"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 18,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "blue",
+      "displayLoserColor": "red",
+      "createdAt": 1784511199410,
+      "assignmentId": "1784510217172-8y6ifb",
+      "assignmentSource": "manual",
+      "assignmentVersion": "beta-20260716-2",
+      "predictedAtAssignment": null,
+      "courtType": "sand"
+    },
+    {
+      "id": 1784511020817,
+      "date": "2026-07-19",
+      "redTeam": [
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        },
+        {
+          "id": 1776129662289,
+          "name": "ShivP"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 10,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "green",
+      "displayLoserColor": "yellow",
+      "createdAt": 1784511020817,
+      "assignmentId": "1784510217172-8y6ifb",
+      "assignmentSource": "algorithm",
+      "assignmentVersion": "beta-20260716-2",
+      "predictedAtAssignment": 5.564775150451464,
+      "courtType": "sand"
+    },
+    {
+      "id": 1784510196959,
+      "date": "2026-07-19",
+      "redTeam": [
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        },
+        {
+          "id": 1776129650814,
+          "name": "RichaP"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1782348849249,
+          "name": "JoeC"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 23,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "yellow",
+      "displayLoserColor": "green",
+      "createdAt": 1784510196959,
+      "assignmentId": "1784508844151-u72ll7",
+      "assignmentSource": "manual",
+      "assignmentVersion": "beta-20260716-2",
+      "predictedAtAssignment": null,
+      "courtType": "sand"
+    },
+    {
+      "id": 1784509681223,
+      "date": "2026-07-19",
+      "redTeam": [
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1776129662289,
+          "name": "ShivP"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 15,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "red",
+      "displayLoserColor": "blue",
+      "createdAt": 1784509681223,
+      "assignmentId": "1784508844151-u72ll7",
+      "assignmentSource": "algorithm",
+      "assignmentVersion": "beta-20260716-2",
+      "predictedAtAssignment": 5.570031552400899,
+      "courtType": "sand"
+    },
+    {
+      "id": 1784508838965,
+      "date": "2026-07-19",
+      "redTeam": [
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1782348849249,
+          "name": "JoeC"
+        },
+        {
+          "id": 1776129650814,
+          "name": "RichaP"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        },
+        {
+          "id": 1776129662289,
+          "name": "ShivP"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 18,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "yellow",
+      "displayLoserColor": "green",
+      "createdAt": 1784508838965,
+      "assignmentId": "1784507624628-sd4f7q",
+      "assignmentSource": "algorithm",
+      "assignmentVersion": "beta-20260716-2",
+      "predictedAtAssignment": 5.600422432173757,
+      "courtType": "sand"
+    },
+    {
+      "id": 1784508699780,
+      "date": "2026-07-19",
+      "redTeam": [
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 20,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "red",
+      "displayLoserColor": "blue",
+      "createdAt": 1784508699780,
+      "assignmentId": "1784507624628-sd4f7q",
+      "assignmentSource": "algorithm",
+      "assignmentVersion": "beta-20260716-2",
+      "predictedAtAssignment": 5.600422432173757,
+      "courtType": "sand"
+    },
+    {
+      "id": 1784507612799,
+      "date": "2026-07-19",
+      "redTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1782348849249,
+          "name": "JoeC"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        },
+        {
+          "id": 1776129662289,
+          "name": "ShivP"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 21,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "blue",
+      "displayLoserColor": "red",
+      "createdAt": 1784507612799,
+      "assignmentId": "1784506240234-6mgf05",
+      "assignmentSource": "manual",
+      "assignmentVersion": "beta-20260716-2",
+      "predictedAtAssignment": null,
+      "courtType": "sand"
+    },
+    {
+      "id": 1784507170648,
+      "date": "2026-07-19",
+      "redTeam": [
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        },
+        {
+          "id": 1776129650814,
+          "name": "RichaP"
+        }
+      ],
+      "scoreRed": 25,
+      "scoreBlue": 22,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "yellow",
+      "displayLoserColor": "green",
+      "createdAt": 1784507170648,
+      "assignmentId": "1784506240234-6mgf05",
+      "assignmentSource": "algorithm",
+      "assignmentVersion": "beta-20260716-2",
+      "predictedAtAssignment": 5.646384302404841,
+      "courtType": "sand"
+    },
+    {
+      "id": 1784506221837,
+      "date": "2026-07-19",
+      "redTeam": [
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1779374381928,
+          "name": "JoeM"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        },
+        {
+          "id": 1776129650814,
+          "name": "RichaP"
+        },
+        {
+          "id": 1776129662289,
+          "name": "ShivP"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1779374397268,
+          "name": "AlexaY"
+        },
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1776031831470,
+          "name": "JayY"
+        },
+        {
+          "id": 1782348849249,
+          "name": "JoeC"
+        },
+        {
+          "id": 1779374449371,
+          "name": "MarkiA"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        }
+      ],
+      "scoreRed": 20,
+      "scoreBlue": 25,
+      "winner": "blue",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "createdAt": 1784506221837,
+      "assignmentId": "1784505092364-6ktojr",
+      "assignmentSource": "algorithm",
+      "assignmentVersion": "beta-20260716-2",
+      "predictedAtAssignment": 5.7133335127058125,
+      "courtType": "sand"
+    },
+    {
+      "id": 1784503583059,
+      "date": "2026-07-19",
+      "redTeam": [
+        {
+          "id": 1776129708712,
+          "name": "CarliR"
+        },
+        {
+          "id": 1784500982572,
+          "name": "CarolineA"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1776129583220,
+          "name": "JackT"
+        },
+        {
+          "id": 1776129503948,
+          "name": "NikiK"
+        },
+        {
+          "id": 1776129650814,
+          "name": "RichaP"
+        },
+        {
+          "id": 1784502738534,
+          "name": "StevenS"
+        }
+      ],
+      "scoreRed": 15,
+      "scoreBlue": 11,
+      "winner": "red",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "displayWinnerColor": "red",
+      "displayLoserColor": "blue",
+      "createdAt": 1784503583059,
+      "assignmentId": "1784502827739-ff0gso",
+      "assignmentSource": "algorithm",
+      "assignmentVersion": "beta-20260716-2",
+      "predictedAtAssignment": 5.6894344384337385,
+      "courtType": "sand"
+    },
+    {
+      "id": 1784501701686,
+      "date": "2026-07-19",
+      "redTeam": [
+        {
+          "id": 1776031804546,
+          "name": "KellieM"
+        },
+        {
+          "id": 1776031774402,
+          "name": "MattA"
+        },
+        {
+          "id": 1775922113430,
+          "name": "MelissaR"
+        }
+      ],
+      "blueTeam": [
+        {
+          "id": 1784500982572,
+          "name": "CarolineA"
+        },
+        {
+          "id": 1,
+          "name": "DustinR"
+        },
+        {
+          "id": 1779745107681,
+          "name": "RyotaY"
+        }
+      ],
+      "scoreRed": 11,
+      "scoreBlue": 15,
+      "winner": "blue",
+      "isLeagueGame": false,
+      "leagueOpponent": null,
+      "createdAt": 1784501701686,
+      "assignmentId": "1784500984850-2k5snm",
+      "assignmentSource": "algorithm",
+      "assignmentVersion": "beta-20260716-2",
+      "predictedAtAssignment": 5.656931268598028,
+      "courtType": "sand"
+    },
     {
       "id": 1784166119649,
       "date": "2026-07-15",
@@ -324,13 +828,14 @@
       "scoreBlue": 22,
       "winner": "red",
       "isLeagueGame": false,
-      "leagueOpponent": null,
       "createdAt": 1784166119649,
       "assignmentId": "1784164930849-zw5qx6",
       "assignmentSource": "algorithm",
       "assignmentVersion": "beta-20260714-1",
       "predictedAtAssignment": 5.767821942593106,
-      "courtType": "sand"
+      "courtType": "sand",
+      "isTournamentGame": false,
+      "leagueOpponent": null
     },
     {
       "id": 1784164911508,
@@ -383,13 +888,14 @@
       "scoreBlue": 25,
       "winner": "blue",
       "isLeagueGame": false,
-      "leagueOpponent": null,
       "createdAt": 1784164911508,
       "assignmentId": "1784163828114-ucif1d",
       "assignmentSource": "algorithm",
       "assignmentVersion": "beta-20260714-1",
       "predictedAtAssignment": 5.676806147358274,
-      "courtType": "sand"
+      "courtType": "sand",
+      "isTournamentGame": false,
+      "leagueOpponent": null
     },
     {
       "id": 1784163795720,
@@ -442,13 +948,14 @@
       "scoreBlue": 25,
       "winner": "blue",
       "isLeagueGame": false,
-      "leagueOpponent": null,
       "createdAt": 1784163795720,
       "assignmentId": "1784162630004-f81jxa",
       "assignmentSource": "algorithm",
       "assignmentVersion": "beta-20260714-1",
       "predictedAtAssignment": 5.683525204902649,
-      "courtType": "sand"
+      "courtType": "sand",
+      "isTournamentGame": false,
+      "leagueOpponent": null
     },
     {
       "id": 1784162611956,
@@ -501,13 +1008,14 @@
       "scoreBlue": 19,
       "winner": "red",
       "isLeagueGame": false,
-      "leagueOpponent": null,
       "createdAt": 1784162611956,
       "assignmentId": "1784161125496-wpdu60",
       "assignmentSource": "algorithm",
       "assignmentVersion": "beta-20260714-1",
       "predictedAtAssignment": 5.703576455367156,
-      "courtType": "sand"
+      "courtType": "sand",
+      "isTournamentGame": false,
+      "leagueOpponent": null
     },
     {
       "id": 1784158577994,
@@ -547,17 +1055,18 @@
       "scoreBlue": 25,
       "winner": "blue",
       "isLeagueGame": true,
-      "leagueOpponent": {
-        "id": "league_team_rec",
-        "name": "League - Rec",
-        "size": 7
-      },
       "createdAt": 1784158577994,
       "assignmentId": "1784158561342-p1hhgu",
       "assignmentSource": "manual",
       "assignmentVersion": "beta-20260714-1",
       "predictedAtAssignment": null,
-      "courtType": "sand"
+      "courtType": "sand",
+      "isTournamentGame": false,
+      "leagueOpponent": {
+        "id": "league_team_rec",
+        "name": "League - Rec",
+        "size": 7
+      }
     },
     {
       "id": 1784158569215,
@@ -597,17 +1106,18 @@
       "scoreBlue": 25,
       "winner": "red",
       "isLeagueGame": true,
-      "leagueOpponent": {
-        "id": "league_team_rec",
-        "name": "League - Rec",
-        "size": 7
-      },
       "createdAt": 1784158569215,
       "assignmentId": "1784158561342-p1hhgu",
       "assignmentSource": "manual",
       "assignmentVersion": "beta-20260714-1",
       "predictedAtAssignment": null,
-      "courtType": "sand"
+      "courtType": "sand",
+      "isTournamentGame": false,
+      "leagueOpponent": {
+        "id": "league_team_rec",
+        "name": "League - Rec",
+        "size": 7
+      }
     },
     {
       "id": 1784158561341,
@@ -647,17 +1157,18 @@
       "scoreBlue": 25,
       "winner": "blue",
       "isLeagueGame": true,
-      "leagueOpponent": {
-        "id": "league_team_rec",
-        "name": "League - Rec",
-        "size": 7
-      },
       "createdAt": 1784158561341,
       "assignmentId": "1784158561342-p1hhgu",
       "assignmentSource": "manual",
       "assignmentVersion": "beta-20260714-1",
       "predictedAtAssignment": null,
-      "courtType": "sand"
+      "courtType": "sand",
+      "isTournamentGame": false,
+      "leagueOpponent": {
+        "id": "league_team_rec",
+        "name": "League - Rec",
+        "size": 7
+      }
     },
     {
       "id": 1784158504335,
@@ -693,17 +1204,18 @@
       "scoreBlue": 5,
       "winner": "red",
       "isLeagueGame": true,
-      "leagueOpponent": {
-        "id": "league_team_rec",
-        "name": "League - Rec",
-        "size": 6
-      },
       "createdAt": 1784158504335,
       "assignmentId": "1784153987181-1zwivz",
       "assignmentSource": "manual",
       "assignmentVersion": "beta-20260714-1",
       "predictedAtAssignment": null,
-      "courtType": "sand"
+      "courtType": "sand",
+      "isTournamentGame": false,
+      "leagueOpponent": {
+        "id": "league_team_rec",
+        "name": "League - Rec",
+        "size": 6
+      }
     },
     {
       "id": 1784157849104,
@@ -739,17 +1251,18 @@
       "scoreBlue": 25,
       "winner": "blue",
       "isLeagueGame": true,
-      "leagueOpponent": {
-        "id": "league_team_rec",
-        "name": "League - Rec",
-        "size": 6
-      },
       "createdAt": 1784157849104,
       "assignmentId": "1784153987181-1zwivz",
       "assignmentSource": "manual",
       "assignmentVersion": "beta-20260714-1",
       "predictedAtAssignment": null,
-      "courtType": "sand"
+      "courtType": "sand",
+      "isTournamentGame": false,
+      "leagueOpponent": {
+        "id": "league_team_rec",
+        "name": "League - Rec",
+        "size": 6
+      }
     },
     {
       "id": 1784156625360,
@@ -785,17 +1298,18 @@
       "scoreBlue": 27,
       "winner": "blue",
       "isLeagueGame": true,
-      "leagueOpponent": {
-        "id": "league_team_rec",
-        "name": "League - Rec",
-        "size": 6
-      },
       "createdAt": 1784156625360,
       "assignmentId": "1784153987181-1zwivz",
       "assignmentSource": "manual",
       "assignmentVersion": "beta-20260714-1",
       "predictedAtAssignment": null,
-      "courtType": "sand"
+      "courtType": "sand",
+      "isTournamentGame": false,
+      "leagueOpponent": {
+        "id": "league_team_rec",
+        "name": "League - Rec",
+        "size": 6
+      }
     },
     {
       "id": 1783902997138,
@@ -11707,33 +12221,5 @@
       "active": false,
       "createdAt": 1782523082514
     }
-  ],
-  "ok": true,
-  "source": {
-    "fileId": "1r3-Ugnl521uOdyVxPJfJSPU9JmB3vmQZ",
-    "fileName": "vballstats_2026-07-16.json",
-    "lastUpdated": "2026-07-16T01:44:44.762Z",
-    "mergedFileCount": 3,
-    "mergedGameCount": 220,
-    "mergedFiles": [
-      {
-        "fileId": "1r3-Ugnl521uOdyVxPJfJSPU9JmB3vmQZ",
-        "fileName": "vballstats_2026-07-16.json",
-        "lastUpdated": "2026-07-16T01:44:44.762Z",
-        "gameCount": 220
-      },
-      {
-        "fileId": "1eQPaxCHEw6AWziwSWMFO6P8EIUNIE2O3",
-        "fileName": "vballstats_2026-07-16.json",
-        "lastUpdated": "2026-07-16T00:16:52.511Z",
-        "gameCount": 216
-      },
-      {
-        "fileId": "1FewCY4TArkqpH7fQBf0JO14F9PJatCXd",
-        "fileName": "vballstats_2026-07-13_merged_corrected.json",
-        "lastUpdated": "2026-07-13T18:14:32.835Z",
-        "gameCount": 210
-      }
-    ]
-  }
+  ]
 }

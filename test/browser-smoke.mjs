@@ -8,6 +8,7 @@ if (process.env.VBALL_BROWSER_SMOKE !== '1') {
 const baseUrl = process.argv[2] || 'http://127.0.0.1:5176';
 const cdpUrl = process.argv[3] || 'http://127.0.0.1:9223';
 const db = JSON.parse(fs.readFileSync('test/fixtures/bayesian-2026-06-20.json', 'utf8'));
+const leagueGameCount = db.games.filter(game => game?.isLeagueGame).length;
 const isValidDateString = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
 const getGameDateValue = game => typeof game?.date === 'string' ? game.date : '';
 const getLatestGameDate = games => [...games]
@@ -172,6 +173,34 @@ const historyLoaded = await evaluate(client, `
 
 if (historyLoaded.cards !== seasonRankingWindowGames.length) {
   throw new Error(`Game History did not render the Season Ranking window: ${JSON.stringify(historyLoaded)}`);
+}
+
+const winnerDisplayDrops = await evaluate(client, `(() => {
+  const drops = [];
+  for (const card of document.querySelectorAll('#historyList .game-card')) {
+    const badge = card.querySelector('.winner-badge');
+    const winnerColor = [...(badge?.classList || [])]
+      .find(name => name !== 'winner-badge');
+    const winnerBox = winnerColor
+      ? card.querySelector('.' + winnerColor + '-team')
+      : null;
+    const pattern = /([A-Za-z0-9]+) \\((\\d+) → (\\d+)\\)/g;
+    for (const match of (winnerBox?.textContent || '').matchAll(pattern)) {
+      if (Number(match[3]) < Number(match[2])) {
+        drops.push({
+          date: card.querySelector('.history-card-meta strong')?.textContent || '',
+          player: match[1],
+          before: Number(match[2]),
+          after: Number(match[3]),
+        });
+      }
+    }
+  }
+  return drops;
+})()`);
+
+if (winnerDisplayDrops.length) {
+  throw new Error(`A winning player lost displayed Season Ranking points: ${JSON.stringify(winnerDisplayDrops)}`);
 }
 
 const firstSeasonRankingRow = await evaluate(client, `(() => {
@@ -547,6 +576,12 @@ const completed = await evaluate(client, `
           winnerOnly: snapshot.winnerOnlyGames,
           mattOrdinal: matt?.ordinal,
           jitter: snapshot.diagnostics?.posterior?.jitter,
+          leagueOpponentCount: snapshot.diagnostics?.leagueOpponentCount,
+          bigTeamLeagueOpponentCount: bigTeamSnapshot.diagnostics?.leagueOpponentCount,
+          smallTeamLeagueOpponentCount: smallTeamSnapshot.diagnostics?.leagueOpponentCount,
+          leagueRows: snapshot.ratings
+            .filter(row => row.isLeagueContext)
+            .map(row => ({ id: row.id, name: row.name, games: row.games })),
           rowCount: document.querySelectorAll('#bayesianTableBody tr').length
         });
       } else if (Date.now() - started > 30000) {
@@ -836,9 +871,20 @@ if (!completed.saved) throw new Error('Bayesian worker did not persist a snapsho
 if (completed.games !== 126 || completed.scored !== 123 || completed.winnerOnly !== 3) {
   throw new Error(`Unexpected snapshot counts: ${JSON.stringify(completed)}`);
 }
+if (
+  completed.leagueOpponentCount !== 1 ||
+  completed.bigTeamLeagueOpponentCount !== 1 ||
+  completed.smallTeamLeagueOpponentCount !== 0 ||
+  completed.leagueRows.length !== 1 ||
+  completed.leagueRows[0].name !== 'League Team' ||
+  completed.leagueRows[0].games !== leagueGameCount
+) {
+  throw new Error(`Bayesian league teams were not pooled into one row: ${JSON.stringify(completed)}`);
+}
 
 console.log(JSON.stringify({
   defaultTab,
+  winnerDisplayDrops,
   historyAlignment,
   trendAlignment,
   advancedDefaults,

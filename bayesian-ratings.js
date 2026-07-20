@@ -1,4 +1,4 @@
-export const BAYESIAN_MODEL_VERSION = 'bayesian-scoreboard-v1';
+export const BAYESIAN_MODEL_VERSION = 'bayesian-scoreboard-v2-pooled-league';
 export const BAYESIAN_SNAPSHOT_SCHEMA_VERSION = 1;
 export const BAYESIAN_SNAPSHOT_STORAGE_KEY = 'gameDayBayesianScoreboardSnapshotV1';
 
@@ -10,8 +10,19 @@ export const BAYESIAN_DISPLAY_SCALE = 25 / 3;
 export const BAYESIAN_DEFAULT_SIGMA = 25 / 3;
 
 const BAYESIAN_LEAGUE_ENTITY_PREFIX = 'league:';
+export const BAYESIAN_POOLED_LEAGUE_OPPONENT_ID = 'league_team_bayesian_pooled';
+export const BAYESIAN_POOLED_LEAGUE_OPPONENT_NAME = 'League Team';
 const MAX_EXP_ARG = 35;
 const EPSILON = 1e-12;
+
+export function getPooledBayesianLeagueOpponent(game, size = game?.leagueOpponent?.size) {
+  return {
+    ...(game?.leagueOpponent || {}),
+    id: BAYESIAN_POOLED_LEAGUE_OPPONENT_ID,
+    name: BAYESIAN_POOLED_LEAGUE_OPPONENT_NAME,
+    size,
+  };
+}
 
 /**
  * @typedef {Object} BayesianScoreboardSnapshot

@@ -8,6 +8,7 @@ import {
   createBayesianUiState,
   createGameFingerprint,
   createGameFingerprintMap,
+  getPooledBayesianLeagueOpponent,
   saveBayesianSnapshot,
   loadBayesianSnapshot,
 } from '../bayesian-ratings.js';
@@ -156,6 +157,28 @@ test('league opponents are nuisance entities and not rendered as players', () =>
 
   assert.equal(snapshot.diagnostics.leagueOpponentCount, 2);
   assert.deepEqual(snapshot.ratings.map(row => row.name), ['A']);
+});
+
+test('pooled Bayesian league opponent combines every league team into one row', () => {
+  const players = [player('a', 'A')];
+  const games = [
+    leagueGame(1, [players[0]], 'rec-indoor', 'red', 25, 20),
+    leagueGame(2, [players[0]], 'intermediate-sand', 'blue', 20, 25),
+  ].map(sourceGame => ({
+    ...sourceGame,
+    leagueOpponent: getPooledBayesianLeagueOpponent(sourceGame, 6),
+  }));
+  const snapshot = calculateBayesianScoreboard({
+    players,
+    games,
+    includeLeagueRatings: true,
+  });
+  const leagueRows = snapshot.ratings.filter(row => row.isLeagueContext);
+
+  assert.equal(snapshot.diagnostics.leagueOpponentCount, 1);
+  assert.equal(leagueRows.length, 1);
+  assert.equal(leagueRows[0].name, 'League Team');
+  assert.equal(leagueRows[0].games, 2);
 });
 
 test('zero-game player remains exactly at the prior', () => {

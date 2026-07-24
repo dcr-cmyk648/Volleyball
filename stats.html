@@ -5822,6 +5822,7 @@
     }
 
     function getCourtTypeLabel(game) {
+      if (game?.courtType === 'grass') return 'Grass';
       return game?.courtType === 'sand' ? 'Sand' : 'Indoor';
     }
 
@@ -8161,7 +8162,7 @@
     }
 
     function normalizeImportedCourtType(value) {
-      return value === 'sand' ? 'sand' : 'indoor';
+      return value === 'sand' || value === 'grass' ? value : 'indoor';
     }
 
     function normalizeImportedGames(games) {

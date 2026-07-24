@@ -345,6 +345,14 @@
           <label for="blueScore">Losing team score (optional)</label>
           <input id="blueScore" type="number" min="0" inputmode="numeric" />
         </div>
+        <div class="field">
+          <label for="courtTypeSelect">Court type</label>
+          <select id="courtTypeSelect">
+            <option value="indoor">Indoor</option>
+            <option value="sand">Sand</option>
+            <option value="grass">Grass</option>
+          </select>
+        </div>
       </div>
       <div id="recordButtons" class="controls"></div>
       <div id="recordError" class="error hidden"></div>
@@ -436,6 +444,7 @@
     const bracketListEl = document.getElementById('bracketList');
     const redScoreEl = document.getElementById('redScore');
     const blueScoreEl = document.getElementById('blueScore');
+    const courtTypeSelectEl = document.getElementById('courtTypeSelect');
     const recordButtonsEl = document.getElementById('recordButtons');
     const recordErrorEl = document.getElementById('recordError');
     const latestGameEl = document.getElementById('latestGame');
@@ -535,7 +544,12 @@
     }
 
     function savePageState() {
-      localStorage.setItem(PAGE_STATE_KEY, JSON.stringify({ generatedTeams, bracketMatches, currentAssignmentId }));
+      localStorage.setItem(PAGE_STATE_KEY, JSON.stringify({
+        generatedTeams,
+        bracketMatches,
+        currentAssignmentId,
+        courtType: getCourtType()
+      }));
     }
 
     function restorePageState() {
@@ -546,11 +560,26 @@
           ? saved.bracketMatches
           : (Array.isArray(saved?.bracketQueue) ? saved.bracketQueue : []);
         currentAssignmentId = typeof saved?.currentAssignmentId === 'string' ? saved.currentAssignmentId : '';
+        courtTypeSelectEl.value = isValidCourtType(saved?.courtType) ? saved.courtType : 'indoor';
       } catch {
         generatedTeams = [];
         bracketMatches = [];
         currentAssignmentId = '';
+        courtTypeSelectEl.value = 'indoor';
       }
+    }
+
+    function isValidCourtType(value) {
+      return value === 'indoor' || value === 'sand' || value === 'grass';
+    }
+
+    function getCourtType() {
+      return isValidCourtType(courtTypeSelectEl.value) ? courtTypeSelectEl.value : 'indoor';
+    }
+
+    function getCourtTypeLabel(value) {
+      if (value === 'grass') return 'Grass';
+      return value === 'sand' ? 'Sand' : 'Indoor';
     }
 
     function createAssignmentId() {
@@ -1239,7 +1268,7 @@
         assignmentSource: 'algorithm',
         assignmentVersion: VERSION,
         predictedAtAssignment: null,
-        courtType: 'indoor'
+        courtType: getCourtType()
       };
     }
 
@@ -1260,6 +1289,7 @@
         `Loser: ${loserLabel}`,
         score,
         `Game type: ${record.tournamentMatchType === 'bracket' ? 'Tournament bracket' : 'Tournament'}`,
+        `Court type: ${getCourtTypeLabel(record.courtType)}`,
         '',
         `${winnerLabel} pairs: ${redPairs}`,
         '',
@@ -1480,6 +1510,7 @@
     pairPlayerBEl.addEventListener('blur', () => setTimeout(() => pairPlayerBResultsEl.classList.add('hidden'), 120));
     assignMatchButtonEl.addEventListener('click', assignBalancedMatch);
     generateBracketButtonEl.addEventListener('click', generateBracket);
+    courtTypeSelectEl.addEventListener('change', savePageState);
     confirmGameButtonEl.addEventListener('click', savePendingGame);
     cancelConfirmGameButtonEl.addEventListener('click', closeConfirmGameDialog);
     cancelLoserTeamButtonEl.addEventListener('click', () => loserTeamDialog.close());

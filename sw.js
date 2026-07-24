@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v17-session-rank-arrows';
+const CACHE_VERSION = 'vball-static-v19-grass-court';
 const APP_SHELL = [
   './',
   './index.html',

@@ -19,6 +19,10 @@ const ratings = await import(
 );
 
 const {
+  COURT_TYPE_GRASS,
+  getCourtType,
+  getLargeTeamUpdateDamper,
+  getLeagueContext,
   getOverallStandingsRawOrdinal,
   getSeasonRankingDisplayRawOrdinal,
   getSeasonRankingGameCountPenaltyPoints,
@@ -26,6 +30,31 @@ const {
   getSeasonRankingPenaltyPhase,
   toDisplayRating,
 } = ratings;
+
+test('grass is preserved as a court type and league context', () => {
+  const game = {
+    isLeagueGame: true,
+    level: 'rec',
+    courtType: 'grass',
+  };
+
+  assert.equal(COURT_TYPE_GRASS, 'grass');
+  assert.equal(getCourtType(game), 'grass');
+  assert.equal(getLeagueContext(game).key, 'rec_grass');
+  assert.equal(getLeagueContext(game).name, 'Rec League Grass');
+});
+
+test('massive-team update damping preserves the current 6/team-size baseline', () => {
+  assert.equal(getLargeTeamUpdateDamper(6), 1);
+  assert.equal(getLargeTeamUpdateDamper(7), 6 / 7);
+  assert.equal(getLargeTeamUpdateDamper(8), 0.75);
+  assert.equal(getLargeTeamUpdateDamper(8, {
+    largeTeamUpdateDampingExponent: 0,
+  }), 1);
+  assert.equal(getLargeTeamUpdateDamper(8, {
+    largeTeamUpdateDampingReferenceSize: 7,
+  }), 7 / 8);
+});
 
 const rawFromDisplay = displayRating => (displayRating - 1500) / 50;
 const displaySeasonRating = player => toDisplayRating(

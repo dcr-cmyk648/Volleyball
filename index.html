@@ -1044,6 +1044,7 @@
           <select id="courtTypeSelect">
             <option value="indoor">Indoor</option>
             <option value="sand">Sand</option>
+            <option value="grass">Grass</option>
           </select>
         </div>
       </div>
@@ -1539,7 +1540,7 @@
   }
 
   function isValidCourtType(value) {
-    return value === 'sand' || value === 'indoor';
+    return value === 'sand' || value === 'grass' || value === 'indoor';
   }
 
   function getGameSortValue(game, index) {
@@ -1575,7 +1576,7 @@
 
   function getMostRecentLoggedCourtType(gamesList = loadGames()) {
     const latestGame = getMostRecentLoggedGame(gamesList);
-    return latestGame?.courtType === 'sand' ? 'sand' : 'indoor';
+    return isValidCourtType(latestGame?.courtType) ? latestGame.courtType : 'indoor';
   }
 
   function savePlayers(playerList) {
@@ -2068,7 +2069,7 @@
   }
 
   function getCourtType() {
-    return courtTypeSelectEl.value === 'sand' ? 'sand' : 'indoor';
+    return isValidCourtType(courtTypeSelectEl.value) ? courtTypeSelectEl.value : 'indoor';
   }
 
   function isLeagueGameMode() {
@@ -2185,8 +2186,9 @@
     return 'N/A';
   }
 
-  function getCourtTypeLabel() {
-    return getCourtType() === 'sand' ? 'Sand' : 'Indoor';
+  function getCourtTypeLabel(value = getCourtType()) {
+    if (value === 'grass') return 'Grass';
+    return value === 'sand' ? 'Sand' : 'Indoor';
   }
 
   function getActiveTeamColors() {
@@ -3675,10 +3677,6 @@
       return 'Both teams must have at least 1 player.';
     }
 
-    if (Math.abs(redTeam.length - blueTeam.length) > 1) {
-      return 'Team sizes cannot differ by more than 1 player.';
-    }
-
     return null;
   }
 
@@ -3871,9 +3869,9 @@
 
     if (record.isLeagueGame) {
       contextLines.push(`League level: ${record.level === 'intermediate' ? 'Intermediate' : 'Rec'}`);
-      contextLines.push(`Court type: ${record.courtType === 'sand' ? 'Sand' : 'Indoor'}`);
+      contextLines.push(`Court type: ${getCourtTypeLabel(record.courtType)}`);
     } else {
-      contextLines.push(`Court type: ${record.courtType === 'sand' ? 'Sand' : 'Indoor'}`);
+      contextLines.push(`Court type: ${getCourtTypeLabel(record.courtType)}`);
     }
 
     return [
@@ -4464,7 +4462,7 @@
       ? `League level: ${latest.level === 'intermediate' ? 'Intermediate' : 'Rec'}`
       : 'League level: N/A';
 
-    const courtText = `Court type: ${latest.courtType === 'sand' ? 'Sand' : 'Indoor'}`;
+    const courtText = `Court type: ${getCourtTypeLabel(latest.courtType)}`;
 
     // Back-calculate team strength from the current ratings/model at display time.
     // Nothing extra is stored in the database, so old games stay "fresh" as the algorithm changes.
@@ -4695,7 +4693,7 @@
   }
 
   function normalizeImportedCourtType(value) {
-    return value === 'sand' ? 'sand' : 'indoor';
+    return value === 'sand' || value === 'grass' ? value : 'indoor';
   }
 
   function normalizeImportedGames(gamesList) {

@@ -6,6 +6,7 @@
     "dev": "node local-server.mjs",
     "start": "node local-server.mjs",
     "test": "node --test",
+    "sweep:large-team-updates": "node --no-deprecation --import ./eval/register.mjs eval/large_team_update_sweep.mjs",
     "test:handoff": "/usr/bin/python3 -m unittest test/test_codex_handoff.py",
     "test:all": "npm test && npm run test:handoff"
   }

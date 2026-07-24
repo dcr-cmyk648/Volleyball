@@ -5,6 +5,135 @@ snapshot first; older sections are retained only as historical background.
 
 ---
 
+## 0. Authoritative restart snapshot — July 23, 2026
+
+This section supersedes every older branch, data, test, and uncommitted-state
+note below when they conflict.
+
+### Resume state
+
+- Repo: `/Users/dustinrowland/Projects/Volleyball`
+- Branch: `mac-beta`. The user explicitly authorized committing the current
+  verified batch and pushing it directly to `origin/main` for deployment.
+- The publication batch comprises `HANDOFF.md`, `default_database`,
+  `index.html`, `package.json`, `ratings.js`, `stats.html`, `sw.js`,
+  `test/browser-smoke.mjs`, `test/season-ranking-display.test.js`,
+  `tournament.html`, and `trend.html`, plus the new
+  `eval/large_team_update_sweep.mjs`. After the successful push, the worktree
+  should be clean and local `HEAD` should match `origin/main`.
+- The canonical Codex handoff lease remains generation 1 for thread
+  `019f6c8b-f3ed-7a50-aacd-9bbe8c902efd`.
+
+### Fresh data and Grass court support
+
+- A newer phone export, `vballstats_2026-07-24.json` (Drive ID
+  `1CRNLNtHl-ePZw28KjTDFQUUWsN03aNeO`), appeared after the initial refresh. It
+  has 65 players, 251 games, and latest play date 2026-07-23.
+- Per the user's screenshots, exactly three ordinary July 23 games were
+  corrected from Sand to Grass: game `1784853594995` (27-25), game
+  `1784852243457` (23-25), and game `1784850869395` (25-22). Rosters, scores,
+  and every other field were initially unchanged.
+- A follow-up roster correction adds the database's sole JakeC
+  (`1778458288452`) once to the winning Red team in game `1784853594995`.
+  That game remains a 27-25 Grass win; its losing team and every other game
+  field are unchanged.
+- The phone-uploaded source again denied in-place connector writes, so the
+  exact correction was uploaded beside it as the newer
+  `vballstats_2026-07-24_grass-corrected.json`, Drive ID
+  `167VTHOsEgaHiTfXNvEpPkJLlju42CMbV`, created at
+  `2026-07-24T02:36:29.939Z` and last modified for the JakeC correction at
+  `2026-07-24T02:41:01.414Z`. Drive readback was byte-identical, the live
+  stats endpoint reports that file as its selected source, and
+  `default_database` now matches it.
+- Grass is now a first-class court type in Play and Tournament recording,
+  import normalization, confirmation/latest-game summaries, Stats and Trend
+  labels, and league context identity. Existing Indoor and Sand behavior is
+  unchanged. No scoreboard explanation or instructional copy was changed.
+- The ratings version is `beta-20260723-1`; the app-shell cache is
+  `vball-static-v19-grass-court`.
+
+### Massive-team update sweep
+
+- The existing update damper for teams above six remains behaviorally
+  unchanged: each player's update is multiplied by `6 / teamSize`.
+- Default-neutral sweep controls and
+  `npm run sweep:large-team-updates` were added so the reference size and
+  exponent can be evaluated without editing production defaults.
+- The completed sweep used the then-current 242-game source. It had 31 games
+  with at least one team of seven or eight, but only five ordinary nonleague
+  forward-scoring targets; 26 were league games. Softer damping improved
+  full-history Brier score by only about `0.0001`, while generally worsening
+  the recent slice by about `0.0001`–`0.0003`. Stronger damping had the inverse
+  mixed tradeoff. Top-10 membership remained 10/10 in every focused candidate.
+- The evidence is flat and the directly scored massive-game sample is too
+  small, so no production rating adjustment is recommended or applied.
+
+### Verification
+
+- `npm test`: 31 passed, 0 failed. `node --check ratings.js`,
+  `node --check eval/large_team_update_sweep.mjs`,
+  `node --check test/browser-smoke.mjs`, and `git diff --check` passed.
+- The full browser regression passed, including an 8-vs-6 Grass entry and the
+  required Season Ranking/Trend/Game History consistency pass. JoeM appeared
+  consistently at 2258 over 55 games by default and 2409 over 49 games with
+  league games, the season window, and confidence penalties removed.
+- After the three game corrections and 251-game refresh, `npm test` still
+  passes 31/31 and the full browser consistency regression passes again.
+- After adding JakeC, `npm test` still passes 31/31, the full browser
+  consistency regression passes again, and the live endpoint returns JakeC
+  exactly once on the winning Red roster.
+- The local audit server is running at `http://127.0.0.1:5182/`.
+
+---
+
+## 0. Authoritative restart snapshot — July 22, 2026
+
+This section supersedes every older branch, data, test, and uncommitted-state
+note below when they conflict.
+
+### Resume state
+
+- Repo: `/Users/dustinrowland/Projects/Volleyball`
+- Branch: `mac-beta`; do not stage, commit, or push this batch unless the user
+  explicitly asks.
+- Current intentional modifications are `HANDOFF.md`, `default_database`,
+  `index.html`, `sw.js`, and `test/browser-smoke.mjs`. Preserve them.
+- The canonical Codex handoff lease remains generation 1 for thread
+  `019f6c8b-f3ed-7a50-aacd-9bbe8c902efd`.
+
+### July 22 roster correction and uneven manual score entry
+
+- The newest direct Drive upload was `vballstats_2026-07-23.json`: 63 players,
+  239 games, and latest play date 2026-07-22. `default_database` was refreshed
+  from it.
+- There is exactly one Alexis (`AlexisM`, player ID `1776129731278`). Per the
+  user's correction, Alexis was missing from exactly two games, not three:
+  game IDs `1784770016492` (25-22) and `1784768769623` (16-25). She has been
+  added once to the red roster in each, making both recorded matchups 8-vs-6.
+  No other uploaded game, player, or tournament-pair data was changed.
+- The original browser-uploaded Drive file did not grant the connector write
+  access, so the corrected database was uploaded as the newer
+  `vballstats_2026-07-23_corrected.json` in the same Volleyball folder. A raw
+  Drive readback was byte-identical to local `default_database`, and the live
+  Apps Script stats endpoint was verified to select the corrected file.
+- Manual nonleague score entry no longer rejects teams whose sizes differ by
+  more than one. Both teams must still contain at least one player. No
+  scoreboard explanation or other user-facing copy was changed.
+- The app-shell cache is now `vball-static-v18-uneven-score-entry`.
+
+### Verification
+
+- The exact source comparison found only the two requested red-roster changes.
+- `npm test`: 29 passed, 0 failed. `node --check test/browser-smoke.mjs` and
+  `git diff --check` passed.
+- The full browser regression passed, including the Season Ranking/Trend/Game
+  History consistency checks and an 8-red-vs-6-blue manual entry that opened
+  the 25-20 score confirmation without an error. The user then asked to stop
+  testing, so no additional actual-database browser sampling was run.
+- A local audit server is available at `http://127.0.0.1:5180/`.
+
+---
+
 ## 0. Authoritative restart snapshot — July 19, 2026
 
 This section supersedes every older branch, data, test, and uncommitted-state

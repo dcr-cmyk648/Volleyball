@@ -1176,6 +1176,7 @@
     }
 
     function getCourtTypeLabel(row) {
+      if (row?.courtType === 'grass') return 'Grass';
       return row?.courtType === 'sand' ? 'Sand' : 'Indoor';
     }
 

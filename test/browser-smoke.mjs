@@ -909,6 +909,76 @@ if (
   throw new Error(`Team balancing did not resume after sync: ${JSON.stringify(balanceAfterSync)}`);
 }
 
+const unevenManualPlayers = playServerDb.players.slice(0, 14);
+const unevenManualPresenceState = Object.fromEntries(
+  unevenManualPlayers.map((player, index) => [String(player.id), {
+    present: true,
+    team: index < 8 ? 'red' : 'blue',
+    group: null,
+    lockedTeam: '',
+  }])
+);
+const unevenManualPageState = {
+  presenceState: unevenManualPresenceState,
+  redScore: '25',
+  blueScore: '20',
+  hideUnselectedPlayers: false,
+  balanceAttempts: 100,
+  teamCount: 2,
+  forceTwoChanges: false,
+  forceChangeCount: 1,
+  forceChangeCountManual: false,
+  groupingEnabled: false,
+  groupCount: 1,
+  playerSearchQuery: '',
+  currentAssignmentId: '',
+  currentAssignmentDate: '',
+  leagueLevel: '',
+  courtType: 'grass',
+};
+
+await evaluate(client, `
+  localStorage.setItem('gameDayPlayers', ${JSON.stringify(JSON.stringify(playServerDb.players))});
+  localStorage.setItem('gameDayGames', ${JSON.stringify(JSON.stringify(playServerDb.games))});
+  localStorage.setItem('gameDayMainPageState', ${JSON.stringify(JSON.stringify(unevenManualPageState))});
+  localStorage.setItem('gameDayDefaultDatabasePromptChoice', 'declined');
+`);
+
+load = waitForLoad(client);
+await client.send('Page.navigate', { url: `${baseUrl}/index.html` });
+await load;
+
+const unevenManualScoreEntry = await evaluate(client, `
+  new Promise(resolve => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const selectedCount = document.getElementById('selectedCount')?.textContent || '';
+      const button = document.querySelector('#recordButtons .red-button');
+      if ((button && selectedCount.includes('Red: 8 | Blue: 6')) || Date.now() - started > 10000) {
+        clearInterval(timer);
+        button?.click();
+        setTimeout(() => resolve({
+          confirmationOpen: Boolean(document.getElementById('confirmGameDialog')?.open),
+          error: document.getElementById('errorMessage')?.textContent || '',
+          selectedCount,
+          summary: document.getElementById('confirmGameSummary')?.textContent || '',
+        }), 100);
+      }
+    }, 50);
+  })
+`, true);
+
+if (
+  !unevenManualScoreEntry.confirmationOpen ||
+  unevenManualScoreEntry.error ||
+  !unevenManualScoreEntry.selectedCount.includes('Red: 8 | Blue: 6') ||
+  !unevenManualScoreEntry.summary.includes('Court type: Grass')
+) {
+  throw new Error(`Manual 8-vs-6 score entry was blocked: ${JSON.stringify(unevenManualScoreEntry)}`);
+}
+
+await evaluate(client, `document.getElementById('cancelConfirmGameButton').click()`);
+
 await evaluate(client, `(() => {
   const games = JSON.parse(localStorage.getItem('gameDayGames') || '[]');
   if (games[0]) delete games[0].isTournamentGame;
@@ -1006,6 +1076,7 @@ console.log(JSON.stringify({
   afterSafetySync,
   registrationAfterSync,
   balanceAfterSync,
+  unevenManualScoreEntry,
   statsSemanticCorrectionCheck,
   genuineCorrectionCheck,
 }, null, 2));

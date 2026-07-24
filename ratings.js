@@ -30,6 +30,7 @@ export const LEAGUE_LEVEL_REC = 'rec';
 export const LEAGUE_LEVEL_INTERMEDIATE = 'intermediate';
 export const COURT_TYPE_INDOOR = 'indoor';
 export const COURT_TYPE_SAND = 'sand';
+export const COURT_TYPE_GRASS = 'grass';
 export const LEAGUE_PHASE_BRACKET = 'bracket';
 
 const BASE_LEAGUE_CONTEXTS = [
@@ -48,6 +49,13 @@ const BASE_LEAGUE_CONTEXTS = [
     name: 'Rec League Sand',
   },
   {
+    id: `${LEAGUE_TEAM_ID}_rec_grass`,
+    key: 'rec_grass',
+    level: LEAGUE_LEVEL_REC,
+    courtType: COURT_TYPE_GRASS,
+    name: 'Rec League Grass',
+  },
+  {
     id: `${LEAGUE_TEAM_ID}_intermediate_indoor`,
     key: 'intermediate_indoor',
     level: LEAGUE_LEVEL_INTERMEDIATE,
@@ -60,6 +68,13 @@ const BASE_LEAGUE_CONTEXTS = [
     level: LEAGUE_LEVEL_INTERMEDIATE,
     courtType: COURT_TYPE_SAND,
     name: 'Intermediate League Sand',
+  },
+  {
+    id: `${LEAGUE_TEAM_ID}_intermediate_grass`,
+    key: 'intermediate_grass',
+    level: LEAGUE_LEVEL_INTERMEDIATE,
+    courtType: COURT_TYPE_GRASS,
+    name: 'Intermediate League Grass',
   },
 ];
 
@@ -180,6 +195,11 @@ export const DEFAULT_RATING_OPTIONS = {
   leagueSessionFreezeEnabled: false,
   leagueOpponentSeasonalTaperEnabled: false,
 
+  // Per-player update damping for games above the reference team size.
+  // Default 6/teamSize behavior is preserved with reference 6 and exponent 1.
+  largeTeamUpdateDampingReferenceSize: 6,
+  largeTeamUpdateDampingExponent: 1,
+
   // Blowout bonus — delayed logistic point-differential bonus. This keeps ordinary
   // close and mid-margin wins near 1.0x, while still adding a small capped reward
   // for clear blowouts.
@@ -277,7 +297,7 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260720-1';
+export const VERSION = 'beta-20260723-1';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Flatter team-strength weights. Forward validation favored restoring
@@ -719,6 +739,7 @@ export function getLeagueLevel(game) {
 }
 
 export function getCourtType(game) {
+  if (game?.courtType === COURT_TYPE_GRASS) return COURT_TYPE_GRASS;
   return game?.courtType === COURT_TYPE_SAND
     ? COURT_TYPE_SAND
     : COURT_TYPE_INDOOR;
@@ -2652,6 +2673,20 @@ function getNonNegativeOption(value, fallback = 1) {
   return Number.isFinite(numeric) ? Math.max(0, numeric) : fallback;
 }
 
+export function getLargeTeamUpdateDamper(teamSize, options = {}) {
+  const cfg = mergeRatingOptions(options);
+  const size = Math.max(0, Number(teamSize) || 0);
+  const referenceSize = Math.max(
+    1,
+    Number(cfg.largeTeamUpdateDampingReferenceSize) || LEAGUE_TEAM_SIZE
+  );
+  const rawExponent = Number(cfg.largeTeamUpdateDampingExponent);
+  const exponent = Number.isFinite(rawExponent) ? Math.max(0, rawExponent) : 1;
+
+  if (size <= referenceSize) return 1;
+  return Math.pow(referenceSize / size, exponent);
+}
+
 export function getEvidenceWeight({
   game,
   redIds = [],
@@ -2716,10 +2751,10 @@ export function getEvidenceWeight({
     : cappedVolatility;
   const evidenceWeight = effectiveVolatility * leagueUpdateMultiplier;
 
-  // Per-team size damping: players on teams larger than 6 have less individual impact
-  // per game (more rotations, fewer touches). Damper = 6 / teamSize for teams > 6.
-  const redSizeDamper = LEAGUE_TEAM_SIZE / Math.max(LEAGUE_TEAM_SIZE, redIds.length);
-  const blueSizeDamper = LEAGUE_TEAM_SIZE / Math.max(LEAGUE_TEAM_SIZE, blueIds.length);
+  // Per-team size damping: players on massive teams have less individual impact
+  // per game because they rotate more and receive fewer touches.
+  const redSizeDamper = getLargeTeamUpdateDamper(redIds.length, cfg);
+  const blueSizeDamper = getLargeTeamUpdateDamper(blueIds.length, cfg);
   const redFinalMultiplier = evidenceWeight * seasonalWeight * redSizeDamper;
   const leagueOpponentUpdateMultiplier = game?.isLeagueGame
     ? getNonNegativeOption(cfg.leagueOpponentUpdateMultiplier, 1)

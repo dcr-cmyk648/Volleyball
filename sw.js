@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v19-grass-court';
+const CACHE_VERSION = 'vball-static-v20-persistent-stats-settings';
 const APP_SHELL = [
   './',
   './index.html',

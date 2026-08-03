@@ -5,6 +5,48 @@ snapshot first; older sections are retained only as historical background.
 
 ---
 
+## 0. Authoritative restart snapshot — August 3, 2026
+
+This section supersedes every older branch, data, test, and uncommitted-state
+note below when they conflict.
+
+### Resume state
+
+- Repo: `/Users/dustinrowland/Projects/Volleyball`
+- Branch: `mac-beta`. The user explicitly authorized the verified advanced
+  Stats settings change to be committed and pushed directly to `origin/main`.
+- The publication batch is limited to this snapshot, `stats.html`, `sw.js`, and
+  `test/browser-smoke.mjs`.
+- `default_database` remains intentionally modified with the later July 26
+  260-game Drive refresh and three Sand-to-Grass corrections. Preserve it
+  unstaged; it is not part of this UI deployment.
+- The canonical Codex handoff lease remains generation 1 for thread
+  `019f6c8b-f3ed-7a50-aacd-9bbe8c902efd`.
+
+### Persistent Stats advanced settings
+
+- The Season Ranking advanced-settings expansion state and all three switches
+  now persist in versioned local storage: league-game visibility, removal of
+  the season window, and removal of confidence penalties.
+- Stored settings survive Stats tab changes and closing/reopening the app.
+  Explicit URL options still override the corresponding stored values and are
+  then retained as the active preferences.
+- The app-shell cache is `vball-static-v20-persistent-stats-settings`. No
+  scoreboard explanation, label, or other user-facing copy changed.
+
+### Verification
+
+- `npm test`: 31 passed, 0 failed. `node --check test/browser-smoke.mjs`,
+  `node --check sw.js`, and `git diff --check` passed.
+- The full browser regression passed. It verifies settings across Session,
+  All Time, and Season tabs; expanded and collapsed page reloads; and the
+  required Season Ranking/Trend/Game History consistency pass. JoeM remained
+  aligned at 2258 over 55 games by default and 2409 over 49 games with all
+  three advanced rating settings enabled.
+- The local audit server is running at `http://127.0.0.1:5184/`.
+
+---
+
 ## 0. Authoritative restart snapshot — July 23, 2026
 
 This section supersedes every older branch, data, test, and uncommitted-state

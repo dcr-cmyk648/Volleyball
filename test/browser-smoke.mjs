@@ -35,6 +35,7 @@ const nonLeagueSeasonRankingWindowGames = nonLeagueGames.filter(game => {
 const snapshotKey = 'gameDayBayesianScoreboardSnapshotV1:composite';
 const bigTeamSnapshotKey = 'gameDayBayesianScoreboardSnapshotV1:bigTeam';
 const smallTeamSnapshotKey = 'gameDayBayesianScoreboardSnapshotV1:smallTeam';
+const seasonRankingSettingsKey = 'gameDaySeasonRankingAdvancedSettingsV1';
 
 async function getPageWebSocketUrl() {
   const targets = await fetch(`${cdpUrl}/json/list`).then(response => response.json());
@@ -121,6 +122,7 @@ await evaluate(client, `
   localStorage.removeItem(${JSON.stringify(snapshotKey)});
   localStorage.removeItem(${JSON.stringify(bigTeamSnapshotKey)});
   localStorage.removeItem(${JSON.stringify(smallTeamSnapshotKey)});
+  localStorage.removeItem(${JSON.stringify(seasonRankingSettingsKey)});
   localStorage.setItem('gameDayAllTimeBayesianScoreboardMode', 'smallTeam');
   sessionStorage.removeItem('statsActiveTab');
   sessionStorage.removeItem('seasonStatsActiveTab');
@@ -626,6 +628,119 @@ if (
 }
 
 load = waitForLoad(client);
+await client.send('Page.navigate', {
+  url: `${baseUrl}/stats.html?tab=season&seasonTab=seasonRanking`,
+});
+await load;
+
+const advancedSettingsAfterReload = await evaluate(client, `
+  new Promise(resolve => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      let saved = null;
+      try {
+        saved = JSON.parse(localStorage.getItem(${JSON.stringify(seasonRankingSettingsKey)}) || 'null');
+      } catch {}
+      const state = {
+        showChecked: Boolean(document.getElementById('showSeasonRankingAdvancedSettings')?.checked),
+        optionsHidden: document.getElementById('seasonRankingAdvancedOptions')?.classList.contains('hidden'),
+        hideLeagueChecked: Boolean(document.getElementById('hideSeasonRankingLeagueGames')?.checked),
+        removeWindowChecked: Boolean(document.getElementById('removeSeasonRankingWindow')?.checked),
+        removePenaltyChecked: Boolean(document.getElementById('removeSeasonRankingConfidencePenalty')?.checked),
+        saved,
+      };
+      const ready = state.showChecked &&
+        !state.optionsHidden &&
+        state.hideLeagueChecked &&
+        state.removeWindowChecked &&
+        state.removePenaltyChecked;
+      if (ready || Date.now() - started > 10000) {
+        clearInterval(timer);
+        resolve(state);
+      }
+    }, 100);
+  })
+`, true);
+
+if (
+  !advancedSettingsAfterReload.showChecked ||
+  advancedSettingsAfterReload.optionsHidden ||
+  !advancedSettingsAfterReload.hideLeagueChecked ||
+  !advancedSettingsAfterReload.removeWindowChecked ||
+  !advancedSettingsAfterReload.removePenaltyChecked ||
+  advancedSettingsAfterReload.saved?.showAdvancedSettings !== true ||
+  advancedSettingsAfterReload.saved?.hideLeagueGames !== true ||
+  advancedSettingsAfterReload.saved?.removeSeasonWindow !== true ||
+  advancedSettingsAfterReload.saved?.removeConfidencePenalty !== true
+) {
+  throw new Error(`Season Ranking advanced settings did not survive a page reload: ${JSON.stringify(advancedSettingsAfterReload)}`);
+}
+
+const advancedSettingsAcrossTabs = await evaluate(client, `
+  new Promise(resolve => {
+    document.getElementById('sessionStatsTabButton').click();
+    document.getElementById('allTimeStatsTabButton').click();
+    document.getElementById('seasonStatsTabButton').click();
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const state = {
+        seasonActive: document.getElementById('seasonStatsTabButton')?.classList.contains('active'),
+        showChecked: Boolean(document.getElementById('showSeasonRankingAdvancedSettings')?.checked),
+        hideLeagueChecked: Boolean(document.getElementById('hideSeasonRankingLeagueGames')?.checked),
+        removeWindowChecked: Boolean(document.getElementById('removeSeasonRankingWindow')?.checked),
+        removePenaltyChecked: Boolean(document.getElementById('removeSeasonRankingConfidencePenalty')?.checked),
+      };
+      const ready = state.seasonActive &&
+        state.showChecked &&
+        state.hideLeagueChecked &&
+        state.removeWindowChecked &&
+        state.removePenaltyChecked;
+      if (ready || Date.now() - started > 15000) {
+        clearInterval(timer);
+        resolve(state);
+      }
+    }, 100);
+  })
+`, true);
+
+if (
+  !advancedSettingsAcrossTabs.seasonActive ||
+  !advancedSettingsAcrossTabs.showChecked ||
+  !advancedSettingsAcrossTabs.hideLeagueChecked ||
+  !advancedSettingsAcrossTabs.removeWindowChecked ||
+  !advancedSettingsAcrossTabs.removePenaltyChecked
+) {
+  throw new Error(`Season Ranking advanced settings did not survive tab changes: ${JSON.stringify(advancedSettingsAcrossTabs)}`);
+}
+
+await evaluate(client, `document.getElementById('showSeasonRankingAdvancedSettings').click()`);
+load = waitForLoad(client);
+await client.send('Page.navigate', {
+  url: `${baseUrl}/stats.html?tab=season&seasonTab=seasonRanking`,
+});
+await load;
+
+const advancedSettingsAfterCollapsedReload = await evaluate(client, `({
+  showChecked: Boolean(document.getElementById('showSeasonRankingAdvancedSettings')?.checked),
+  optionsHidden: document.getElementById('seasonRankingAdvancedOptions')?.classList.contains('hidden'),
+  hideLeagueChecked: Boolean(document.getElementById('hideSeasonRankingLeagueGames')?.checked),
+  removeWindowChecked: Boolean(document.getElementById('removeSeasonRankingWindow')?.checked),
+  removePenaltyChecked: Boolean(document.getElementById('removeSeasonRankingConfidencePenalty')?.checked),
+  saved: JSON.parse(localStorage.getItem(${JSON.stringify(seasonRankingSettingsKey)}) || 'null'),
+})`);
+
+if (
+  advancedSettingsAfterCollapsedReload.showChecked ||
+  !advancedSettingsAfterCollapsedReload.optionsHidden ||
+  !advancedSettingsAfterCollapsedReload.hideLeagueChecked ||
+  !advancedSettingsAfterCollapsedReload.removeWindowChecked ||
+  !advancedSettingsAfterCollapsedReload.removePenaltyChecked ||
+  advancedSettingsAfterCollapsedReload.saved?.showAdvancedSettings !== false
+) {
+  throw new Error(`Collapsed advanced-settings state did not survive a page reload: ${JSON.stringify(advancedSettingsAfterCollapsedReload)}`);
+}
+
+load = waitForLoad(client);
 await client.send('Page.navigate', { url: `${baseUrl}/stats.html?tab=bayesian&mode=composite` });
 await load;
 
@@ -1069,6 +1184,9 @@ console.log(JSON.stringify({
   },
   advancedHistoryAlignment,
   advancedTrendAlignment,
+  advancedSettingsAfterReload,
+  advancedSettingsAcrossTabs,
+  advancedSettingsAfterCollapsedReload,
   beforeClick,
   completed,
   registrationBlocked,

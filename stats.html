@@ -2131,6 +2131,7 @@
     const replayResultMemoryCache = new Map();
     const MAX_REPLAY_RESULT_MEMORY_ENTRIES = 180;
     const ALL_TIME_SCOREBOARD_MODE_STORAGE_KEY = 'gameDayAllTimeBayesianScoreboardMode';
+    const SEASON_RANKING_SETTINGS_STORAGE_KEY = 'gameDaySeasonRankingAdvancedSettingsV1';
     const BAYESIAN_SNAPSHOT_MODE_KEYS = {
       composite: 'gameDayBayesianScoreboardSnapshotV1:composite',
       bigTeam: 'gameDayBayesianScoreboardSnapshotV1:bigTeam',
@@ -2393,14 +2394,56 @@
       return { ...activeSeasonRankingSettings };
     }
 
+    function loadStoredSeasonRankingSettings() {
+      try {
+        const parsed = JSON.parse(
+          localStorage.getItem(SEASON_RANKING_SETTINGS_STORAGE_KEY) || 'null'
+        );
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+
+        return {
+          showAdvancedSettings: parsed.showAdvancedSettings === true,
+          hideLeagueGames: parsed.hideLeagueGames === true,
+          removeSeasonWindow: parsed.removeSeasonWindow === true,
+          removeConfidencePenalty: parsed.removeConfidencePenalty === true,
+        };
+      } catch {
+        return null;
+      }
+    }
+
+    function saveSeasonRankingSettings() {
+      localStorage.setItem(SEASON_RANKING_SETTINGS_STORAGE_KEY, JSON.stringify({
+        showAdvancedSettings: showSeasonRankingAdvancedSettings,
+        ...activeSeasonRankingSettings,
+      }));
+    }
+
     function loadSeasonRankingSettingsFromUrl(params = new URLSearchParams(window.location.search)) {
+      const storedSettings = loadStoredSeasonRankingSettings();
+      const getSetting = (paramName, settingName) => params.has(paramName)
+        ? params.get(paramName) === '1'
+        : storedSettings?.[settingName] ?? DEFAULT_SEASON_RANKING_SETTINGS[settingName];
+
       activeSeasonRankingSettings = {
-        hideLeagueGames: params.get('hideLeagueGames') === '1',
-        removeSeasonWindow: params.get('removeSeasonWindow') === '1',
-        removeConfidencePenalty: params.get('removeConfidencePenalty') === '1',
+        hideLeagueGames: getSetting('hideLeagueGames', 'hideLeagueGames'),
+        removeSeasonWindow: getSetting('removeSeasonWindow', 'removeSeasonWindow'),
+        removeConfidencePenalty: getSetting(
+          'removeConfidencePenalty',
+          'removeConfidencePenalty'
+        ),
       };
-      showSeasonRankingAdvancedSettings = params.get('showAdvancedSettings') === '1' ||
-        Object.values(activeSeasonRankingSettings).some(Boolean);
+      const hasUrlSetting = [
+        'hideLeagueGames',
+        'removeSeasonWindow',
+        'removeConfidencePenalty',
+      ].some(name => params.has(name));
+      showSeasonRankingAdvancedSettings = params.has('showAdvancedSettings')
+        ? params.get('showAdvancedSettings') === '1'
+        : hasUrlSetting
+          ? Object.values(activeSeasonRankingSettings).some(Boolean)
+          : storedSettings?.showAdvancedSettings ?? false;
+      saveSeasonRankingSettings();
     }
 
     function updateSeasonRankingAdvancedControls() {
@@ -8852,6 +8895,7 @@
 
     showSeasonRankingAdvancedSettingsEl?.addEventListener('change', () => {
       showSeasonRankingAdvancedSettings = showSeasonRankingAdvancedSettingsEl.checked;
+      saveSeasonRankingSettings();
       updateSeasonRankingAdvancedControls();
     });
 
@@ -8865,6 +8909,7 @@
           ...activeSeasonRankingSettings,
           [setting]: control.checked,
         };
+        saveSeasonRankingSettings();
         await refreshSeasonRankingAdvancedSettings();
       });
     });

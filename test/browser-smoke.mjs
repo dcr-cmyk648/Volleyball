@@ -36,6 +36,9 @@ const snapshotKey = 'gameDayBayesianScoreboardSnapshotV1:composite';
 const bigTeamSnapshotKey = 'gameDayBayesianScoreboardSnapshotV1:bigTeam';
 const smallTeamSnapshotKey = 'gameDayBayesianScoreboardSnapshotV1:smallTeam';
 const seasonRankingSettingsKey = 'gameDaySeasonRankingAdvancedSettingsV1';
+const allTimeMinimumGamesKey = 'gameDayAllTimeHidePlayersUnderTenGames';
+const playActionServerCheckCacheKey = 'gameDayPlayActionServerCheckCacheV1';
+const playActionServerCheckIntervalMs = 4 * 60 * 60 * 1000;
 
 async function getPageWebSocketUrl() {
   const targets = await fetch(`${cdpUrl}/json/list`).then(response => response.json());
@@ -123,6 +126,8 @@ await evaluate(client, `
   localStorage.removeItem(${JSON.stringify(bigTeamSnapshotKey)});
   localStorage.removeItem(${JSON.stringify(smallTeamSnapshotKey)});
   localStorage.removeItem(${JSON.stringify(seasonRankingSettingsKey)});
+  localStorage.removeItem(${JSON.stringify(allTimeMinimumGamesKey)});
+  localStorage.removeItem(${JSON.stringify(playActionServerCheckCacheKey)});
   localStorage.setItem('gameDayAllTimeBayesianScoreboardMode', 'smallTeam');
   sessionStorage.removeItem('statsActiveTab');
   sessionStorage.removeItem('seasonStatsActiveTab');
@@ -413,6 +418,7 @@ const advancedDefaults = await evaluate(client, `
           hideLeagueChecked: Boolean(document.getElementById('hideSeasonRankingLeagueGames')?.checked),
           removeWindowChecked: Boolean(document.getElementById('removeSeasonRankingWindow')?.checked),
           removePenaltyChecked: Boolean(document.getElementById('removeSeasonRankingConfidencePenalty')?.checked),
+          hideUnderTenChecked: Boolean(document.getElementById('hideSeasonRankingPlayersUnderTenGames')?.checked),
         });
       }
     }, 100);
@@ -425,7 +431,8 @@ if (
   !advancedDefaults.optionsHidden ||
   advancedDefaults.hideLeagueChecked ||
   advancedDefaults.removeWindowChecked ||
-  advancedDefaults.removePenaltyChecked
+  advancedDefaults.removePenaltyChecked ||
+  advancedDefaults.hideUnderTenChecked
 ) {
   throw new Error(`Season Ranking advanced settings did not default off: ${JSON.stringify(advancedDefaults)}`);
 }
@@ -443,7 +450,7 @@ const advancedExpanded = await evaluate(client, `(() => {
 if (
   !advancedExpanded.showChecked ||
   advancedExpanded.optionsHidden ||
-  advancedExpanded.switches.length !== 3 ||
+  advancedExpanded.switches.length !== 4 ||
   advancedExpanded.switches.some(input => input.checked)
 ) {
   throw new Error(`Season Ranking advanced settings did not expand with switches off: ${JSON.stringify(advancedExpanded)}`);
@@ -560,8 +567,8 @@ const under1500PenaltyChanges = under1500Rows.filter(row =>
   Number.isFinite(seasonWindowRemoved.ratings[row.name]) &&
   row.rating !== seasonWindowRemoved.ratings[row.name]
 );
-const advancedSeasonRankingRow = confidencePenaltyRemoved.rows[0];
-const advancedRowUrl = new URL(advancedSeasonRankingRow?.href || baseUrl);
+const advancedSettingsRowBeforeMinimumFilter = confidencePenaltyRemoved.rows[0];
+const advancedRowUrl = new URL(advancedSettingsRowBeforeMinimumFilter?.href || baseUrl);
 if (
   !confidencePenaltyRemoved.removePenaltyChecked ||
   !confidencePenaltyRemoved.description.includes('penalties are removed') ||
@@ -573,6 +580,63 @@ if (
   advancedRowUrl.searchParams.get('removeConfidencePenalty') !== '1'
 ) {
   throw new Error(`Remove confidence penalty did not update or propagate advanced ratings: ${JSON.stringify({ confidencePenaltyRemoved, confidenceIncreases, under1500Rows, under1500PenaltyChanges })}`);
+}
+
+const seasonMinimumGamesFilter = await evaluate(client, `
+  new Promise(resolve => {
+    document.getElementById('hideSeasonRankingPlayersUnderTenGames').click();
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const busy = !document.getElementById('busyOverlay')?.classList.contains('hidden');
+      const rows = [...document.querySelectorAll('#statsTableBody tr')].map(row => {
+        const cells = [...row.querySelectorAll('td')];
+        const link = row.querySelector('a[href*="trend.html"]');
+        return {
+          name: link?.textContent?.trim() || '',
+          rating: Number(cells[3]?.textContent?.trim()),
+          games: Number(cells[4]?.textContent?.trim()),
+          href: link ? new URL(link.getAttribute('href'), window.location.href).href : '',
+        };
+      }).filter(row => row.name);
+      const checked = Boolean(
+        document.getElementById('hideSeasonRankingPlayersUnderTenGames')?.checked
+      );
+      if ((!busy && checked && rows.every(row => row.games >= 10)) ||
+          Date.now() - started > 15000) {
+        clearInterval(timer);
+        resolve({ busy, checked, rows });
+      }
+    }, 100);
+  })
+`, true);
+
+const preMinimumRowsByName = new Map(
+  confidencePenaltyRemoved.rows.map(row => [row.name, row])
+);
+const seasonMinimumFilterChanges = seasonMinimumGamesFilter.rows
+  .map(row => {
+    const before = preMinimumRowsByName.get(row.name);
+    return before &&
+      before.rating === row.rating &&
+      Number(before.games) === row.games
+      ? null
+      : { before, after: row };
+  })
+  .filter(Boolean);
+const advancedSeasonRankingRow = seasonMinimumGamesFilter.rows[0];
+const advancedMinimumGamesRowUrl = new URL(advancedSeasonRankingRow?.href || baseUrl);
+if (
+  !seasonMinimumGamesFilter.checked ||
+  seasonMinimumGamesFilter.rows.length >= confidencePenaltyRemoved.rows.length ||
+  seasonMinimumGamesFilter.rows.some(row => row.games < 10) ||
+  seasonMinimumFilterChanges.length > 0 ||
+  advancedMinimumGamesRowUrl.searchParams.get('hidePlayersUnderTenGames') !== '1'
+) {
+  throw new Error(`Season Ranking minimum-games filter failed: ${JSON.stringify({
+    confidencePenaltyRemoved,
+    seasonMinimumGamesFilter,
+    seasonMinimumFilterChanges,
+  })}`);
 }
 
 const advancedHistoryAlignment = await evaluate(client, `(() => {
@@ -619,7 +683,7 @@ const advancedTrendAlignment = await evaluate(client, `
 
 if (
   advancedTrendAlignment.rating !== String(advancedSeasonRankingRow.rating) ||
-  advancedTrendAlignment.games !== advancedSeasonRankingRow.games ||
+  advancedTrendAlignment.games !== String(advancedSeasonRankingRow.games) ||
   !advancedTrendAlignment.status.includes('League games excluded') ||
   !advancedTrendAlignment.status.includes('Low-game penalties removed') ||
   advancedTrendAlignment.rangeButton !== 'Season Ranking'
@@ -647,13 +711,15 @@ const advancedSettingsAfterReload = await evaluate(client, `
         hideLeagueChecked: Boolean(document.getElementById('hideSeasonRankingLeagueGames')?.checked),
         removeWindowChecked: Boolean(document.getElementById('removeSeasonRankingWindow')?.checked),
         removePenaltyChecked: Boolean(document.getElementById('removeSeasonRankingConfidencePenalty')?.checked),
+        hideUnderTenChecked: Boolean(document.getElementById('hideSeasonRankingPlayersUnderTenGames')?.checked),
         saved,
       };
       const ready = state.showChecked &&
         !state.optionsHidden &&
         state.hideLeagueChecked &&
         state.removeWindowChecked &&
-        state.removePenaltyChecked;
+        state.removePenaltyChecked &&
+        state.hideUnderTenChecked;
       if (ready || Date.now() - started > 10000) {
         clearInterval(timer);
         resolve(state);
@@ -668,10 +734,12 @@ if (
   !advancedSettingsAfterReload.hideLeagueChecked ||
   !advancedSettingsAfterReload.removeWindowChecked ||
   !advancedSettingsAfterReload.removePenaltyChecked ||
+  !advancedSettingsAfterReload.hideUnderTenChecked ||
   advancedSettingsAfterReload.saved?.showAdvancedSettings !== true ||
   advancedSettingsAfterReload.saved?.hideLeagueGames !== true ||
   advancedSettingsAfterReload.saved?.removeSeasonWindow !== true ||
-  advancedSettingsAfterReload.saved?.removeConfidencePenalty !== true
+  advancedSettingsAfterReload.saved?.removeConfidencePenalty !== true ||
+  advancedSettingsAfterReload.saved?.hidePlayersUnderTenGames !== true
 ) {
   throw new Error(`Season Ranking advanced settings did not survive a page reload: ${JSON.stringify(advancedSettingsAfterReload)}`);
 }
@@ -689,12 +757,14 @@ const advancedSettingsAcrossTabs = await evaluate(client, `
         hideLeagueChecked: Boolean(document.getElementById('hideSeasonRankingLeagueGames')?.checked),
         removeWindowChecked: Boolean(document.getElementById('removeSeasonRankingWindow')?.checked),
         removePenaltyChecked: Boolean(document.getElementById('removeSeasonRankingConfidencePenalty')?.checked),
+        hideUnderTenChecked: Boolean(document.getElementById('hideSeasonRankingPlayersUnderTenGames')?.checked),
       };
       const ready = state.seasonActive &&
         state.showChecked &&
         state.hideLeagueChecked &&
         state.removeWindowChecked &&
-        state.removePenaltyChecked;
+        state.removePenaltyChecked &&
+        state.hideUnderTenChecked;
       if (ready || Date.now() - started > 15000) {
         clearInterval(timer);
         resolve(state);
@@ -708,7 +778,8 @@ if (
   !advancedSettingsAcrossTabs.showChecked ||
   !advancedSettingsAcrossTabs.hideLeagueChecked ||
   !advancedSettingsAcrossTabs.removeWindowChecked ||
-  !advancedSettingsAcrossTabs.removePenaltyChecked
+  !advancedSettingsAcrossTabs.removePenaltyChecked ||
+  !advancedSettingsAcrossTabs.hideUnderTenChecked
 ) {
   throw new Error(`Season Ranking advanced settings did not survive tab changes: ${JSON.stringify(advancedSettingsAcrossTabs)}`);
 }
@@ -726,6 +797,7 @@ const advancedSettingsAfterCollapsedReload = await evaluate(client, `({
   hideLeagueChecked: Boolean(document.getElementById('hideSeasonRankingLeagueGames')?.checked),
   removeWindowChecked: Boolean(document.getElementById('removeSeasonRankingWindow')?.checked),
   removePenaltyChecked: Boolean(document.getElementById('removeSeasonRankingConfidencePenalty')?.checked),
+  hideUnderTenChecked: Boolean(document.getElementById('hideSeasonRankingPlayersUnderTenGames')?.checked),
   saved: JSON.parse(localStorage.getItem(${JSON.stringify(seasonRankingSettingsKey)}) || 'null'),
 })`);
 
@@ -735,6 +807,7 @@ if (
   !advancedSettingsAfterCollapsedReload.hideLeagueChecked ||
   !advancedSettingsAfterCollapsedReload.removeWindowChecked ||
   !advancedSettingsAfterCollapsedReload.removePenaltyChecked ||
+  !advancedSettingsAfterCollapsedReload.hideUnderTenChecked ||
   advancedSettingsAfterCollapsedReload.saved?.showAdvancedSettings !== false
 ) {
   throw new Error(`Collapsed advanced-settings state did not survive a page reload: ${JSON.stringify(advancedSettingsAfterCollapsedReload)}`);
@@ -805,6 +878,99 @@ const completed = await evaluate(client, `
   })
 `, true);
 
+const allTimeMinimumGamesFilter = await evaluate(client, `
+  new Promise(resolve => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const busy = !document.getElementById('busyOverlay')?.classList.contains('hidden');
+      const readRows = () => [...document.querySelectorAll('#bayesianTableBody tr')]
+        .map(row => {
+          const cells = [...row.querySelectorAll('td')];
+          return {
+            name: cells[2]?.textContent?.trim() || '',
+            games: Number(cells[4]?.textContent?.trim()),
+          };
+        })
+        .filter(row => row.name);
+      const before = readRows();
+      if ((!busy && before.length > 0) || Date.now() - started > 10000) {
+        clearInterval(timer);
+        const defaultChecked = Boolean(
+          document.getElementById('hideAllTimePlayersUnderTenGames')?.checked
+        );
+        document.getElementById('hideAllTimePlayersUnderTenGames')?.click();
+        setTimeout(() => {
+          resolve({
+            defaultChecked,
+            checked: Boolean(
+              document.getElementById('hideAllTimePlayersUnderTenGames')?.checked
+            ),
+            controlHidden: document.getElementById('allTimeMinimumGamesControl')
+              ?.classList.contains('hidden'),
+            before,
+            after: readRows(),
+            saved: localStorage.getItem(${JSON.stringify(allTimeMinimumGamesKey)}),
+          });
+        }, 100);
+      }
+    }, 100);
+  })
+`, true);
+
+if (
+  allTimeMinimumGamesFilter.defaultChecked ||
+  !allTimeMinimumGamesFilter.checked ||
+  allTimeMinimumGamesFilter.controlHidden ||
+  allTimeMinimumGamesFilter.before.every(row => row.games >= 10) ||
+  allTimeMinimumGamesFilter.after.length >= allTimeMinimumGamesFilter.before.length ||
+  allTimeMinimumGamesFilter.after.some(row => row.games < 10) ||
+  allTimeMinimumGamesFilter.saved !== 'true'
+) {
+  throw new Error(`All Games minimum-games filter failed: ${JSON.stringify(allTimeMinimumGamesFilter)}`);
+}
+
+load = waitForLoad(client);
+await client.send('Page.navigate', {
+  url: `${baseUrl}/stats.html?tab=allTime&mode=composite`,
+});
+await load;
+
+const allTimeMinimumGamesAfterReload = await evaluate(client, `
+  new Promise(resolve => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const rows = [...document.querySelectorAll('#bayesianTableBody tr')]
+        .map(row => {
+          const cells = [...row.querySelectorAll('td')];
+          return {
+            name: cells[2]?.textContent?.trim() || '',
+            games: Number(cells[4]?.textContent?.trim()),
+          };
+        })
+        .filter(row => row.name);
+      if (rows.length > 0 || Date.now() - started > 10000) {
+        clearInterval(timer);
+        resolve({
+          checked: Boolean(
+            document.getElementById('hideAllTimePlayersUnderTenGames')?.checked
+          ),
+          rows,
+          saved: localStorage.getItem(${JSON.stringify(allTimeMinimumGamesKey)}),
+        });
+      }
+    }, 100);
+  })
+`, true);
+
+if (
+  !allTimeMinimumGamesAfterReload.checked ||
+  allTimeMinimumGamesAfterReload.rows.length !== allTimeMinimumGamesFilter.after.length ||
+  allTimeMinimumGamesAfterReload.rows.some(row => row.games < 10) ||
+  allTimeMinimumGamesAfterReload.saved !== 'true'
+) {
+  throw new Error(`All Games minimum-games filter did not persist: ${JSON.stringify(allTimeMinimumGamesAfterReload)}`);
+}
+
 const serverOnlyPlayer = { id: 'server-only-player', name: 'Existing Server Player' };
 const serverOnlyGame = {
   id: 9999999999999,
@@ -850,6 +1016,7 @@ await evaluate(client, `
   localStorage.setItem('gameDayGames', ${JSON.stringify(JSON.stringify(db.games))});
   localStorage.setItem('gameDayDefaultDatabasePromptChoice', 'declined');
   localStorage.removeItem('gameDayMainPageState');
+  localStorage.removeItem(${JSON.stringify(playActionServerCheckCacheKey)});
 `);
 
 load = waitForLoad(client);
@@ -892,9 +1059,13 @@ if (
   throw new Error(`Player registration was not blocked by stale server data: ${JSON.stringify(registrationBlocked)}`);
 }
 
+await evaluate(client, `document.getElementById('declineLoadDefaultDatabaseButton').click()`);
+load = waitForLoad(client);
+await client.send('Page.navigate', { url: `${baseUrl}/index.html` });
+await load;
+
 const balanceBlocked = await evaluate(client, `
   new Promise(resolve => {
-    document.getElementById('declineLoadDefaultDatabaseButton').click();
     const balanceStatusBefore = document.getElementById('balanceStatus')?.textContent || '';
     document.getElementById('assignTeamsButton').click();
 
@@ -918,7 +1089,7 @@ const balanceBlocked = await evaluate(client, `
 if (
   !balanceBlocked.syncDialogOpen ||
   balanceBlocked.title !== 'Sync Required Before Playing' ||
-  balanceBlocked.serverFetches !== 1 ||
+  balanceBlocked.serverFetches !== 0 ||
   balanceBlocked.balanceStatus !== balanceBlocked.balanceStatusBefore
 ) {
   throw new Error(`Team balancing was not blocked by stale server data: ${JSON.stringify(balanceBlocked)}`);
@@ -956,10 +1127,14 @@ if (
   !afterSafetySync.syncedPlayer ||
   !afterSafetySync.syncedGame ||
   afterSafetySync.syncDialogOpen ||
-  afterSafetySync.serverFetches !== 1
+  afterSafetySync.serverFetches !== 0
 ) {
   throw new Error(`Safety-dialog sync did not update local data: ${JSON.stringify(afterSafetySync)}`);
 }
+
+load = waitForLoad(client);
+await client.send('Page.navigate', { url: `${baseUrl}/index.html` });
+await load;
 
 const registrationAfterSync = await evaluate(client, `(() => {
   const search = document.getElementById('playerSearchInput');
@@ -976,9 +1151,59 @@ const registrationAfterSync = await evaluate(client, `(() => {
 if (
   !registrationAfterSync.addPlayerDialogOpen ||
   registrationAfterSync.syncDialogOpen ||
-  registrationAfterSync.serverFetches !== 1
+  registrationAfterSync.serverFetches !== 0
 ) {
   throw new Error(`Player registration did not resume after sync: ${JSON.stringify(registrationAfterSync)}`);
+}
+
+await evaluate(client, `(() => {
+  document.getElementById('cancelPlayerButton').click();
+  const key = ${JSON.stringify(playActionServerCheckCacheKey)};
+  const cached = JSON.parse(localStorage.getItem(key) || 'null');
+  cached.checkedAt = Date.now() - ${playActionServerCheckIntervalMs + 1};
+  localStorage.setItem(key, JSON.stringify(cached));
+})()`);
+
+load = waitForLoad(client);
+await client.send('Page.navigate', { url: `${baseUrl}/index.html` });
+await load;
+
+const registrationAfterThrottleExpiry = await evaluate(client, `(() => {
+  const search = document.getElementById('playerSearchInput');
+  search.value = 'Another New Player';
+  search.dispatchEvent(new Event('input', { bubbles: true }));
+  document.getElementById('openAddPlayerDialog').click();
+  return new Promise(resolve => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const addPlayerDialogOpen = Boolean(document.getElementById('addPlayerDialog')?.open);
+      const busy = !document.getElementById('busyOverlay')?.classList.contains('hidden');
+      if ((addPlayerDialogOpen && !busy) || Date.now() - started > 10000) {
+        clearInterval(timer);
+        const cached = JSON.parse(
+          localStorage.getItem(${JSON.stringify(playActionServerCheckCacheKey)}) || 'null'
+        );
+        resolve({
+          addPlayerDialogOpen,
+          syncDialogOpen: Boolean(document.getElementById('defaultDatabaseDialog')?.open),
+          serverFetches: window.__playSafetyServerFetchCount,
+          cachedState: cached?.state || '',
+          cachedAge: Date.now() - Number(cached?.checkedAt),
+        });
+      }
+    }, 50);
+  });
+})()`, true);
+
+if (
+  !registrationAfterThrottleExpiry.addPlayerDialogOpen ||
+  registrationAfterThrottleExpiry.syncDialogOpen ||
+  registrationAfterThrottleExpiry.serverFetches !== 1 ||
+  registrationAfterThrottleExpiry.cachedState !== 'ready' ||
+  registrationAfterThrottleExpiry.cachedAge < 0 ||
+  registrationAfterThrottleExpiry.cachedAge >= playActionServerCheckIntervalMs
+) {
+  throw new Error(`Four-hour play-action throttle did not expire correctly: ${JSON.stringify(registrationAfterThrottleExpiry)}`);
 }
 
 const balanceAfterSync = await evaluate(client, `
@@ -1182,6 +1407,10 @@ console.log(JSON.stringify({
     increasedPlayers: confidenceIncreases.length,
     unchangedUnder1500Players: under1500Rows.length,
   },
+  seasonMinimumGamesFilter: {
+    before: confidencePenaltyRemoved.rows.length,
+    after: seasonMinimumGamesFilter.rows.length,
+  },
   advancedHistoryAlignment,
   advancedTrendAlignment,
   advancedSettingsAfterReload,
@@ -1189,10 +1418,16 @@ console.log(JSON.stringify({
   advancedSettingsAfterCollapsedReload,
   beforeClick,
   completed,
+  allTimeMinimumGamesFilter: {
+    before: allTimeMinimumGamesFilter.before.length,
+    after: allTimeMinimumGamesFilter.after.length,
+  },
+  allTimeMinimumGamesAfterReload,
   registrationBlocked,
   balanceBlocked,
   afterSafetySync,
   registrationAfterSync,
+  registrationAfterThrottleExpiry,
   balanceAfterSync,
   unevenManualScoreEntry,
   statsSemanticCorrectionCheck,

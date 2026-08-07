@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v20-persistent-stats-settings';
+const CACHE_VERSION = 'vball-static-v21-play-check-and-scoreboard-filters';
 const APP_SHELL = [
   './',
   './index.html',

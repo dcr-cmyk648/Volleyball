@@ -1736,6 +1736,12 @@
                 <span>Remove confidence penalty</span>
               </label>
 
+              <label class="switch-control" for="hideSeasonRankingPlayersUnderTenGames">
+                <input id="hideSeasonRankingPlayersUnderTenGames" type="checkbox" role="switch" />
+                <span class="switch-track" aria-hidden="true"></span>
+                <span>Hide players with fewer than 10 games</span>
+              </label>
+
               <p class="season-ranking-advanced-note">
                 These settings also carry into player Trend and Game History so the displayed ratings and game counts stay aligned.
               </p>
@@ -1798,6 +1804,14 @@
           <button id="overallSmallTeamModeButton" class="scoreboard-mode-button" type="button">Small Team</button>
         </div>
         <div id="bayesianScoreboardModeDescription" class="small" style="margin-top: 8px;"></div>
+
+        <div id="allTimeMinimumGamesControl" class="advanced-settings-control">
+          <label class="switch-control" for="hideAllTimePlayersUnderTenGames">
+            <input id="hideAllTimePlayersUnderTenGames" type="checkbox" role="switch" />
+            <span class="switch-track" aria-hidden="true"></span>
+            <span>Hide players with fewer than 10 games</span>
+          </label>
+        </div>
 
         <div class="bayesian-toolbar">
           <button id="calculateBayesianButton" class="secondary" type="button">Calculate Bayesian ratings</button>
@@ -1984,7 +1998,9 @@
       hideLeagueGames: false,
       removeSeasonWindow: false,
       removeConfidencePenalty: false,
+      hidePlayersUnderTenGames: false,
     });
+    const MINIMUM_SCOREBOARD_GAMES = 10;
 
     const LEADERBOARD_LOW_SIGMA = 6.4;
     const LEADERBOARD_HIGH_SIGMA = 8.4;
@@ -2073,6 +2089,11 @@
     const hideSeasonRankingLeagueGamesEl = document.getElementById('hideSeasonRankingLeagueGames');
     const removeSeasonRankingWindowEl = document.getElementById('removeSeasonRankingWindow');
     const removeSeasonRankingConfidencePenaltyEl = document.getElementById('removeSeasonRankingConfidencePenalty');
+    const hideSeasonRankingPlayersUnderTenGamesEl =
+      document.getElementById('hideSeasonRankingPlayersUnderTenGames');
+    const allTimeMinimumGamesControlEl = document.getElementById('allTimeMinimumGamesControl');
+    const hideAllTimePlayersUnderTenGamesEl =
+      document.getElementById('hideAllTimePlayersUnderTenGames');
 
     const sessionStatsTabButtonEl = document.getElementById('sessionStatsTabButton');
     const seasonStatsTabButtonEl = document.getElementById('seasonStatsTabButton');
@@ -2131,6 +2152,7 @@
     const replayResultMemoryCache = new Map();
     const MAX_REPLAY_RESULT_MEMORY_ENTRIES = 180;
     const ALL_TIME_SCOREBOARD_MODE_STORAGE_KEY = 'gameDayAllTimeBayesianScoreboardMode';
+    const ALL_TIME_MINIMUM_GAMES_STORAGE_KEY = 'gameDayAllTimeHidePlayersUnderTenGames';
     const SEASON_RANKING_SETTINGS_STORAGE_KEY = 'gameDaySeasonRankingAdvancedSettingsV1';
     const BAYESIAN_SNAPSHOT_MODE_KEYS = {
       composite: 'gameDayBayesianScoreboardSnapshotV1:composite',
@@ -2143,6 +2165,7 @@
     let activeSeasonStatsTab = 'seasonMovers';
     let activeSortBy = null;
     let activeOverallScoreboardMode = 'composite';
+    let hideAllTimePlayersUnderTenGames = false;
     let activeSeasonStartDate = '';
     let showSeasonRankingAdvancedSettings = false;
     let activeSeasonRankingSettings = { ...DEFAULT_SEASON_RANKING_SETTINGS };
@@ -2406,6 +2429,7 @@
           hideLeagueGames: parsed.hideLeagueGames === true,
           removeSeasonWindow: parsed.removeSeasonWindow === true,
           removeConfidencePenalty: parsed.removeConfidencePenalty === true,
+          hidePlayersUnderTenGames: parsed.hidePlayersUnderTenGames === true,
         };
       } catch {
         return null;
@@ -2432,11 +2456,16 @@
           'removeConfidencePenalty',
           'removeConfidencePenalty'
         ),
+        hidePlayersUnderTenGames: getSetting(
+          'hidePlayersUnderTenGames',
+          'hidePlayersUnderTenGames'
+        ),
       };
       const hasUrlSetting = [
         'hideLeagueGames',
         'removeSeasonWindow',
         'removeConfidencePenalty',
+        'hidePlayersUnderTenGames',
       ].some(name => params.has(name));
       showSeasonRankingAdvancedSettings = params.has('showAdvancedSettings')
         ? params.get('showAdvancedSettings') === '1'
@@ -2468,6 +2497,10 @@
         removeSeasonRankingConfidencePenaltyEl.checked =
           activeSeasonRankingSettings.removeConfidencePenalty;
       }
+      if (hideSeasonRankingPlayersUnderTenGamesEl) {
+        hideSeasonRankingPlayersUnderTenGamesEl.checked =
+          activeSeasonRankingSettings.hidePlayersUnderTenGames;
+      }
     }
 
     function appendSeasonRankingSettingsToParams(params) {
@@ -2479,6 +2512,9 @@
       }
       if (activeSeasonRankingSettings.removeConfidencePenalty) {
         params.set('removeConfidencePenalty', '1');
+      }
+      if (activeSeasonRankingSettings.hidePlayersUnderTenGames) {
+        params.set('hidePlayersUnderTenGames', '1');
       }
       if (showSeasonRankingAdvancedSettings) {
         params.set('showAdvancedSettings', '1');
@@ -2759,6 +2795,10 @@
         bayesianScoreboardModeDescriptionEl.textContent =
           OVERALL_SCOREBOARD_MODES[mode]?.description || '';
       }
+      allTimeMinimumGamesControlEl?.classList.toggle('hidden', mode !== 'composite');
+      if (hideAllTimePlayersUnderTenGamesEl) {
+        hideAllTimePlayersUnderTenGamesEl.checked = hideAllTimePlayersUnderTenGames;
+      }
     }
 
     function setOverallScoreboardMode(mode, { persist = true } = {}) {
@@ -3015,7 +3055,12 @@
       return getSeasonRankingMaxUnpenalizedDisplayRating(rows);
     }
 
-    function getSortedStandingsRows(result, mode = getOverallScoreboardMode(), games = loadGames()) {
+    function getSortedStandingsRows(
+      result,
+      mode = getOverallScoreboardMode(),
+      games = loadGames(),
+      { applyPlayerVisibilityFilter = true } = {}
+    ) {
       const cfg = SORT_CONFIGS[activeSortBy] || null;
       const recencyMap = createOverallStandingsRecencyMap(games, mode);
 
@@ -3025,7 +3070,7 @@
       const scoreboardMaxUnpenalizedDisplayRating =
         getScoreboardMaxUnpenalizedDisplayRatingForRows(eligibleRows);
 
-      return eligibleRows
+      const sortedRows = eligibleRows
         .map(player => ({
           ...player,
           scoreboardMaxGames,
@@ -3054,6 +3099,11 @@
           if (b.games !== a.games) return b.games - a.games;
           return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
         });
+
+      return applyPlayerVisibilityFilter &&
+        activeSeasonRankingSettings.hidePlayersUnderTenGames
+        ? sortedRows.filter(player => Number(player.games) >= MINIMUM_SCOREBOARD_GAMES)
+        : sortedRows;
     }
 
     function getSortedFieldDisplay(
@@ -3239,7 +3289,12 @@
           return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
         });
       const map = {};
-      rows.forEach((p, i) => { map[String(p.id)] = { rank: i + 1, games: p.games }; });
+      const visibleRows = activeSeasonRankingSettings.hidePlayersUnderTenGames
+        ? rows.filter(player => Number(player.games) >= MINIMUM_SCOREBOARD_GAMES)
+        : rows;
+      visibleRows.forEach((p, i) => {
+        map[String(p.id)] = { rank: i + 1, games: p.games };
+      });
       return map;
     }
 
@@ -6459,7 +6514,12 @@
 
     function getSeasonRatingDisplayMapForRatingWindow(games, mode = 'composite') {
       const replay = getOverallReplayResult({ games, mode, rollingWindow: false });
-      const rows = getSortedStandingsRows(replay.result, mode, replay.games);
+      const rows = getSortedStandingsRows(
+        replay.result,
+        mode,
+        replay.games,
+        { applyPlayerVisibilityFilter: false }
+      );
       return new Map(rows.map(row => [
         String(row.id),
         {
@@ -7903,7 +7963,7 @@
         name: nameMap.get(String(row.id)) || row.name,
       }))).filter(row => Number(row.games) > 0);
       const scoreboardMaxGames = getScoreboardMaxGamesForRows(baseRows);
-      return baseRows
+      const rankedRows = baseRows
         .map(row => {
           const experimentalLeaderboardRaw = row?.isLeagueContext
             ? Number(row.ordinal) || 0
@@ -7922,8 +7982,13 @@
           }
           if (b.games !== a.games) return b.games - a.games;
           return String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' });
-        })
-        .map((row, index) => ({ ...row, rank: index + 1 }));
+        });
+      const visibleRows =
+        getOverallScoreboardMode() === 'composite' &&
+        hideAllTimePlayersUnderTenGames
+          ? rankedRows.filter(row => Number(row.games) >= MINIMUM_SCOREBOARD_GAMES)
+          : rankedRows;
+      return visibleRows.map((row, index) => ({ ...row, rank: index + 1 }));
     }
 
     function formatBayesianTimestamp(value) {
@@ -8903,6 +8968,7 @@
       [hideSeasonRankingLeagueGamesEl, 'hideLeagueGames'],
       [removeSeasonRankingWindowEl, 'removeSeasonWindow'],
       [removeSeasonRankingConfidencePenaltyEl, 'removeConfidencePenalty'],
+      [hideSeasonRankingPlayersUnderTenGamesEl, 'hidePlayersUnderTenGames'],
     ].forEach(([control, setting]) => {
       control?.addEventListener('change', async () => {
         activeSeasonRankingSettings = {
@@ -8912,6 +8978,15 @@
         saveSeasonRankingSettings();
         await refreshSeasonRankingAdvancedSettings();
       });
+    });
+
+    hideAllTimePlayersUnderTenGamesEl?.addEventListener('change', () => {
+      hideAllTimePlayersUnderTenGames = hideAllTimePlayersUnderTenGamesEl.checked;
+      saveBooleanSetting(
+        ALL_TIME_MINIMUM_GAMES_STORAGE_KEY,
+        hideAllTimePlayersUnderTenGames
+      );
+      renderBayesianScoreboard();
     });
 
     calculateBayesianButtonEl?.addEventListener('click', () => {
@@ -9083,6 +9158,10 @@
       : OVERALL_SCOREBOARD_MODES[localStorage.getItem(ALL_TIME_SCOREBOARD_MODE_STORAGE_KEY)]
         ? localStorage.getItem(ALL_TIME_SCOREBOARD_MODE_STORAGE_KEY)
         : 'composite';
+    hideAllTimePlayersUnderTenGames = loadBooleanSetting(
+      ALL_TIME_MINIMUM_GAMES_STORAGE_KEY,
+      false
+    );
     updateOverallScoreboardModeControls();
 
     const _sortByParam = _initParams.get('sortBy');

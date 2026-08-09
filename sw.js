@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v21-play-check-and-scoreboard-filters';
+const CACHE_VERSION = 'vball-static-v22-bitmap-app-icon';
 const APP_SHELL = [
   './',
   './index.html',
@@ -13,10 +13,9 @@ const APP_SHELL = [
   './bayesian-ratings-worker.js',
   './default_database',
   './manifest.webmanifest',
-  './icons/icon.svg',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/apple-touch-icon.png',
+  './icons/icon-192.png?v=20260808',
+  './icons/icon-512.png?v=20260808',
+  './icons/apple-touch-icon.png?v=20260808',
 ];
 
 self.addEventListener('install', event => {

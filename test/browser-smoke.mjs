@@ -989,17 +989,28 @@ const playServerDb = {
   players: [...db.players, serverOnlyPlayer],
   games: [...db.games, serverOnlyGame],
 };
+const correctionOnlyPlayer = { id: 'server-correction-player', name: 'Server Correction Player' };
+const playCorrectionServerDb = {
+  ...playServerDb,
+  players: [...playServerDb.players, correctionOnlyPlayer],
+  games: playServerDb.games.map(game => String(game.id) === String(serverOnlyGame.id)
+    ? { ...game, scoreRed: 26 }
+    : game),
+};
+const playServerDatabaseOverrideKey = 'vballTestPlayServerDatabaseOverride';
 
 await client.send('Page.addScriptToEvaluateOnNewDocument', {
   source: `
     (() => {
-      const serverDatabaseJson = ${JSON.stringify(JSON.stringify(playServerDb))};
+      const defaultServerDatabaseJson = ${JSON.stringify(JSON.stringify(playServerDb))};
       const originalFetch = window.fetch.bind(window);
       window.__playSafetyServerFetchCount = 0;
       window.fetch = (input, init) => {
         const url = typeof input === 'string' ? input : (input?.url || '');
         if (url.includes('/api/google-stats') || url.includes('script.google.com/macros')) {
           window.__playSafetyServerFetchCount += 1;
+          const serverDatabaseJson = localStorage.getItem(${JSON.stringify(playServerDatabaseOverrideKey)}) ||
+            defaultServerDatabaseJson;
           return Promise.resolve(new Response(serverDatabaseJson, {
             status: 200,
             headers: { 'content-type': 'application/json' }
@@ -1052,7 +1063,7 @@ if (
   !registrationBlocked.syncDialogOpen ||
   registrationBlocked.addPlayerDialogOpen ||
   registrationBlocked.title !== 'Sync Required Before Playing' ||
-  !registrationBlocked.message.includes('missing 1 game') ||
+  !registrationBlocked.message.includes('1 new game') ||
   registrationBlocked.syncButton !== 'Sync Newest Stats' ||
   registrationBlocked.serverFetches !== 1
 ) {
@@ -1373,6 +1384,139 @@ if (genuineCorrectionCheck.buttonText !== 'server corrections available') {
   throw new Error(`Stats did not detect a genuine score correction: ${JSON.stringify(genuineCorrectionCheck)}`);
 }
 
+const statsSyncReuseCheck = await evaluate(client, `
+  new Promise(resolve => {
+    document.getElementById('loadDefaultDatabaseButton').click();
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const dialog = document.getElementById('defaultDatabaseDialog');
+      if (dialog?.open || Date.now() - started > 10000) {
+        clearInterval(timer);
+        const fetchesBeforeApply = window.__playSafetyServerFetchCount;
+        const applyStarted = performance.now();
+        document.getElementById('confirmLoadDefaultDatabaseButton')?.click();
+
+        const applyTimer = setInterval(() => {
+          if (!dialog?.open || Date.now() - started > 15000) {
+            clearInterval(applyTimer);
+            resolve({
+              dialogOpen: Boolean(dialog?.open),
+              fetchesBeforeApply,
+              fetchesAfterApply: window.__playSafetyServerFetchCount,
+              applyMs: performance.now() - applyStarted,
+              buttonText: document.getElementById('loadDefaultDatabaseButton')?.textContent || '',
+            });
+          }
+        }, 25);
+      }
+    }, 25);
+  })
+`, true);
+
+if (
+  statsSyncReuseCheck.dialogOpen ||
+  statsSyncReuseCheck.fetchesBeforeApply < 1 ||
+  statsSyncReuseCheck.fetchesAfterApply !== statsSyncReuseCheck.fetchesBeforeApply ||
+  statsSyncReuseCheck.applyMs >= 5000 ||
+  statsSyncReuseCheck.buttonText !== 'you are up to date'
+) {
+  throw new Error(`Stats sync did not reuse its checked payload: ${JSON.stringify(statsSyncReuseCheck)}`);
+}
+
+await evaluate(client, `
+  localStorage.setItem('gameDayPlayers', ${JSON.stringify(JSON.stringify(playServerDb.players))});
+  localStorage.setItem('gameDayGames', ${JSON.stringify(JSON.stringify(playServerDb.games))});
+  localStorage.setItem('gameDayTournamentPairs', ${JSON.stringify(JSON.stringify(playServerDb.tournamentPairs || []))});
+  localStorage.setItem('gameDaySeasonStartDate', ${JSON.stringify(
+    playServerDb.seasonStartDate || playServerDb.metadata?.seasonStartDate || '2026-01-01'
+  )});
+  localStorage.setItem(${JSON.stringify(playServerDatabaseOverrideKey)}, ${JSON.stringify(JSON.stringify(playCorrectionServerDb))});
+  localStorage.setItem('gameDayDefaultDatabasePromptChoice', 'declined');
+  localStorage.removeItem('gameDayMainPageState');
+  localStorage.removeItem(${JSON.stringify(playActionServerCheckCacheKey)});
+`);
+
+load = waitForLoad(client);
+await client.send('Page.navigate', { url: `${baseUrl}/index.html` });
+await load;
+
+const correctionOnlyBlocked = await evaluate(client, `
+  new Promise(resolve => {
+    const search = document.getElementById('playerSearchInput');
+    search.value = 'Correction-only audit';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    document.getElementById('openAddPlayerDialog').click();
+
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const dialog = document.getElementById('defaultDatabaseDialog');
+      if (dialog?.open || Date.now() - started > 10000) {
+        clearInterval(timer);
+        resolve({
+          dialogOpen: Boolean(dialog?.open),
+          addPlayerDialogOpen: Boolean(document.getElementById('addPlayerDialog')?.open),
+          title: document.getElementById('defaultDatabaseDialogTitle')?.textContent || '',
+          message: document.getElementById('defaultDatabaseText')?.textContent || '',
+          status: document.getElementById('defaultDatabaseStatus')?.textContent || '',
+          serverFetches: window.__playSafetyServerFetchCount,
+        });
+      }
+    }, 25);
+  })
+`, true);
+
+if (
+  !correctionOnlyBlocked.dialogOpen ||
+  correctionOnlyBlocked.addPlayerDialogOpen ||
+  correctionOnlyBlocked.title !== 'Sync Required Before Playing' ||
+  !correctionOnlyBlocked.message.includes('1 corrected game') ||
+  !correctionOnlyBlocked.message.includes('1 player update') ||
+  correctionOnlyBlocked.message.includes('new game') ||
+  correctionOnlyBlocked.serverFetches !== 1
+) {
+  throw new Error(`Play did not block a correction-only server update: ${JSON.stringify(correctionOnlyBlocked)}`);
+}
+
+const correctionOnlySync = await evaluate(client, `
+  new Promise(resolve => {
+    window.alert = () => {};
+    const fetchesBeforeApply = window.__playSafetyServerFetchCount;
+    const applyStarted = performance.now();
+    document.getElementById('confirmLoadDefaultDatabaseButton').click();
+
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const dialog = document.getElementById('defaultDatabaseDialog');
+      const localPlayers = JSON.parse(localStorage.getItem('gameDayPlayers') || '[]');
+      const localGames = JSON.parse(localStorage.getItem('gameDayGames') || '[]');
+      const correctedGame = localGames.find(game => String(game.id) === ${JSON.stringify(String(serverOnlyGame.id))});
+      const correctedPlayer = localPlayers.some(player => player.id === 'server-correction-player');
+
+      if ((!dialog?.open && correctedGame?.scoreRed === 26 && correctedPlayer) || Date.now() - started > 10000) {
+        clearInterval(timer);
+        resolve({
+          dialogOpen: Boolean(dialog?.open),
+          correctedScore: correctedGame?.scoreRed,
+          correctedPlayer,
+          fetchesBeforeApply,
+          fetchesAfterApply: window.__playSafetyServerFetchCount,
+          applyMs: performance.now() - applyStarted,
+        });
+      }
+    }, 25);
+  })
+`, true);
+
+if (
+  correctionOnlySync.dialogOpen ||
+  correctionOnlySync.correctedScore !== 26 ||
+  !correctionOnlySync.correctedPlayer ||
+  correctionOnlySync.fetchesAfterApply !== correctionOnlySync.fetchesBeforeApply ||
+  correctionOnlySync.applyMs >= 5000
+) {
+  throw new Error(`Correction-only sync did not apply its checked payload: ${JSON.stringify(correctionOnlySync)}`);
+}
+
 client.close();
 
 if (!completed.saved) throw new Error('Bayesian worker did not persist a snapshot.');
@@ -1392,44 +1536,33 @@ if (
 
 console.log(JSON.stringify({
   defaultTab,
-  winnerDisplayDrops,
-  historyAlignment,
-  trendAlignment,
-  advancedDefaults,
-  advancedExpanded,
-  leagueHidden,
-  seasonWindowRemoved: {
-    cards: seasonWindowRemoved.cards,
-    description: seasonWindowRemoved.description,
+  consistency: {
+    historyAlignment,
+    trendAlignment,
+    advancedHistoryAlignment,
+    advancedTrendAlignment,
   },
-  confidencePenaltyRemoved: {
-    description: confidencePenaltyRemoved.description,
-    increasedPlayers: confidenceIncreases.length,
-    unchangedUnder1500Players: under1500Rows.length,
+  filters: {
+    seasonMinimumGames: {
+      before: confidencePenaltyRemoved.rows.length,
+      after: seasonMinimumGamesFilter.rows.length,
+    },
+    allTimeMinimumGames: {
+      before: allTimeMinimumGamesFilter.before.length,
+      after: allTimeMinimumGamesFilter.after.length,
+      persisted: allTimeMinimumGamesAfterReload.saved,
+    },
   },
-  seasonMinimumGamesFilter: {
-    before: confidencePenaltyRemoved.rows.length,
-    after: seasonMinimumGamesFilter.rows.length,
+  playServerCheck: {
+    registrationBlocked,
+    balanceBlocked,
+    registrationAfterThrottleExpiry,
+    correctionOnlyBlocked,
+    correctionOnlySync,
   },
-  advancedHistoryAlignment,
-  advancedTrendAlignment,
-  advancedSettingsAfterReload,
-  advancedSettingsAcrossTabs,
-  advancedSettingsAfterCollapsedReload,
-  beforeClick,
-  completed,
-  allTimeMinimumGamesFilter: {
-    before: allTimeMinimumGamesFilter.before.length,
-    after: allTimeMinimumGamesFilter.after.length,
+  statsServerSync: {
+    statsSemanticCorrectionCheck,
+    genuineCorrectionCheck,
+    statsSyncReuseCheck,
   },
-  allTimeMinimumGamesAfterReload,
-  registrationBlocked,
-  balanceBlocked,
-  afterSafetySync,
-  registrationAfterSync,
-  registrationAfterThrottleExpiry,
-  balanceAfterSync,
-  unevenManualScoreEntry,
-  statsSemanticCorrectionCheck,
-  genuineCorrectionCheck,
 }, null, 2));

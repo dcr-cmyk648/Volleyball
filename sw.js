@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v22-bitmap-app-icon';
+const CACHE_VERSION = 'vball-static-v23-server-sync-corrections';
 const APP_SHELL = [
   './',
   './index.html',

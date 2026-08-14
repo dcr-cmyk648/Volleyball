@@ -1973,7 +1973,6 @@
     const TOURNAMENT_PAIR_STORAGE_KEY = 'gameDayTournamentPairs';
     const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
     const PLAY_ACTION_SERVER_CHECK_CACHE_KEY = 'gameDayPlayActionServerCheckCacheV1';
-    const PLAY_ACTION_SERVER_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
     const DEFAULT_DB_SOURCE_PATH = './default_database';
     const DIRECT_GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwahqGocPhBwCTaB2HjnM3WIjoTOoc-lk94i8JjkRaTfEXf-rT-OXe0pkpQkZk5u0Tm/exec';
     const IS_LOCAL_SERVER =
@@ -8772,41 +8771,6 @@
       return true;
     }
 
-    function loadPlayActionServerCheckCache() {
-      try {
-        const cached = JSON.parse(
-          localStorage.getItem(PLAY_ACTION_SERVER_CHECK_CACHE_KEY) || 'null'
-        );
-        const checkedAt = Number(cached?.checkedAt);
-        const age = Date.now() - checkedAt;
-        const state = cached?.state;
-
-        if (
-          !Number.isFinite(checkedAt) ||
-          age < 0 ||
-          age >= PLAY_ACTION_SERVER_CHECK_INTERVAL_MS ||
-          !['ready', 'stale', 'unavailable'].includes(state)
-        ) {
-          localStorage.removeItem(PLAY_ACTION_SERVER_CHECK_CACHE_KEY);
-          return null;
-        }
-
-        const meta = cached?.meta;
-        if (
-          (state === 'ready' || state === 'stale') &&
-          (!meta || !Array.isArray(meta.players) || !Array.isArray(meta.games))
-        ) {
-          localStorage.removeItem(PLAY_ACTION_SERVER_CHECK_CACHE_KEY);
-          return null;
-        }
-
-        return { checkedAt, state, meta: meta || null };
-      } catch {
-        localStorage.removeItem(PLAY_ACTION_SERVER_CHECK_CACHE_KEY);
-        return null;
-      }
-    }
-
     function savePlayActionServerCheckCache(state, meta = null, checkedAt = Date.now()) {
       try {
         localStorage.setItem(PLAY_ACTION_SERVER_CHECK_CACHE_KEY, JSON.stringify({
@@ -8940,15 +8904,6 @@
     } = {}) {
       if (forceRefresh) {
         defaultDatabaseMeta = null;
-      }
-
-      if (!defaultDatabaseMeta && !forceRefresh) {
-        const cachedCheck = loadPlayActionServerCheckCache();
-        if (cachedCheck?.meta) {
-          defaultDatabaseMeta = cachedCheck.meta;
-        } else if (cachedCheck?.state === 'unavailable') {
-          throw new Error('The recent server check was unavailable. Use the download button to retry now.');
-        }
       }
 
       if (defaultDatabaseMeta) {

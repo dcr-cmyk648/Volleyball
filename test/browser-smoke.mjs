@@ -1353,8 +1353,11 @@ const statsSemanticCorrectionCheck = await evaluate(client, `
   })
 `, true);
 
-if (statsSemanticCorrectionCheck.buttonText !== 'you are up to date') {
-  throw new Error(`Stats reported a correction for an omitted false default: ${JSON.stringify(statsSemanticCorrectionCheck)}`);
+if (
+  statsSemanticCorrectionCheck.buttonText !== 'you are up to date' ||
+  statsSemanticCorrectionCheck.serverFetches !== 1
+) {
+  throw new Error(`Stats reused the Play cooldown or reported a correction for an omitted false default: ${JSON.stringify(statsSemanticCorrectionCheck)}`);
 }
 
 await evaluate(client, `(() => {
@@ -1380,7 +1383,10 @@ const genuineCorrectionCheck = await evaluate(client, `
   })
 `, true);
 
-if (genuineCorrectionCheck.buttonText !== 'server corrections available') {
+if (
+  genuineCorrectionCheck.buttonText !== 'server corrections available' ||
+  genuineCorrectionCheck.serverFetches !== 1
+) {
   throw new Error(`Stats did not detect a genuine score correction: ${JSON.stringify(genuineCorrectionCheck)}`);
 }
 
@@ -1415,7 +1421,7 @@ const statsSyncReuseCheck = await evaluate(client, `
 
 if (
   statsSyncReuseCheck.dialogOpen ||
-  statsSyncReuseCheck.fetchesBeforeApply < 1 ||
+  statsSyncReuseCheck.fetchesBeforeApply !== 2 ||
   statsSyncReuseCheck.fetchesAfterApply !== statsSyncReuseCheck.fetchesBeforeApply ||
   statsSyncReuseCheck.applyMs >= 5000 ||
   statsSyncReuseCheck.buttonText !== 'you are up to date'

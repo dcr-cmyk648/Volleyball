@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v23-server-sync-corrections';
+const CACHE_VERSION = 'vball-static-v24-stats-live-refresh';
 const APP_SHELL = [
   './',
   './index.html',

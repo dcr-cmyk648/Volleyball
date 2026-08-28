@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v24-stats-live-refresh';
+const CACHE_VERSION = 'vball-static-v25-overall-dynamic-history';
 const APP_SHELL = [
   './',
   './index.html',
@@ -10,6 +10,7 @@ const APP_SHELL = [
   './help.html',
   './ratings.js',
   './bayesian-ratings.js',
+  './overall-dynamic-ratings.js',
   './bayesian-ratings-worker.js',
   './default_database',
   './manifest.webmanifest',

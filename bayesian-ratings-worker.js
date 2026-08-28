@@ -1,14 +1,16 @@
 import { calculateBayesianScoreboard } from './bayesian-ratings.js';
+import { calculateOverallDynamicScoreboard } from './overall-dynamic-ratings.js';
 
 self.addEventListener('message', event => {
-  const { type, players, games, priorGames, includeLeagueRatings } = event.data || {};
+  const { type, players, games, priorGames, includeLeagueRatings, dynamicOverall } = event.data || {};
   if (type !== 'calculate') return;
 
   try {
-    const snapshot = calculateBayesianScoreboard({
+    const calculate = dynamicOverall ? calculateOverallDynamicScoreboard : calculateBayesianScoreboard;
+    const snapshot = calculate({
       players,
       games,
-      includeLeagueRatings,
+      ...(dynamicOverall ? {} : { includeLeagueRatings }),
       onProgress: message => self.postMessage({
         ...message,
         percent: Math.min(88, Math.floor((Number(message.percent) || 0) * 0.88)),
@@ -22,10 +24,10 @@ self.addEventListener('message', event => {
         message: 'Estimating rank movement since last session',
         diagnostics: {},
       });
-      const priorSnapshot = calculateBayesianScoreboard({
+      const priorSnapshot = calculate({
         players,
         games: priorGames,
-        includeLeagueRatings,
+        ...(dynamicOverall ? {} : { includeLeagueRatings }),
       });
       snapshot.priorRatings = priorSnapshot.ratings;
       snapshot.priorGamesConsidered = priorSnapshot.gamesConsidered;

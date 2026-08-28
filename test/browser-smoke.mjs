@@ -32,7 +32,7 @@ const nonLeagueSeasonRankingWindowGames = nonLeagueGames.filter(game => {
   const date = getGameDateValue(game);
   return isValidDateString(date) && date >= getSeasonRankingWindowCutoffDate(nonLeagueGames);
 });
-const snapshotKey = 'gameDayBayesianScoreboardSnapshotV1:composite';
+const snapshotKey = 'gameDayBayesianScoreboardSnapshotV2:composite';
 const bigTeamSnapshotKey = 'gameDayBayesianScoreboardSnapshotV1:bigTeam';
 const smallTeamSnapshotKey = 'gameDayBayesianScoreboardSnapshotV1:smallTeam';
 const seasonRankingSettingsKey = 'gameDaySeasonRankingAdvancedSettingsV1';
@@ -122,6 +122,7 @@ await evaluate(client, `
   localStorage.setItem('gameDayPlayers', ${JSON.stringify(JSON.stringify(db.players))});
   localStorage.setItem('gameDayGames', ${JSON.stringify(JSON.stringify(db.games))});
   localStorage.removeItem('gameDayBayesianScoreboardSnapshotV1');
+  localStorage.removeItem('gameDayBayesianScoreboardSnapshotV1:composite');
   localStorage.removeItem(${JSON.stringify(snapshotKey)});
   localStorage.removeItem(${JSON.stringify(bigTeamSnapshotKey)});
   localStorage.removeItem(${JSON.stringify(smallTeamSnapshotKey)});
@@ -861,10 +862,22 @@ const completed = await evaluate(client, `
           scored: snapshot.scoredGames,
           winnerOnly: snapshot.winnerOnlyGames,
           mattOrdinal: matt?.ordinal,
-          jitter: snapshot.diagnostics?.posterior?.jitter,
-          leagueOpponentCount: snapshot.diagnostics?.leagueOpponentCount,
+          schemaVersion: snapshot.schemaVersion,
+          dynamicConverged: snapshot.diagnostics?.optimizer?.converged,
+          leagueGamesIncluded: snapshot.diagnostics?.leagueGamesIncluded,
+          bigTeamSchemaVersion: bigTeamSnapshot.schemaVersion,
+          smallTeamSchemaVersion: smallTeamSnapshot.schemaVersion,
           bigTeamLeagueOpponentCount: bigTeamSnapshot.diagnostics?.leagueOpponentCount,
           smallTeamLeagueOpponentCount: smallTeamSnapshot.diagnostics?.leagueOpponentCount,
+          realPlayerHistoryIds: Object.keys(snapshot.history || {}).filter(id => id !== 'league_team_bayesian_pooled'),
+          realPlayerHistoriesValid: Object.entries(snapshot.history || {})
+            .filter(([id]) => id !== 'league_team_bayesian_pooled')
+            .every(([, knots]) => Array.isArray(knots) && knots.length > 0 && knots.every((knot, i) =>
+              Number.isFinite(Number(knot.mu)) && Number.isFinite(Number(knot.sigma)) &&
+              Number.isFinite(Number(knot.ordinal)) && Number.isFinite(Number(knot.central)) &&
+              Number.isFinite(Number(knot.variance)) && Number.isFinite(Number(knot.games)) &&
+              (i === 0 || String(knots[i - 1].date) <= String(knot.date)))),
+          leagueHistory: snapshot.history?.league_team_bayesian_pooled,
           leagueRows: snapshot.ratings
             .filter(row => row.isLeagueContext)
             .map(row => ({ id: row.id, name: row.name, games: row.games })),
@@ -1530,9 +1543,16 @@ if (completed.games !== 126 || completed.scored !== 123 || completed.winnerOnly 
   throw new Error(`Unexpected snapshot counts: ${JSON.stringify(completed)}`);
 }
 if (
-  completed.leagueOpponentCount !== 1 ||
+  completed.schemaVersion !== 2 ||
+  completed.dynamicConverged !== true ||
+  completed.leagueGamesIncluded !== leagueGameCount ||
+  completed.bigTeamSchemaVersion !== 1 ||
+  completed.smallTeamSchemaVersion !== 1 ||
   completed.bigTeamLeagueOpponentCount !== 1 ||
   completed.smallTeamLeagueOpponentCount !== 0 ||
+  completed.realPlayerHistoryIds.length === 0 ||
+  !completed.realPlayerHistoriesValid ||
+  completed.leagueHistory !== undefined ||
   completed.leagueRows.length !== 1 ||
   completed.leagueRows[0].name !== 'League Team' ||
   completed.leagueRows[0].games !== leagueGameCount

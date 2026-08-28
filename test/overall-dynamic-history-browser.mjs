@@ -8,7 +8,7 @@ if (process.env.VBALL_BROWSER_SMOKE !== '1') {
 const baseUrl = process.argv[2] || 'http://127.0.0.1:5176';
 const cdpUrl = process.argv[3] || 'http://127.0.0.1:9223';
 const db = JSON.parse(fs.readFileSync('test/fixtures/bayesian-2026-06-20.json', 'utf8'));
-const snapshotKey = 'gameDayBayesianScoreboardSnapshotV2:composite';
+const snapshotKey = 'gameDayBayesianScoreboardSnapshotV3:composite';
 
 const targets = await fetch(`${cdpUrl}/json/list`).then(response => response.json());
 const target = targets.find(candidate => candidate.type === 'page');
@@ -63,7 +63,7 @@ await send('Input.dispatchKeyEvent', {
 });
 const openState = await evaluate(`(() => {
   const button = document.querySelector('#bayesianTableBody .history-player-button');
-  const league = [...document.querySelectorAll('#bayesianTableBody tr')].find(row => row.textContent.includes('League Team'));
+  const league = [...document.querySelectorAll('#bayesianTableBody tr')].find(row => row.textContent.includes('League Player'));
   const svg = document.getElementById('overallHistoryChart');
   const row = button?.closest('tr'); const cells = [...(row?.querySelectorAll('td') || [])];
   const path = svg?.querySelector('.history-chart-line'); const band = svg?.querySelector('.history-chart-band');
@@ -109,11 +109,73 @@ const sparseState = await evaluate(`(() => {
   const button = id ? document.querySelector('[data-overall-history-player-id="' + CSS.escape(id) + '"]') : null;
   button?.click();
   const svg = document.getElementById('overallHistoryChart');
-  return { available: Boolean(button), visible: !document.getElementById('overallHistoryOverlay').classList.contains('hidden'), x: svg?.dataset.historyXValues || '' };
+  const viewBox = (svg?.getAttribute('viewBox') || '').split(/[ ,]+/).map(Number);
+  return {
+    available: Boolean(button),
+    visible: !document.getElementById('overallHistoryOverlay').classList.contains('hidden'),
+    x: svg?.dataset.historyXValues || '',
+    center: Number.isFinite(viewBox[2]) ? (44 + 386) / 2 : 0,
+  };
 })()`);
-if (sparseState.available && (!sparseState.visible || sparseState.x !== '316.00')) throw new Error(`Sparse history did not render as a centered one-knot chart: ${JSON.stringify(sparseState)}`);
+if (sparseState.available && (!sparseState.visible || Math.abs(Number(sparseState.x) - sparseState.center) > 0.01)) throw new Error(`Sparse history did not render as a centered one-knot chart: ${JSON.stringify(sparseState)}`);
 
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+const mobileChart = await evaluate(`(() => {
+  const overlay = document.getElementById('overallHistoryOverlay');
+  if (!overlay.classList.contains('hidden')) document.getElementById('closeOverallHistoryButton').click();
+  const button = document.querySelector('#bayesianTableBody .history-player-button');
+  button?.click();
+  const svg = document.getElementById('overallHistoryChart');
+  const rowCells = [...(button?.closest('tr')?.querySelectorAll('td') || [])];
+  const leagueRow = [...document.querySelectorAll('#bayesianTableBody tr')].find(row => row.textContent.includes('League Player'));
+  const leagueCells = [...(leagueRow?.querySelectorAll('td') || [])];
+  const yTicks = [...svg.querySelectorAll('.history-chart-y-tick')].map(label => Number(label.textContent));
+  const xTicks = [...svg.querySelectorAll('.history-chart-x-tick')].map(label => label.textContent);
+  const xTickBoxes = [...svg.querySelectorAll('.history-chart-x-tick')].map(label => {
+    const box = label.getBoundingClientRect();
+    return { left: box.left, right: box.right };
+  });
+  const markers = [...svg.querySelectorAll('.history-chart-point')].map(point => [Number(point.getAttribute('cx')), Number(point.getAttribute('cy'))]);
+  const historyKnotCount = JSON.parse(localStorage.getItem(${JSON.stringify(snapshotKey)})).history[button?.dataset.overallHistoryPlayerId || '']?.length || 0;
+  const expectedActiveWeeklyBucketCount = (() => {
+    const id = String(button?.dataset.overallHistoryPlayerId || '');
+    const anchor = Date.parse('2000-01-03T00:00:00Z');
+    const bucket = value => {
+      const instant = Date.parse(String(value || '').slice(0, 10) + 'T00:00:00Z');
+      return Number.isFinite(instant)
+        ? new Date(anchor + Math.floor((instant - anchor) / (7 * 86400000)) * 7 * 86400000).toISOString().slice(0, 10)
+        : '';
+    };
+    return new Set(${JSON.stringify(db.games)}.flatMap(game => {
+      const date = game?.date || game?.gameDate || game?.createdAt;
+      const appeared = [...(game?.redTeam || []), ...(game?.blueTeam || [])].some(player => String(player?.id) === id);
+      const key = appeared ? bucket(date) : '';
+      return key ? [key] : [];
+    })).size;
+  })();
+  const viewBox = svg.viewBox.baseVal;
+  const label = svg.querySelector('.history-chart-y-tick');
+  const labelStyle = getComputedStyle(label);
+  const effectiveLabelSize = (Number.parseFloat(labelStyle.fontSize) || 0) * (svg.getBoundingClientRect().width / viewBox.width);
+  return {
+    endpoint: Number(svg.dataset.historyEndpoint),
+    rowRating: Number(rowCells[3]?.textContent),
+    yTicks,
+    gridlines: svg.querySelectorAll('.history-chart-grid').length,
+    xTicks,
+    xTicksDoNotOverlap: xTickBoxes.every((box, index) => index === 0 || box.left >= xTickBoxes[index - 1].right - 0.5),
+    markers,
+    historyKnotCount,
+    expectedActiveWeeklyBucketCount,
+    effectiveLabelSize,
+    leagueReference: Number(svg.dataset.historyLeagueReference),
+    leagueRating: Number(leagueCells[3]?.textContent),
+    leagueLabel: svg.querySelector('.history-chart-league-label')?.textContent || '',
+    leagueLine: Boolean(svg.querySelector('.history-chart-league-reference')),
+    yDomain: (svg.dataset.historyYDomain || '').split(',').map(Number),
+  };
+})()`);
+if (mobileChart.endpoint !== mobileChart.rowRating || mobileChart.yTicks.length < 6 || mobileChart.gridlines < mobileChart.yTicks.length || !mobileChart.yTicks.every(Number.isFinite) || mobileChart.xTicks.length < 3 || !/^[A-Z][a-z]{2} '\d{2}$/.test(mobileChart.xTicks[0]) || !mobileChart.xTicks.every(label => /^[A-Z][a-z]{2}(?: '\d{2})?$/.test(label)) || !mobileChart.xTicksDoNotOverlap || mobileChart.effectiveLabelSize < 12 || !mobileChart.markers.length || mobileChart.historyKnotCount !== mobileChart.expectedActiveWeeklyBucketCount || mobileChart.markers.length !== mobileChart.expectedActiveWeeklyBucketCount || !mobileChart.markers.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y)) || !mobileChart.leagueLine || mobileChart.leagueReference !== mobileChart.leagueRating || mobileChart.leagueLabel !== `League avg ${mobileChart.leagueRating}` || mobileChart.yDomain.length !== 2 || !mobileChart.yDomain.every(Number.isFinite) || mobileChart.leagueReference < mobileChart.yDomain[0] || mobileChart.leagueReference > mobileChart.yDomain[1]) throw new Error(`Mobile history chart failed: ${JSON.stringify(mobileChart)}`);
 const mobileRows = await evaluate(`(() => {
   const rows = [...document.querySelectorAll('#bayesianTableBody tr')];
   const league = rows.find(row => row.textContent.includes('League Player'));

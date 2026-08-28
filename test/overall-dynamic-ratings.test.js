@@ -6,7 +6,13 @@ import {
   getDynamicLeagueIndividualEffectiveSize,
   OVERALL_DYNAMIC_SNAPSHOT_SCHEMA_VERSION,
   OVERALL_DYNAMIC_MONTHLY_SD_LATENT,
+  OVERALL_DYNAMIC_MONTHLY_BROWNIAN_DAYS,
   OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
+  OVERALL_DYNAMIC_SNAPSHOT_STORAGE_KEY,
+  OVERALL_DYNAMIC_WEEKLY_BUCKET_ANCHOR,
+  getOverallDynamicWeeklyBucketKey,
+  getOverallDynamicWeeklyInterpolation,
+  getOverallDynamicWeeklyTransitionVariance,
   validateOverallDynamicSnapshot,
 } from '../overall-dynamic-ratings.js';
 import { BAYESIAN_POOLED_LEAGUE_OPPONENT_ID } from '../bayesian-ratings.js';
@@ -98,7 +104,7 @@ test('improving player rises against a stable pooled league and fitting is deter
   assert.deepEqual(first.history, second.history);
 });
 
-test('identical monthly league evidence leaves a synthetic history effectively flat', () => {
+test('identical weekly league evidence leaves a synthetic history effectively flat', () => {
   const a = player('a');
   const games = Array.from({ length: 6 }, (_, index) =>
     league(index + 1, `2026-0${index + 1}-01`, [a], 'red', 25, 18)
@@ -107,9 +113,18 @@ test('identical monthly league evidence leaves a synthetic history effectively f
   assert.ok(Math.max(...values) - Math.min(...values) < 0.01);
 });
 
-test('monthly transition is exactly ten public points and later states do not get independent zero priors', () => {
+test('weekly buckets use the Monday anchor, exact interpolation, and Brownian transition variance', () => {
   assert.equal(OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT, (25 / 3) * 50);
   assert.equal(OVERALL_DYNAMIC_MONTHLY_SD_LATENT, 10 / ((25 / 3) * 50));
+  assert.equal(OVERALL_DYNAMIC_WEEKLY_BUCKET_ANCHOR, '2000-01-03');
+  assert.equal(getOverallDynamicWeeklyBucketKey('2026-01-04'), '2025-12-29');
+  assert.equal(getOverallDynamicWeeklyBucketKey('2026-01-05'), '2026-01-05');
+  assert.equal(getOverallDynamicWeeklyBucketKey('2026-01-11'), '2026-01-05');
+  assert.equal(getOverallDynamicWeeklyInterpolation('2026-01-05', '2026-01-19', '2026-01-12'), .5);
+  assert.equal(
+    getOverallDynamicWeeklyTransitionVariance('2026-01-05', '2026-01-12'),
+    OVERALL_DYNAMIC_MONTHLY_SD_LATENT ** 2 * 7 / OVERALL_DYNAMIC_MONTHLY_BROWNIAN_DAYS
+  );
   const a = player('a'), b = player('b');
   const snapshot = calculateOverallDynamicScoreboard({ players: [a, b], games: [
     league(1, '2026-01-01', [a], 'red', 25, 1),
@@ -119,6 +134,17 @@ test('monthly transition is exactly ten public points and later states do not ge
   ] });
   const values = snapshot.history.a.map(knot => knot.mu);
   assert.ok(values.at(-1) > 25.05, 'later state should retain early evidence through the transition prior');
+});
+
+test('weekly history assigns all games in a bucket to its cumulative knot', () => {
+  const a = player('a');
+  const snapshot = calculateOverallDynamicScoreboard({ players: [a], games: [
+    league(1, '2026-01-05', [a]),
+    league(2, '2026-01-11', [a]),
+    league(3, '2026-01-12', [a]),
+  ] });
+  assert.deepEqual(snapshot.history.a.map(knot => knot.date), ['2026-01-05', '2026-01-12']);
+  assert.deepEqual(snapshot.history.a.map(knot => knot.games), [2, 3]);
 });
 
 test('all history and league uncertainties use finite posterior marginals', () => {
@@ -157,17 +183,21 @@ test('sparse and no-league inputs remain finite and league synthetic identity is
   assert.equal(row(snapshot, BAYESIAN_POOLED_LEAGUE_OPPONENT_ID).isSynthetic, true);
 });
 
-test('schema v2 validates and schema v1 is rejected', () => {
-  const snapshot = calculateOverallDynamicScoreboard({ players: [], games: [] });
+test('weekly snapshot identity validates and monthly snapshots are rejected', () => {
+  const a = player('a');
+  const snapshot = calculateOverallDynamicScoreboard({ players: [a], games: [league(1, '2026-01-05', [a])] });
   assert.equal(snapshot.schemaVersion, OVERALL_DYNAMIC_SNAPSHOT_SCHEMA_VERSION);
+  assert.equal(OVERALL_DYNAMIC_SNAPSHOT_STORAGE_KEY, 'gameDayBayesianScoreboardSnapshotV3:composite');
   assert.equal(validateOverallDynamicSnapshot(snapshot), true);
   assert.throws(() => validateOverallDynamicSnapshot({ ...snapshot, schemaVersion: 1 }));
+  assert.throws(() => validateOverallDynamicSnapshot({ ...snapshot, modelVersion: 'overall-dynamic-v2' }));
   assert.throws(() => validateOverallDynamicSnapshot({
     ...snapshot,
     diagnostics: { ...snapshot.diagnostics, optimizer: { ...snapshot.diagnostics.optimizer, converged: false } },
   }));
-  assert.throws(() => validateOverallDynamicSnapshot({
+  const invalidHistoryGames = {
     ...snapshot,
     history: { ...snapshot.history, a: [{ ...snapshot.history.a[0], games: -1 }] },
-  }));
+  };
+  assert.throws(() => validateOverallDynamicSnapshot(invalidHistoryGames), /history game count/);
 });

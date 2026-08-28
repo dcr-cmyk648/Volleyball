@@ -294,3 +294,257 @@ The user explicitly authorized publication on August 28, 2026. Commit only the
 seven reviewed follow-up implementation, test, cache, and ExecPlan files; keep
 the five protected local changes unstaged. Push the resulting `mac-beta` HEAD
 to `origin/main`, then verify the GitHub Pages run and production file hashes.
+
+## Follow-up — Mobile Chart Granularity and League Reference
+
+### Goal
+
+Make the dynamic Overall player-history overlay readable and meaningfully
+granular on a phone, and add a horizontal reference for the comparable average
+league player requested by the user.
+
+### Requirements and Decisions
+
+- Replace the current min/max-only Y labels with rounded rating ticks and subtle
+  horizontal grid lines. Labels must render at a legible effective phone size.
+- Replace the two endpoint-only date labels with monthly ticks across the
+  observed interval, reducing tick density deterministically only if a future
+  history becomes too long to fit. Preserve true elapsed-time X positioning.
+- Add visible point markers at the modeled monthly player states while keeping
+  the existing skill line and posterior-uncertainty band.
+- Draw a distinct dashed horizontal line labeled `League avg <rating>`. Its
+  value must be the same snapshot-scoped League Player display rating used in
+  the dynamic Overall table, and the chart domain must include it even when it
+  lies outside the player's confidence band.
+- Keep the endpoint exactly equal to the scoreboard row. Preserve overlay
+  focus/close semantics, sparse-player handling, and noninteractive league/static
+  rows.
+- This is display-only. Do not change the dynamic fit, rating transforms,
+  league impact, real-player ratings/ranks, balancing, Season Ranking, Trend,
+  Game History, or unrelated scoreboard copy.
+- Add deterministic browser coverage for tick count/labels, mobile label size,
+  grid and point geometry, the league-reference value/label/domain, endpoint
+  equality, and existing overlay behavior. Bump the PWA cache generation.
+- Preserve the five protected local files. Do not stage, commit, push, or deploy
+  without a new explicit publication request.
+
+### Milestones
+
+- [x] Inspect supplied phone screenshot and current SVG implementation.
+- [x] Implement the chart scale/ticks/markers/reference and focused regression.
+- [x] Run full rating-view consistency checks and a current-data 390px visual
+  audit, then present the local URL and screenshot for approval.
+
+### Validation
+
+- `npm test`: 43/43 tests passed. The focused fixed-fixture Chrome regression
+  also passed, including granular scales, compact month labels, non-overlap,
+  modeled-state markers, the snapshot-scoped league reference, sparse history,
+  endpoint equality, keyboard/dialog behavior, mobile table geometry, and
+  unchanged static Big-Team scope.
+- The full browser regression passed in a clean profile. The required default
+  consistency sample remained JoeM at 2258 over 55 games in Season Ranking,
+  Trend, and Game History. The advanced league-excluded, all-history,
+  no-confidence-penalty sample remained 2409 over 49 games in all three views.
+- The 390px current-data audit opened DustinR at 2476 and verified an exact 2476
+  history endpoint, seven 100-point Y ticks from 2100 through 2700, monthly
+  labels from `Apr '26` through `Aug`, five finite monthly markers, no label
+  overlap, and 12.18px effective axis text.
+- The chart's dashed yellow `League avg 2155` line exactly matches the current
+  dynamic League Player row and lies inside the plotted domain. The overlay fit
+  the 390x844 viewport, retained Close focus, and emitted no page exceptions.
+- Current visual audit: `/private/tmp/vball-current-chart-mobile-audit.png`.
+  JavaScript syntax checks and `git diff --check` passed. The PWA cache is v27.
+
+### Exact Next Action
+
+Let the user audit the local chart at the running server, then await explicit
+publication approval. Do not stage, commit, push, or deploy this follow-up
+before that approval.
+
+## Investigation — Finer Dynamic-State Resolution
+
+### Goal
+
+Evaluate whether the dynamic Overall model should estimate skill more often
+than one active calendar-month state per player, and show how credible finer
+paths would look before any production decision.
+
+### Scope and Constraints
+
+- Harness-only investigation. Do not change production model, chart, snapshot
+  schema, tests, cache, or rating behavior during the sweep.
+- Use the already-refreshed 76-player, 347-game local data through 2026-08-27.
+  Include every league game at full likelihood impact and retain the single
+  learned pooled league-opponent anchor.
+- Compare the exact current active-calendar-month baseline against active
+  21-day, 14-day, 7-day, and distinct-play-date state grids.
+- Keep process smoothing comparable by scaling transition variance with exact
+  elapsed time: 10 public rating points of standard deviation per square root
+  month. Finer grids must not silently receive a stronger or weaker prior.
+- Preserve exact-date interpolation between adjacent states and hold the latest
+  trained state constant for future prediction.
+
+### Evaluation
+
+- Run chronological expanding-window validation on nonoverlapping future-date
+  blocks. Report paired score-share log loss, winner Brier score/accuracy, test
+  game count, and date-clustered uncertainty versus the monthly baseline.
+- On full-data fits report state count, optimizer iterations/runtime, current
+  uncertainty, path total variation/adjacent movement, rank correlation and
+  top-10 overlap versus monthly, and maximum/current rating shifts.
+- Confirm the exact monthly harness reproduces the production dynamic snapshot
+  within numerical tolerance before trusting comparisons.
+- Export resolution paths for every eligible player plus representative default
+  players and the League Player reference for an interactive, in-conversation
+  comparison. The visualization is outside the repository and contains no
+  secrets or network calls.
+- Treat negligible held-out differences as ties. Prefer the coarsest resolution
+  on a statistical plateau; do not recommend extra states solely because they
+  make a more visually active line.
+
+### Progress
+
+- [x] Resolution candidates, fair smoothing rule, and evaluation metrics set.
+- [x] Build and validate the harness-only generalized solver.
+- [x] Run full-data and chronological holdout sweeps.
+- [x] Create and verify the interactive comparison, then report winners,
+  losers, tradeoffs, and any recommended follow-up.
+
+### Results
+
+- The generalized monthly harness exactly reproduced the production dynamic
+  model across all 347 games, including convergence, ratings, history dates,
+  cumulative history game counts, and every history endpoint.
+- Four expanding-window folds evaluated 255 future games over 32 held-out play
+  dates. Monthly, 21-day, 14-day, 7-day, and distinct-play-date models all had
+  identical 57.25% winner accuracy. Their log-loss and Brier-score differences
+  were microscopic, and every 2,000-resample date-clustered 95% interval versus
+  monthly crossed zero. A seven-day phase shift of the 14-day buckets was also
+  tied.
+- The apparent best log loss was the play-date grid at 0.692444140 versus
+  monthly at 0.692444448, a difference of only 0.000000308 with a 95% interval
+  of approximately -0.000001403 to +0.000001107. Its Brier score was
+  directionally worse by 0.000000402, also an indistinguishable tie.
+- Full-data state counts grew from 175 monthly states to 222 at 21 days, 270 at
+  14 days, 389 at 7 days, and 639 by play date. The play-date fit took about
+  1.07 seconds in the recorded run versus 73 ms monthly. Runtime is warmup- and
+  machine-sensitive, but the extra state complexity is real.
+- Every finer grid preserved all ten monthly top-10 players, had Spearman rank
+  correlation at least 0.99994, and changed any current conservative rating by
+  less than 0.024 public points. League Player stayed between 2154.5 and 2154.6.
+- Finer graphs visibly add intermediate knots, but the underlying modeled
+  conservative skill paths barely change: the largest adjacent movement in any
+  full-data grid was under 1.7 public points. Most of the visible early rise in
+  the scoreboard graph comes from evaluating the existing confidence and
+  missing-game penalties at more cumulative-game checkpoints, not from newly
+  detected skill movement.
+- Deterministic reruns passed for monthly and the apparent play-date winner.
+  The scratch artifacts are
+  `/private/tmp/vball-overall-resolution-sweep.mjs` and
+  `/private/tmp/vball-overall-resolution-sweep-results.json`. The verified
+  task-owned comparison is
+  `/Users/dustinrowland/.codex/visualizations/2026/07/16/019f6c8b-f3ed-7a50-aacd-9bbe8c902efd/overall-resolution-sweep.html`;
+  it passed 736px and 360px light/dark rendering, tooltip, series-toggle,
+  12px-label, no-overflow, and no-console-error checks.
+
+### Exact Next Action
+
+Make no production resolution change. Monthly is the coarsest member of the
+statistical plateau and therefore remains the justified default. If the user
+wants a more responsive underlying skill line rather than merely more plotted
+checkpoints, the next informative harness test is a blocked-validation sweep of
+the process-noise/smoothing magnitude, optionally crossed with monthly and
+14-day grids. No publication is in scope.
+
+## Implementation — Weekly Overall States and Deployment
+
+### User Decision
+
+On August 28, 2026 the user explicitly chose the tested weekly resolution and
+authorized deployment. This product preference overrides the investigation's
+parsimony recommendation. The selected variant is the exact 7-day candidate
+from the verified sweep, not a new or retuned model.
+
+### Requirements and Decisions
+
+- Change only Bayesian Overall's dynamic player-state grid from active calendar
+  months to active anchored 7-day buckets. Use the tested Monday UTC anchor
+  2000-01-03; a player gets a state only for a bucket in which they appear.
+- Preserve the tested smoothing equivalence: transition variance is the current
+  10-public-point monthly Brownian variance multiplied by exact elapsed days
+  divided by 365.2425 / 12. Do not give weekly states a stronger or weaker
+  effective time prior.
+- Keep exact-date interpolation between adjacent active states and hold the
+  latest trained state constant thereafter. History cumulative games include
+  all games whose weekly bucket is at or before the history knot's bucket.
+- Preserve all league games at 1.0 likelihood impact, the stable pooled league
+  opponent, bridge/reference cohort, score likelihood, affine reference shift,
+  confidence and missing-game display transforms, League Player interpretation,
+  filters, and all balancing/Season Ranking/Trend/Game History behavior.
+- Invalidate persisted monthly Overall snapshots with a new weekly model/storage
+  identity while retaining the existing snapshot shape when practical. Never
+  reinterpret a monthly snapshot as weekly.
+- Keep the concise scoreboard text unchanged. Do not add a resolution label,
+  explanation, or other UI copy.
+- Retain the pending mobile chart/table improvements. Weekly current-data
+  history should expose the expected denser knots without changing the endpoint,
+  league reference, accessibility, or mobile layout.
+- Add deterministic model and browser regressions for the Monday anchor,
+  elapsed-day transition scaling, bucket assignment/interpolation, cumulative
+  games, sparse players, cache invalidation, weekly marker count, and unchanged
+  endpoint/league/static-mode behavior.
+- Bump the PWA cache generation, run the complete validation ladder and required
+  Season Ranking/Trend/Game History consistency pass, then commit only the
+  reviewed Overall/chart implementation, tests, cache, and this ExecPlan.
+  Preserve the five protected dirty files. Push the accepted commit to
+  origin/main, verify GitHub Pages, and verify production file hashes.
+
+### Acceptance Criteria
+
+- The current 76-player / 347-game database produces the verified weekly model
+  topology (389 player states plus the pooled opponent) and includes all 99
+  league games.
+- Current real-player ratings remain within the sweep's verified weekly-versus-
+  monthly tolerance, the top 10 is unchanged, League Player remains about 2155,
+  and each graph endpoint exactly equals its table row under active options.
+- DustinR's current history has 20 weekly knots/markers rather than five monthly
+  knots while keeping readable monthly axis ticks and League avg 2155.
+- All focused and full tests pass, the cross-view consistency sample is aligned,
+  local phone audit is clean, and the deployed GitHub Pages revision matches the
+  reviewed commit.
+
+### Progress
+
+- [x] Weekly candidate selected from the completed harness sweep.
+- [x] Implement weekly model/storage identity and deterministic regressions.
+- [x] Integrate weekly history with the pending mobile chart/table changes.
+- [x] Run full validation and local phone audit.
+- [ ] Commit scoped files, push to origin/main, and verify deployment.
+
+### Validation
+
+- `npm test`: 44/44 tests passed, including the exact Monday anchor,
+  weekly-bucket assignment, elapsed-day Brownian transition variance,
+  interpolation, cumulative game counts, and monthly-snapshot rejection.
+- The focused 390px Chrome regression passed with the independently derived
+  weekly bucket count equal to both saved history knots and rendered markers.
+  Endpoint equality, monthly axis labels, League avg reference, compact table,
+  accessibility, sparse history, and static Big-Team isolation remained intact.
+- The broad browser regression passed in a clean isolated profile. The required
+  Season Ranking / Trend / Game History sample remained aligned for JoeM at
+  2258 over 55 games by default and 2409 over 49 games with league games hidden,
+  the rolling window removed, and confidence penalties removed.
+- The current-data audit used all 347 games and all 99 league games. It produced
+  389 player weekly states plus the pooled opponent, 20 DustinR history knots,
+  exact history/table endpoints, unchanged monthly-sweep top-10 membership,
+  and a displayed League Player rating of 2155.
+- JavaScript syntax checks and `git diff --check` passed. The healthy local
+  audit server remains `http://127.0.0.1:5173/`.
+
+### Exact Next Action
+
+Commit only the seven reviewed Overall implementation, chart/table, test,
+cache, and ExecPlan files while leaving the five protected local changes
+unstaged. Push that commit to `origin/main`, verify the GitHub Pages workflow,
+and compare the deployed production files with the reviewed commit.

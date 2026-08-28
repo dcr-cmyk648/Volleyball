@@ -32,7 +32,7 @@ const nonLeagueSeasonRankingWindowGames = nonLeagueGames.filter(game => {
   const date = getGameDateValue(game);
   return isValidDateString(date) && date >= getSeasonRankingWindowCutoffDate(nonLeagueGames);
 });
-const snapshotKey = 'gameDayBayesianScoreboardSnapshotV2:composite';
+const snapshotKey = 'gameDayBayesianScoreboardSnapshotV3:composite';
 const bigTeamSnapshotKey = 'gameDayBayesianScoreboardSnapshotV1:bigTeam';
 const smallTeamSnapshotKey = 'gameDayBayesianScoreboardSnapshotV1:smallTeam';
 const seasonRankingSettingsKey = 'gameDaySeasonRankingAdvancedSettingsV1';

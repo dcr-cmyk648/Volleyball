@@ -339,7 +339,11 @@
     .history-chart-band { fill: rgba(96, 165, 250, 0.20); }
     .history-chart-line { fill: none; stroke: var(--blue); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
     .history-chart-axis { stroke: var(--border); stroke-width: 1; }
-    .history-chart-label { fill: var(--muted); font-size: 11px; }
+    .history-chart-grid { stroke: var(--border); stroke-width: 1; opacity: 0.55; }
+    .history-chart-point { fill: var(--blue); stroke: var(--card); stroke-width: 1.5; }
+    .history-chart-league-reference { stroke: var(--yellow); stroke-width: 2; stroke-dasharray: 6 4; }
+    .history-chart-label { fill: var(--muted); font-size: 14px; }
+    .history-chart-league-label { fill: var(--yellow); font-size: 14px; font-weight: 700; }
     .history-player-button {
       appearance: none;
       border: 0;
@@ -2016,7 +2020,7 @@
         <h2 id="overallHistoryTitle" class="history-dialog-title"></h2>
         <button id="closeOverallHistoryButton" class="secondary" type="button">Close</button>
       </div>
-      <svg id="overallHistoryChart" class="history-chart" viewBox="0 0 600 300" role="img"></svg>
+      <svg id="overallHistoryChart" class="history-chart" viewBox="0 0 400 330" role="img"></svg>
     </section>
   </div>
 
@@ -2030,6 +2034,7 @@
       getPooledBayesianLeagueOpponent,
     } from './bayesian-ratings.js';
     import {
+      OVERALL_DYNAMIC_MODEL_VERSION,
       OVERALL_DYNAMIC_SNAPSHOT_STORAGE_KEY,
       formatDynamicLeagueIndividualRating,
       validateOverallDynamicSnapshot,
@@ -8066,7 +8071,7 @@
     function getBayesianDisplayRows(snapshot = bayesianSnapshot, players = loadPlayers()) {
       if (!snapshot?.ratings) return [];
       const nameMap = getBayesianCurrentNameMap(players);
-      const isDynamicOverall = snapshot.schemaVersion === 2 && snapshot.modelVersion === 'overall-dynamic-v2';
+      const isDynamicOverall = snapshot.schemaVersion === 2 && snapshot.modelVersion === OVERALL_DYNAMIC_MODEL_VERSION;
       const baseRows = sortBayesianRatings(snapshot.ratings.map(row => {
         const displayRow = isDynamicOverall && row?.isLeagueContext
           ? formatDynamicLeagueIndividualRating(
@@ -8139,24 +8144,82 @@
       return element;
     }
 
+    function getNiceHistoryTickStep(range, targetCount = 7) {
+      const rawStep = Math.max(1, Number(range) || 1) / Math.max(1, targetCount - 1);
+      const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+      const normalized = rawStep / magnitude;
+      const niceNormalized = normalized <= 1 ? 1
+        : normalized <= 2 ? 2
+          : normalized <= 2.5 ? 2.5
+            : normalized <= 5 ? 5
+              : 10;
+      return niceNormalized * magnitude;
+    }
+
+    function getNiceHistoryYTicks(values) {
+      const finiteValues = values.filter(Number.isFinite);
+      const rawMin = Math.min(...finiteValues);
+      const rawMax = Math.max(...finiteValues);
+      const padding = Math.max(15, (rawMax - rawMin || 1) * 0.1);
+      const step = getNiceHistoryTickStep((rawMax - rawMin) + padding * 2);
+      const min = Math.floor((rawMin - padding) / step) * step;
+      const max = Math.ceil((rawMax + padding) / step) * step;
+      const ticks = [];
+      for (let value = min; value <= max + step * 0.001; value += step) ticks.push(Number(value.toFixed(8)));
+      return { min, max: ticks.at(-1) ?? max, ticks };
+    }
+
+    function getOverallHistoryMonthTicks(firstDate, lastDate, maxTicks = 7) {
+      const first = /^\d{4}-\d{2}/.exec(firstDate || '');
+      const last = /^\d{4}-\d{2}/.exec(lastDate || '');
+      if (!first || !last) return [];
+      const start = new Date(`${first[0]}-01T00:00:00Z`);
+      const end = new Date(`${last[0]}-01T00:00:00Z`);
+      if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end < start) return [];
+      const months = [];
+      for (let date = new Date(start); date <= end; date.setUTCMonth(date.getUTCMonth() + 1)) {
+        months.push(new Date(date));
+      }
+      const stride = Math.max(1, Math.ceil(months.length / maxTicks));
+      const ticks = months.filter((_date, index) => index % stride === 0);
+      if (ticks.at(-1)?.getTime() !== months.at(-1)?.getTime()) ticks.push(months.at(-1));
+      return ticks;
+    }
+
+    function formatOverallHistoryMonthTick(date, previousDate = null) {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const month = months[date.getUTCMonth()];
+      const includeYear = !previousDate || date.getUTCFullYear() !== previousDate.getUTCFullYear();
+      return includeYear ? `${month} '${String(date.getUTCFullYear()).slice(-2)}` : month;
+    }
+
     function renderOverallHistoryChart(row) {
       if (!overallHistoryChartEl) return;
       const points = getOverallHistoryDisplayPoints(row);
       overallHistoryChartEl.replaceChildren();
       const finite = points.length ? points : [{ date: '', value: Number(row.displayRating) || 1500, lower: Number(row.displayRating) || 1500, upper: Number(row.displayRating) || 1500 }];
+      const leagueRow = getBayesianDisplayRows().find(candidate => candidate.isLeagueContext);
+      const leagueReference = Number(leagueRow?.displayRating);
+      const hasLeagueReference = Number.isFinite(leagueReference);
       const allValues = finite.flatMap(point => [point.lower, point.upper, point.value]);
-      const minValue = Math.min(...allValues);
-      const maxValue = Math.max(...allValues);
-      const range = Math.max(1, maxValue - minValue);
-      const left = 52, right = 580, top = 18, bottom = 258;
-      const timestamps = finite.map(point => Date.parse(`${point.date}T00:00:00Z`));
+      if (hasLeagueReference) allValues.push(leagueReference);
+      const yScale = getNiceHistoryYTicks(allValues);
+      const range = Math.max(1, yScale.max - yScale.min);
+      const left = 44, right = 386, top = 16, bottom = 276;
+      const timestamps = finite.map(point => {
+        const timestamp = Date.parse(`${point.date}T00:00:00Z`);
+        return Number.isFinite(timestamp) ? timestamp : Date.UTC(2000, 0, 1);
+      });
       const minTimestamp = Math.min(...timestamps);
       const maxTimestamp = Math.max(...timestamps);
       const timestampRange = maxTimestamp - minTimestamp;
       const x = index => finite.length < 2 || !(timestampRange > 0)
         ? (left + right) / 2
         : left + ((timestamps[index] - minTimestamp) / timestampRange) * (right - left);
-      const y = value => bottom - ((value - minValue) / range) * (bottom - top);
+      const xForTimestamp = timestamp => finite.length < 2 || !(timestampRange > 0)
+        ? (left + right) / 2
+        : left + ((timestamp - minTimestamp) / timestampRange) * (right - left);
+      const y = value => bottom - ((value - yScale.min) / range) * (bottom - top);
       const pointText = values => values.map((point, index) => `${x(index).toFixed(2)},${y(point).toFixed(2)}`).join(' ');
       const band = [
         ...finite.map((point, index) => `${x(index).toFixed(2)},${y(point.upper).toFixed(2)}`),
@@ -8168,15 +8231,35 @@
       overallHistoryChartEl.setAttribute('aria-label', `${row.name} rating history`);
       overallHistoryChartEl.dataset.historyEndpoint = String(finite.at(-1).value);
       overallHistoryChartEl.dataset.historyXValues = finite.map((_point, index) => x(index).toFixed(2)).join(',');
+      overallHistoryChartEl.dataset.historyYDomain = `${yScale.min},${yScale.max}`;
+      if (hasLeagueReference) overallHistoryChartEl.dataset.historyLeagueReference = String(leagueReference);
+      else delete overallHistoryChartEl.dataset.historyLeagueReference;
+      const monthTicks = getOverallHistoryMonthTicks(finite[0].date, finite.at(-1).date);
+      const yTickElements = yScale.ticks.flatMap(tick => [
+        svgElement('line', { x1: left, y1: y(tick), x2: right, y2: y(tick), class: 'history-chart-grid' }),
+        svgElement('text', { x: left - 7, y: y(tick) + 4, class: 'history-chart-label history-chart-y-tick', 'text-anchor': 'end' }, String(Math.round(tick))),
+      ]);
+      const xTickElements = monthTicks.flatMap((date, index) => {
+        const timestamp = date.getTime();
+        const anchor = index === 0 ? 'start' : index === monthTicks.length - 1 ? 'end' : 'middle';
+        return [
+          svgElement('line', { x1: xForTimestamp(timestamp), y1: bottom, x2: xForTimestamp(timestamp), y2: bottom + 4, class: 'history-chart-axis' }),
+          svgElement('text', { x: xForTimestamp(timestamp), y: 310, class: 'history-chart-label history-chart-x-tick', 'text-anchor': anchor }, formatOverallHistoryMonthTick(date, monthTicks[index - 1])),
+        ];
+      });
+      const leagueElements = hasLeagueReference ? [
+        svgElement('line', { x1: left, y1: y(leagueReference), x2: right, y2: y(leagueReference), class: 'history-chart-league-reference' }),
+        svgElement('text', { x: right, y: Math.max(top + 13, y(leagueReference) - 5), class: 'history-chart-league-label', 'text-anchor': 'end' }, `League avg ${leagueReference}`),
+      ] : [];
       overallHistoryChartEl.append(
+        ...yTickElements,
         svgElement('line', { x1: left, y1: bottom, x2: right, y2: bottom, class: 'history-chart-axis' }),
         svgElement('line', { x1: left, y1: top, x2: left, y2: bottom, class: 'history-chart-axis' }),
-        svgElement('text', { x: 4, y: top + 4, class: 'history-chart-label' }, String(Math.round(maxValue))),
-        svgElement('text', { x: 4, y: bottom, class: 'history-chart-label' }, String(Math.round(minValue))),
-        svgElement('text', { x: left, y: 282, class: 'history-chart-label' }, finite[0].date.slice(0, 7)),
-        svgElement('text', { x: right, y: 282, class: 'history-chart-label', 'text-anchor': 'end' }, finite.at(-1).date.slice(0, 7)),
+        ...xTickElements,
         svgElement('polygon', { points: band, class: 'history-chart-band' }),
-        svgElement('polyline', { points: pointText(finite.map(point => point.value)), class: 'history-chart-line' })
+        ...leagueElements,
+        svgElement('polyline', { points: pointText(finite.map(point => point.value)), class: 'history-chart-line' }),
+        ...finite.map((point, index) => svgElement('circle', { cx: x(index), cy: y(point.value), r: 3.5, class: 'history-chart-point' }))
       );
     }
 

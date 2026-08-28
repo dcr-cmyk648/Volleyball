@@ -10,9 +10,9 @@ import {
   sortBayesianRatings,
 } from './bayesian-ratings.js';
 
-export const OVERALL_DYNAMIC_MODEL_VERSION = 'overall-dynamic-v2';
+export const OVERALL_DYNAMIC_MODEL_VERSION = 'overall-dynamic-weekly-v3';
 export const OVERALL_DYNAMIC_SNAPSHOT_SCHEMA_VERSION = 2;
-export const OVERALL_DYNAMIC_SNAPSHOT_STORAGE_KEY = 'gameDayBayesianScoreboardSnapshotV2:composite';
+export const OVERALL_DYNAMIC_SNAPSHOT_STORAGE_KEY = 'gameDayBayesianScoreboardSnapshotV3:composite';
 export const OVERALL_DYNAMIC_N_EFF = 10;
 export const OVERALL_DYNAMIC_MONTHLY_SD_DISPLAY = 10;
 // The public Overall rating is 1500 + 50 * raw ordinal. One latent unit is
@@ -22,6 +22,8 @@ export const OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT =
   BAYESIAN_DISPLAY_SCALE * OVERALL_DYNAMIC_PUBLIC_POINTS_PER_RAW_ORDINAL;
 export const OVERALL_DYNAMIC_MONTHLY_SD_LATENT =
   OVERALL_DYNAMIC_MONTHLY_SD_DISPLAY / OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT;
+export const OVERALL_DYNAMIC_WEEKLY_BUCKET_ANCHOR = '2000-01-03';
+export const OVERALL_DYNAMIC_MONTHLY_BROWNIAN_DAYS = 365.2425 / 12;
 
 const EPS = 1e-9;
 
@@ -56,7 +58,7 @@ export function formatDynamicLeagueIndividualRating(pooledRating, games = [], ga
 
 export function calculateOverallDynamicScoreboard({ players = [], games = [], onProgress = null } = {}) {
   const progress = (percent, stage, message, diagnostics = {}) => onProgress?.({ type: 'progress', percent, stage, message, diagnostics });
-  progress(2, 'validate', 'Validating Overall games and building monthly states');
+  progress(2, 'validate', 'Validating Overall games and building weekly states');
   const indexed = indexInput(players, games);
   progress(15, 'build', `Building dynamic model from ${indexed.observations.length} games`, indexed.counts);
   const solved = solveNewton(indexed, progress);
@@ -86,13 +88,15 @@ export function calculateOverallDynamicScoreboard({ players = [], games = [], on
       version: OVERALL_DYNAMIC_MODEL_VERSION,
       nEff: OVERALL_DYNAMIC_N_EFF,
       monthlyTransitionSdPublic: OVERALL_DYNAMIC_MONTHLY_SD_DISPLAY,
+      weeklyBucketAnchor: OVERALL_DYNAMIC_WEEKLY_BUCKET_ANCHOR,
+      monthlyBrownianDays: OVERALL_DYNAMIC_MONTHLY_BROWNIAN_DAYS,
       publicPointsPerLatent: OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
       leagueGamesIncluded: indexed.counts.leagueGames,
       bridgeCohort: bridge,
       affineShiftLatent: shift,
       optimizer: solved.diagnostics,
       posterior,
-      dimensions: { states: indexed.dimension, playerMonthlyStates: indexed.dimension - 1, fixedLeagueOpponent: 1 },
+      dimensions: { states: indexed.dimension, playerWeeklyStates: indexed.dimension - 1, fixedLeagueOpponent: 1 },
     },
     constants: {
       displayBase: BAYESIAN_DISPLAY_BASE,
@@ -140,10 +144,10 @@ function indexInput(players, games) {
     raw.push({ red, blue: league ? [] : blue, league, q, date, identity: getStableGameIdentity(game, i), winner: game.winner });
     if (scored) counts.scoredGames++; else counts.winnerOnlyGames++; if (league) counts.leagueGames++;
   });
-  const monthsByPlayer = new Map(normalized.map(p => [p.id, new Set()])); const appearances = new Map(normalized.map(p => [p.id, []]));
-  raw.forEach(o => [...o.red, ...o.blue].forEach(id => { monthsByPlayer.get(id).add(monthKey(o.date)); appearances.get(id).push(o.date); }));
+  const bucketsByPlayer = new Map(normalized.map(p => [p.id, new Set()])); const appearances = new Map(normalized.map(p => [p.id, []]));
+  raw.forEach(o => [...o.red, ...o.blue].forEach(id => { bucketsByPlayer.get(id).add(weeklyBucketKey(o.date)); appearances.get(id).push(o.date); }));
   const stateIndex = new Map(); const playerStates = new Map(); let dimension = 0;
-  for (const p of normalized) { const months = [...monthsByPlayer.get(p.id)].sort(); const active = months.length ? months : [latestDate(raw) || '1970-01-01']; const states = active.map(month => ({ month, index: dimension++ })); playerStates.set(p.id, states); states.forEach(s => stateIndex.set(`${p.id}:${s.month}`, s.index)); }
+  for (const p of normalized) { const buckets = [...bucketsByPlayer.get(p.id)].sort(); const active = buckets.length ? buckets : [weeklyBucketKey(latestDate(raw) || '1970-01-01')]; const states = active.map(date => ({ date, index: dimension++ })); playerStates.set(p.id, states); states.forEach(s => stateIndex.set(`${p.id}:${s.date}`, s.index)); }
   const leagueIndex = dimension++; const observations = raw.map(o => ({
     ...o,
     redTerms: o.red.flatMap(id => stateAt(id, o.date, playerStates).map(term => ({ ...term, weight: term.weight / o.red.length }))),
@@ -161,17 +165,18 @@ function stateAt(id, date, states) {
   const list = states.get(id); const instant = new Date(`${date}T00:00:00Z`).getTime();
   let previous = list[0]; let next = null;
   for (const state of list) {
-    if (state.month <= date) previous = state;
-    if (state.month > date) { next = state; break; }
+    if (state.date <= date) previous = state;
+    if (state.date > date) { next = state; break; }
   }
   if (!next) return [{ index: previous.index, weight: 1 }];
-  const start = new Date(`${previous.month}T00:00:00Z`).getTime();
-  const end = new Date(`${next.month}T00:00:00Z`).getTime();
-  const t = Math.max(0, Math.min(1, (instant - start) / Math.max(1, end - start)));
+  const t = getOverallDynamicWeeklyInterpolation(previous.date, next.date, new Date(instant).toISOString().slice(0, 10));
   return [{ index: previous.index, weight: 1 - t }, { index: next.index, weight: t }];
 }
 function gameDate(game) { const candidate = String(game?.date || game?.gameDate || game?.createdAt || ''); const d = new Date(candidate); return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : ''; }
-function monthKey(date) { return String(date).slice(0, 7) + '-01'; }
+export function getOverallDynamicWeeklyBucketKey(date) { return weeklyBucketKey(date); }
+function weeklyBucketKey(date) { const instant = new Date(`${String(date).slice(0, 10)}T00:00:00Z`).getTime(); const anchor = new Date(`${OVERALL_DYNAMIC_WEEKLY_BUCKET_ANCHOR}T00:00:00Z`).getTime(); if (!Number.isFinite(instant)) return OVERALL_DYNAMIC_WEEKLY_BUCKET_ANCHOR; return new Date(anchor + Math.floor((instant - anchor) / (7 * 86400000)) * 7 * 86400000).toISOString().slice(0, 10); }
+export function getOverallDynamicWeeklyInterpolation(previousDate, nextDate, date) { const start = new Date(`${previousDate}T00:00:00Z`).getTime(); const end = new Date(`${nextDate}T00:00:00Z`).getTime(); const instant = new Date(`${date}T00:00:00Z`).getTime(); return Math.max(0, Math.min(1, (instant - start) / Math.max(1, end - start))); }
+export function getOverallDynamicWeeklyTransitionVariance(previousDate, nextDate) { const start = new Date(`${previousDate}T00:00:00Z`).getTime(); const end = new Date(`${nextDate}T00:00:00Z`).getTime(); const elapsedDays = Math.max(1, (end - start) / 86400000); return OVERALL_DYNAMIC_MONTHLY_SD_LATENT * OVERALL_DYNAMIC_MONTHLY_SD_LATENT * elapsedDays / OVERALL_DYNAMIC_MONTHLY_BROWNIAN_DAYS; }
 function latestDate(raw) { return raw.reduce((latest, item) => item.date > latest ? item.date : latest, ''); }
 
 function solveNewton(indexed, progress) {
@@ -197,10 +202,9 @@ function objectiveGradientHessian(x, indexed) {
   addPrior(indexed.leagueIndex);
   const add = (terms, multiplier) => { for (const a of terms) for (const b of terms) hessian[a.index][b.index] += multiplier * a.weight * b.weight; };
   indexed.observations.forEach(o => { const terms = [...o.redTerms, ...o.blueTerms.map(t => ({ ...t, weight: -t.weight }))]; const eta = terms.reduce((s,t) => s + x[t.index] * t.weight, 0); const p = sigmoid(eta); objective += OVERALL_DYNAMIC_N_EFF * (softplus(eta) - o.q * eta); const d = OVERALL_DYNAMIC_N_EFF * (p - o.q), w = OVERALL_DYNAMIC_N_EFF * p * (1-p); terms.forEach(t => gradient[t.index] += d*t.weight); add(terms,w); });
-  indexed.playerStates.forEach(states => { for (let i=1;i<states.length;i++) { const a=states[i-1].index,b=states[i].index; const gap = Math.max(1, monthDistance(states[i-1].month, states[i].month)); const precision = 1 / (OVERALL_DYNAMIC_MONTHLY_SD_LATENT * OVERALL_DYNAMIC_MONTHLY_SD_LATENT * gap); const delta=x[b]-x[a]; objective += .5*precision*delta*delta; gradient[a]-=precision*delta; gradient[b]+=precision*delta; hessian[a][a]+=precision; hessian[b][b]+=precision; hessian[a][b]-=precision; hessian[b][a]-=precision; } });
+  indexed.playerStates.forEach(states => { for (let i=1;i<states.length;i++) { const a=states[i-1].index,b=states[i].index; const precision = 1 / getOverallDynamicWeeklyTransitionVariance(states[i-1].date, states[i].date); const delta=x[b]-x[a]; objective += .5*precision*delta*delta; gradient[a]-=precision*delta; gradient[b]+=precision*delta; hessian[a][a]+=precision; hessian[b][b]+=precision; hessian[a][b]-=precision; hessian[b][a]-=precision; } });
   return { objective, gradient, hessian };
 }
-function monthDistance(a,b) { return (Number(b.slice(0,4))-Number(a.slice(0,4)))*12 + Number(b.slice(5,7))-Number(a.slice(5,7)); }
 function sigmoid(x) { return x > 35 ? 1-EPS : x < -35 ? EPS : 1/(1+Math.exp(-x)); }
 function softplus(x) { return x > 35 ? x : Math.log1p(Math.exp(x)); }
 
@@ -213,5 +217,5 @@ function chooseBridge(indexed) { const candidates=indexed.players.filter(p=>{con
 function spanDays(dates) { const parsed=dates.map(value => new Date(value).getTime()).filter(Number.isFinite); return parsed.length ? (Math.max(...parsed)-Math.min(...parsed))/86400000 : 0; }
 function formatRatings(indexed,x,posterior,shift) { const stats=new Map(indexed.players.map(p=>[p.id,{games:0,wins:0}]));let league={games:0,wins:0};indexed.observations.forEach(o=>{[...o.red,...o.blue].forEach(id=>{const s=stats.get(id);s.games++;if(o.winner==='red'&&o.red.includes(id)||o.winner==='blue'&&o.blue.includes(id))s.wins++;});if(o.league){league.games++;if(o.winner==='blue')league.wins++;}});const rows=indexed.players.map(p=>rating(p.id,p.name,x[indexed.latestIndexes.get(p.id)]+shift,posterior.variances[indexed.latestIndexes.get(p.id)]??1,stats.get(p.id)));rows.push(rating(BAYESIAN_POOLED_LEAGUE_OPPONENT_ID,BAYESIAN_POOLED_LEAGUE_OPPONENT_NAME,x[indexed.leagueIndex]+shift,posterior.variances[indexed.leagueIndex]??1,league,{isLeagueContext:true,isSynthetic:true}));return rows; }
 function rating(id,name,latent,variance,stats,extra={}) { const mu=BAYESIAN_DISPLAY_BASE+BAYESIAN_DISPLAY_SCALE*latent,sigma=Math.max(1e-6,BAYESIAN_DISPLAY_SCALE*Math.sqrt(Math.max(0,variance)));return {id,name,mu,sigma,ordinal:mu-3*sigma,games:stats.games,wins:stats.wins,winrate:stats.games?stats.wins/stats.games:0,...extra}; }
-function formatHistory(indexed,x,posterior,shift) { const output={}; indexed.players.forEach(p=>{const states=indexed.playerStates.get(p.id);output[p.id]=states.map(state=>{const variance=posterior.variances[state.index]??1;const central=BAYESIAN_DISPLAY_BASE+BAYESIAN_DISPLAY_SCALE*(x[state.index]+shift),sigma=BAYESIAN_DISPLAY_SCALE*Math.sqrt(Math.max(0,variance));const games=indexed.observations.reduce((count, observation) => count + (observation.date.slice(0, 7) <= state.month.slice(0, 7) && (observation.red.includes(p.id) || observation.blue.includes(p.id)) ? 1 : 0), 0);return {date:state.month,central,mu:central,sigma,variance,ordinal:central-3*sigma,games};});});return output; }
+function formatHistory(indexed,x,posterior,shift) { const output={}; indexed.players.forEach(p=>{const states=indexed.playerStates.get(p.id);output[p.id]=states.map(state=>{const variance=posterior.variances[state.index]??1;const central=BAYESIAN_DISPLAY_BASE+BAYESIAN_DISPLAY_SCALE*(x[state.index]+shift),sigma=BAYESIAN_DISPLAY_SCALE*Math.sqrt(Math.max(0,variance));const games=indexed.observations.reduce((count, observation) => count + (weeklyBucketKey(observation.date) <= state.date && (observation.red.includes(p.id) || observation.blue.includes(p.id)) ? 1 : 0), 0);return {date:state.date,central,mu:central,sigma,variance,ordinal:central-3*sigma,games};});});return output; }
 function fingerprint(players,games) { return JSON.stringify({p:createPlayerEntityFingerprint(players),g:createGameFingerprintMap(games)}); }

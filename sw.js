@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v25-overall-dynamic-history';
+const CACHE_VERSION = 'vball-static-v26-overall-dynamic-history';
 const APP_SHELL = [
   './',
   './index.html',

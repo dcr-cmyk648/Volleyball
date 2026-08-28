@@ -4,6 +4,7 @@ import {
   BAYESIAN_POOLED_LEAGUE_OPPONENT_ID,
   BAYESIAN_POOLED_LEAGUE_OPPONENT_NAME,
   createGameFingerprintMap,
+  createGameFingerprint,
   createPlayerEntityFingerprint,
   getStableGameIdentity,
   sortBayesianRatings,
@@ -23,6 +24,35 @@ export const OVERALL_DYNAMIC_MONTHLY_SD_LATENT =
   OVERALL_DYNAMIC_MONTHLY_SD_DISPLAY / OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT;
 
 const EPS = 1e-9;
+
+/** Display-only conversion from a pooled team-average posterior to one player. */
+export function getDynamicLeagueIndividualEffectiveSize(games = [], gameFingerprints = {}) {
+  const fingerprints = gameFingerprints && typeof gameFingerprints === 'object' ? gameFingerprints : {};
+  const sizes = (Array.isArray(games) ? games : []).flatMap((game, index) => {
+    if (!game?.isLeagueGame) return [];
+    const identity = getStableGameIdentity(game, index);
+    if (!identity || fingerprints[identity] !== createGameFingerprint(game, identity)) return [];
+    const size = Array.isArray(game.redTeam) ? game.redTeam.length : 0;
+    return Number.isFinite(size) && size > 0 ? [size] : [];
+  });
+  return sizes.length / sizes.reduce((sum, size) => sum + 1 / size, 0) || 1;
+}
+
+export function formatDynamicLeagueIndividualRating(pooledRating, games = [], gameFingerprints = {}) {
+  const nEff = getDynamicLeagueIndividualEffectiveSize(games, gameFingerprints);
+  const mu = Number(pooledRating?.mu) || BAYESIAN_DISPLAY_BASE;
+  const sigma = Math.max(1e-6, (Number(pooledRating?.sigma) || 0) * Math.sqrt(nEff));
+  return {
+    ...pooledRating,
+    name: 'League Player',
+    mu,
+    sigma,
+    ordinal: mu - 3 * sigma,
+    leagueIndividualEffectiveSize: nEff,
+    isLeagueContext: true,
+    isSynthetic: true,
+  };
+}
 
 export function calculateOverallDynamicScoreboard({ players = [], games = [], onProgress = null } = {}) {
   const progress = (percent, stage, message, diagnostics = {}) => onProgress?.({ type: 'progress', percent, stage, message, diagnostics });

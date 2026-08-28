@@ -113,5 +113,57 @@ const sparseState = await evaluate(`(() => {
 })()`);
 if (sparseState.available && (!sparseState.visible || sparseState.x !== '316.00')) throw new Error(`Sparse history did not render as a centered one-knot chart: ${JSON.stringify(sparseState)}`);
 
+await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+const mobileRows = await evaluate(`(() => {
+  const rows = [...document.querySelectorAll('#bayesianTableBody tr')];
+  const league = rows.find(row => row.textContent.includes('League Player'));
+  const leagueCells = [...(league?.querySelectorAll('td') || [])];
+  const realButton = document.querySelector('#bayesianTableBody .history-player-button');
+  const wrapper = document.querySelector('.bayesian-table-wrap');
+  const gamesHeader = document.querySelector('.bayesian-table .games-col');
+  return {
+    leagueName: leagueCells[2]?.textContent?.trim(), leagueRating: leagueCells[3]?.textContent?.trim(), leagueRank: leagueCells[1]?.textContent?.trim(), leagueInteractive: Boolean(league?.querySelector('button')),
+    rowHeight: realButton?.closest('tr')?.getBoundingClientRect().height || 0,
+    buttonHeight: realButton?.getBoundingClientRect().height || 0,
+    buttonOneLine: getComputedStyle(realButton).whiteSpace === 'nowrap' && realButton.scrollHeight <= realButton.clientHeight + 1,
+    buttonColor: getComputedStyle(realButton).color,
+    restingBorderBottomWidth: getComputedStyle(realButton).borderBottomWidth,
+    restingBorderBottomStyle: getComputedStyle(realButton).borderBottomStyle,
+    restingTextDecoration: getComputedStyle(realButton).textDecorationLine,
+    gamesHeader: gamesHeader?.textContent?.trim(), gamesHeaderFits: gamesHeader?.scrollWidth <= gamesHeader?.clientWidth,
+    constrainedWrapper: wrapper?.classList.contains('standings-wrap') && getComputedStyle(wrapper).overflowX === 'auto',
+    expected: (() => {
+      const snapshot = JSON.parse(localStorage.getItem(${JSON.stringify(snapshotKey)}));
+      const pooled = snapshot.ratings.find(row => row.isLeagueContext);
+      const sizes = ${JSON.stringify(db.games.filter(game => game.isLeagueGame).map(game => game.redTeam.length))};
+      const nEff = sizes.length / sizes.reduce((sum, size) => sum + 1 / size, 0);
+      const ordinal = pooled.mu - 3 * pooled.sigma * Math.sqrt(nEff);
+      return { rating: Math.round(1500 + 50 * ordinal), nEff };
+    })(),
+  };
+})()`);
+await evaluate(`document.querySelector('#bayesianTableBody .history-player-button')?.focus({ focusVisible: true })`);
+const focusedButton = await evaluate(`(() => {
+  const button = document.querySelector('#bayesianTableBody .history-player-button');
+  const style = getComputedStyle(button);
+  return {
+    isFocused: document.activeElement === button,
+    focusVisible: button?.matches(':focus-visible') || false,
+    outlineStyle: style.outlineStyle,
+    outlineWidth: Number.parseFloat(style.outlineWidth) || 0,
+  };
+})()`);
+// The fixed 2026-06-20 fixture deterministically places the derived row 14th.
+if (mobileRows.leagueName !== 'League Player' || Number(mobileRows.leagueRating) !== mobileRows.expected.rating || Number(mobileRows.leagueRank) !== 14 || mobileRows.leagueInteractive || !mobileRows.buttonOneLine || mobileRows.buttonHeight > 24 || mobileRows.restingBorderBottomWidth !== '0px' || mobileRows.restingBorderBottomStyle !== 'none' || mobileRows.restingTextDecoration !== 'none' || !mobileRows.gamesHeaderFits || mobileRows.gamesHeader !== 'Games' || !mobileRows.constrainedWrapper || !focusedButton.isFocused || !focusedButton.focusVisible || focusedButton.outlineStyle === 'none' || focusedButton.outlineWidth <= 0) throw new Error(`Mobile dynamic table failed: ${JSON.stringify({ mobileRows, focusedButton })}`);
+await send('Page.navigate', { url: `${baseUrl}/stats.html?tab=season` });
+await new Promise(resolve => setTimeout(resolve, 500));
+const normalRowHeight = await evaluate(`document.querySelector('#statsTableBody tr')?.getBoundingClientRect().height || 0`);
+if (!(normalRowHeight > 0) || Math.abs(mobileRows.rowHeight - normalRowHeight) > 1) throw new Error(`Mobile All-Time row is not aligned with Season Ranking: ${mobileRows.rowHeight} vs ${normalRowHeight}`);
+await send('Page.navigate', { url: `${baseUrl}/stats.html?tab=allTime&mode=composite` });
+await new Promise(resolve => setTimeout(resolve, 400));
+await evaluate(`document.getElementById('overallBigTeamModeButton').click()`);
+const staticMode = await evaluate(`({ buttons: document.querySelectorAll('#bayesianTableBody .history-player-button').length, leaguePlayer: [...document.querySelectorAll('#bayesianTableBody tr')].some(row => row.textContent.includes('League Player')) })`);
+if (staticMode.buttons || staticMode.leaguePlayer) throw new Error(`Big Team changed unexpectedly: ${JSON.stringify(staticMode)}`);
+
 console.log('Dynamic Overall history overlay browser test passed.');
 ws.close();

@@ -343,17 +343,30 @@
     .history-player-button {
       appearance: none;
       border: 0;
-      border-bottom: 1px solid rgba(148, 163, 184, 0.45);
       border-radius: 0;
       margin: 0;
       padding: 0;
-      color: inherit;
+      display: block;
+      width: 100%;
+      min-height: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--link);
       background: transparent;
       font: inherit;
+      font-weight: 700;
+      text-decoration: none;
+      line-height: inherit;
       text-align: left;
       cursor: pointer;
     }
-    .history-player-button:hover, .history-player-button:focus-visible { color: var(--link); border-bottom-color: var(--link); outline: none; }
+    .history-player-button:hover { color: var(--link); text-decoration: underline; }
+    .history-player-button:focus-visible {
+      color: var(--link);
+      outline: 2px solid var(--link);
+      outline-offset: 2px;
+    }
 
     @media (max-width: 480px) {
       .history-dialog-backdrop { padding: 8px; }
@@ -646,6 +659,8 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+
+    .bayesian-table .player-cell { min-width: 0; }
 
     .scoreboard-mode-row {
       display: flex;
@@ -1563,7 +1578,7 @@
       .bayesian-table .trend-col { width: 48px; }
       .bayesian-table .rank-col { width: 30px; }
       .bayesian-table .rating-col { width: 62px; }
-      .bayesian-table .games-col { width: 42px; }
+      .bayesian-table .games-col { width: 52px; }
 
       .bayesian-table th,
       .bayesian-table td {
@@ -1876,7 +1891,7 @@
         </div>
         <div id="bayesianStatus" class="status hidden"></div>
 
-        <div class="table-wrap bayesian-table-wrap" style="margin-top: 10px;">
+        <div class="table-wrap standings-wrap bayesian-table-wrap" style="margin-top: 10px;">
           <table class="bayesian-table">
             <thead>
               <tr>
@@ -2016,6 +2031,7 @@
     } from './bayesian-ratings.js';
     import {
       OVERALL_DYNAMIC_SNAPSHOT_STORAGE_KEY,
+      formatDynamicLeagueIndividualRating,
       validateOverallDynamicSnapshot,
     } from './overall-dynamic-ratings.js';
     import {
@@ -8050,10 +8066,22 @@
     function getBayesianDisplayRows(snapshot = bayesianSnapshot, players = loadPlayers()) {
       if (!snapshot?.ratings) return [];
       const nameMap = getBayesianCurrentNameMap(players);
-      const baseRows = sortBayesianRatings(snapshot.ratings.map(row => ({
-        ...row,
-        name: nameMap.get(String(row.id)) || row.name,
-      }))).filter(row => Number(row.games) > 0);
+      const isDynamicOverall = snapshot.schemaVersion === 2 && snapshot.modelVersion === 'overall-dynamic-v2';
+      const baseRows = sortBayesianRatings(snapshot.ratings.map(row => {
+        const displayRow = isDynamicOverall && row?.isLeagueContext
+          ? formatDynamicLeagueIndividualRating(
+            row,
+            getBayesianModelGamesForMode('composite'),
+            snapshot.gameFingerprints || {}
+          )
+          : row;
+        return {
+          ...displayRow,
+          name: displayRow?.isLeagueContext
+            ? displayRow.name
+            : nameMap.get(String(displayRow.id)) || displayRow.name,
+        };
+      })).filter(row => Number(row.games) > 0);
       const scoreboardMaxGames = getScoreboardMaxGamesForRows(baseRows);
       const rankedRows = baseRows
         .map(row => {
@@ -8232,7 +8260,11 @@
       if (!bayesianTableBodyEl) return;
       bayesianTableBodyEl.innerHTML = '';
       const rows = getBayesianDisplayRows(bayesianSnapshot, players);
-      const priorRows = getBayesianDisplayRows({ ratings: bayesianSnapshot?.priorRatings || [] }, players);
+      const priorRows = getBayesianDisplayRows({
+        ...bayesianSnapshot,
+        ratings: bayesianSnapshot?.priorRatings || [],
+        gameFingerprints: bayesianSnapshot?.priorGameFingerprints || bayesianSnapshot?.gameFingerprints || {},
+      }, players);
       const currentMap = {};
       const priorMap = {};
       rows.forEach(row => { currentMap[String(row.id)] = { rank: row.rank, games: row.games }; });

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   calculateOverallDynamicScoreboard,
+  formatDynamicLeagueIndividualRating,
+  getDynamicLeagueIndividualEffectiveSize,
   OVERALL_DYNAMIC_SNAPSHOT_SCHEMA_VERSION,
   OVERALL_DYNAMIC_MONTHLY_SD_LATENT,
   OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
@@ -29,6 +31,44 @@ test('dynamic Overall pools every league context equally into one learned row', 
   assert.equal(pooled.games, 3);
   assert.equal(pooled.isLeagueContext, true);
   assert.notEqual(pooled.mu, 25);
+});
+
+test('pooled league display converts team uncertainty to a fingerprint-scoped individual', () => {
+  const a = player('a');
+  const games = [
+    league(1, '2026-01-01', Array.from({ length: 5 }, () => a)),
+    league(2, '2026-01-02', Array.from({ length: 7 }, () => a)),
+  ];
+  const snapshot = calculateOverallDynamicScoreboard({ players: [a], games });
+  const pooled = row(snapshot, BAYESIAN_POOLED_LEAGUE_OPPONENT_ID);
+  const nEff = getDynamicLeagueIndividualEffectiveSize(games, snapshot.gameFingerprints);
+  const individual = formatDynamicLeagueIndividualRating(pooled, games, snapshot.gameFingerprints);
+  assert.equal(nEff, 2 / (1 / 5 + 1 / 7));
+  assert.equal(individual.mu, pooled.mu);
+  assert.equal(individual.sigma, pooled.sigma * Math.sqrt(nEff));
+  assert.equal(individual.ordinal, individual.mu - 3 * individual.sigma);
+  assert.equal(individual.name, 'League Player');
+  assert.equal(individual.games, pooled.games);
+  assert.equal(getDynamicLeagueIndividualEffectiveSize([], snapshot.gameFingerprints), 1);
+  assert.equal(getDynamicLeagueIndividualEffectiveSize([{ ...games[0], scoreRed: 24 }], snapshot.gameFingerprints), 1);
+});
+
+test('fixed roster distribution has deterministic individual uncertainty and display conversion', () => {
+  const pooled = { id: 'league', name: 'League Team', mu: 25, sigma: 2, games: 4, wins: 2, winrate: .5 };
+  const games = [5, 6, 7, 8].map((size, index) => ({
+    id: index + 1,
+    createdAt: `2026-01-0${index + 1}`,
+    isLeagueGame: true,
+    redTeam: Array.from({ length: size }, (_, playerIndex) => player(`${index}-${playerIndex}`)),
+    blueTeam: [], scoreRed: 25, scoreBlue: 20, winner: 'red',
+  }));
+  const snapshot = calculateOverallDynamicScoreboard({ players: games.flatMap(game => game.redTeam), games });
+  const nEff = getDynamicLeagueIndividualEffectiveSize(games, snapshot.gameFingerprints);
+  const individual = formatDynamicLeagueIndividualRating(pooled, games, snapshot.gameFingerprints);
+  assert.equal(nEff, 4 / (1 / 5 + 1 / 6 + 1 / 7 + 1 / 8));
+  assert.equal(individual.sigma, 2 * Math.sqrt(nEff));
+  assert.equal(Math.round(1500 + 50 * individual.ordinal), Math.round(1500 + 50 * (25 - 6 * Math.sqrt(nEff))));
+  assert.equal(individual.games, 4);
 });
 
 test('history endpoint exactly matches each current real-player rating', () => {

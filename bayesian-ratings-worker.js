@@ -31,6 +31,7 @@ self.addEventListener('message', event => {
       });
       snapshot.priorRatings = priorSnapshot.ratings;
       snapshot.priorGamesConsidered = priorSnapshot.gamesConsidered;
+      if (dynamicOverall) snapshot.priorGameFingerprints = priorSnapshot.gameFingerprints;
       self.postMessage({
         type: 'progress',
         stage: 'trend',

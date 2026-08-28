@@ -204,3 +204,93 @@ resulting publication status.
 - The PWA cache generation is bumped to
   `vball-static-v25-overall-dynamic-history`, and the new dynamic module is part
   of the offline app shell so phones cannot remain on the previous scoreboard.
+
+## Follow-up — Mobile Table and League Individual
+
+### User Feedback
+
+- The deployed All-Time Bayesian table is visually broken on mobile: the
+  interactive player-name button inherits the global 44px button height, names
+  sit on a second line, rows are much taller than Season Ranking, and the Games
+  header is ellipsized.
+- Use the normal Season Ranking table in the supplied phone screenshot as the
+  exact compact-format reference, while retaining name activation for history.
+- Replace the misleading pooled-team leaderboard row with the comparable rating
+  of one player on a same-sized league opponent.
+
+### Mathematical Decision
+
+- The likelihood already compares team-average skill, so replacing a league
+  opponent with `n` identical weighted players would leave its learned mean and
+  every prediction unchanged. The inflated-looking row comes from displaying
+  the very certain pooled team-average posterior as though it were one player.
+- Convert only the synthetic display row from team-average uncertainty to
+  individual uncertainty. For each included league game, the assumed opponent
+  roster size equals the recorded local roster size. With varying sizes, use
+  the harmonic effective size `n_eff = 1 / mean(1 / n)` because an average of
+  `n` independent comparable players has variance `individual_variance / n`.
+  Therefore `individual_sigma = team_average_sigma * sqrt(n_eff)`; mean skill,
+  game likelihood, league weight, and every real-player result remain unchanged.
+- The current 99 league games contain three 5-player, 54 6-player, 34 7-player,
+  and eight 8-player rosters. `n_eff = 6.4048`, converting the synthetic row
+  from 2487/rank 4 to approximately 2155/rank 17 under current display options.
+- Label the dynamic Overall synthetic row `League Player`; keep its Games value
+  at 99 pooled source matches and keep it noninteractive/non-player-only.
+- Apply this as a display interpretation of existing dynamic snapshots so the
+  deployed schema-v2 cache does not require a recalculation. Use snapshot game
+  fingerprints (and prior fingerprints when available) so stale/new games do
+  not silently alter the saved row or rank-movement comparison.
+
+### Follow-up Requirements
+
+- Give the Bayesian table the same constrained scroll wrapper, fixed columns,
+  compact mobile padding, non-ellipsized headers, single-line blue bold player
+  names, and row height as the normal Season Ranking table.
+- Preserve click, Enter/Space activation, history overlay behavior, and visible
+  focus. League Player and static Big/Small league rows remain plain text.
+- Do not change scoreboard explanatory copy, real-player ratings/ranks, forward
+  balancing, Season Ranking, Trend, Game History, or league likelihood impact.
+- Add focused unit/browser regression coverage for same-size conversion,
+  snapshot scoping, expected current-data result, compact mobile geometry,
+  header visibility, row alignment, overlay activation, and static-mode scope.
+- Do not stage, commit, push, or deploy without a new explicit publication
+  request. Preserve the five unrelated dirty files.
+
+### Follow-up Progress
+
+- [x] Supplied mobile screenshots inspected and root cause identified.
+- [x] Current-data same-size individual calculation validated.
+- [x] Display conversion, compact table styling, and focused tests.
+- [x] Full consistency regression and phone-sized local audit.
+
+### Follow-up Validation
+
+- `npm test`: 43/43 tests passed. The individual conversion tests use fixed,
+  constructed rosters rather than the mutable local `default_database`.
+- The focused Chrome regression passed at 390px. It verifies compact row
+  geometry aligned with Season Ranking, a fully visible Games header, no
+  resting underline/border, a visible keyboard focus ring, history overlay
+  behavior, a plain noninteractive League Player row, and unchanged static
+  Big-Team scope.
+- The broad browser smoke reached and passed the default and advanced Season
+  Ranking/Trend/Game History alignment assertions. It later stopped at the
+  unrelated Play-tab stale-server registration assertion because the UI was
+  still in `Checking Google Drive stats...` instead of opening the sync dialog
+  within that test's fixed wait. No sync or registration code changed here.
+- A current-data audit used all 347 source games and all 99 league games. The
+  roster harmonic effective size is `6.404805914972282`; the displayed League
+  Player is 2155, rank 17, with 99 pooled source matches. At 390px the audited
+  row height is 31px, the interactive real-player name is 14px high and one
+  line, Games fits, and the history endpoint exactly matches the current row.
+- Visual audit screenshots are
+  `/private/tmp/vball-current-mobile-audit.png` and
+  `/private/tmp/vball-league-row-mobile-audit.png`.
+- JavaScript syntax checks and `git diff --check` passed. The PWA cache version
+  is `vball-static-v26-overall-dynamic-history`.
+
+### Follow-up Exact Next Action
+
+The user explicitly authorized publication on August 28, 2026. Commit only the
+seven reviewed follow-up implementation, test, cache, and ExecPlan files; keep
+the five protected local changes unstaged. Push the resulting `mac-beta` HEAD
+to `origin/main`, then verify the GitHub Pages run and production file hashes.

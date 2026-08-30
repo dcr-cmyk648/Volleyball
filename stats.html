@@ -2037,6 +2037,7 @@
       OVERALL_DYNAMIC_MODEL_VERSION,
       OVERALL_DYNAMIC_SNAPSHOT_STORAGE_KEY,
       formatDynamicLeagueIndividualRating,
+      getOverallDynamicWeeklyBucketKey,
       validateOverallDynamicSnapshot,
     } from './overall-dynamic-ratings.js';
     import {
@@ -8068,15 +8069,21 @@
       });
     }
 
+    function getBayesianCalculationGamesForMode(mode = getOverallScoreboardMode()) {
+      return mode === 'composite'
+        ? getBayesianGamesForMode(mode)
+        : getBayesianModelGamesForMode(mode);
+    }
+
     function getBayesianDisplayRows(snapshot = bayesianSnapshot, players = loadPlayers()) {
       if (!snapshot?.ratings) return [];
       const nameMap = getBayesianCurrentNameMap(players);
-      const isDynamicOverall = snapshot.schemaVersion === 2 && snapshot.modelVersion === OVERALL_DYNAMIC_MODEL_VERSION;
+      const isDynamicOverall = snapshot.schemaVersion === 3 && snapshot.modelVersion === OVERALL_DYNAMIC_MODEL_VERSION;
       const baseRows = sortBayesianRatings(snapshot.ratings.map(row => {
         const displayRow = isDynamicOverall && row?.isLeagueContext
           ? formatDynamicLeagueIndividualRating(
             row,
-            getBayesianModelGamesForMode('composite'),
+            getBayesianCalculationGamesForMode('composite'),
             snapshot.gameFingerprints || {}
           )
           : row;
@@ -8119,7 +8126,12 @@
     function getOverallHistoryDisplayPoints(row) {
       const knots = bayesianSnapshot?.history?.[String(row?.id)];
       if (!Array.isArray(knots)) return [];
-      return knots.map(knot => {
+      const weeklyKnots = [...knots].reduce((selected, knot) => {
+        const bucket = getOverallDynamicWeeklyBucketKey(knot.date);
+        selected.set(bucket, knot);
+        return selected;
+      }, new Map());
+      return [...weeklyKnots.values()].map(knot => {
         const games = Math.max(0, Number(knot.games) || 0);
         const penalty = getScoreboardMissingGamePenaltyRaw(row.scoreboardMaxGames, games);
         const toDisplay = raw => formatDisplayedRating(
@@ -8310,7 +8322,7 @@
       const mode = getOverallScoreboardMode();
       bayesianSnapshot = loadBayesianSnapshotForMode(mode) || null;
       const players = loadPlayers();
-      const games = getBayesianModelGamesForMode(mode);
+      const games = getBayesianCalculationGamesForMode(mode);
       const uiState = createBayesianUiState({
         players,
         games,
@@ -8514,11 +8526,11 @@
         worker.postMessage({
           type: 'calculate',
           players,
-          games: getBayesianModelGamesForMode(mode),
+          games: getBayesianCalculationGamesForMode(mode),
           includeLeagueRatings: mode === 'composite',
           dynamicOverall: mode === 'composite',
           priorGames: (() => {
-            const games = getBayesianModelGamesForMode(mode);
+            const games = getBayesianCalculationGamesForMode(mode);
             const recentSessionGames = getRecentSessionGames(games, { includeLeagueGames: true });
             const excludeIds = new Set(recentSessionGames.map(game => game.id));
             return games.filter(game => game && !excludeIds.has(game.id));

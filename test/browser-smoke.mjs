@@ -32,7 +32,7 @@ const nonLeagueSeasonRankingWindowGames = nonLeagueGames.filter(game => {
   const date = getGameDateValue(game);
   return isValidDateString(date) && date >= getSeasonRankingWindowCutoffDate(nonLeagueGames);
 });
-const snapshotKey = 'gameDayBayesianScoreboardSnapshotV3:composite';
+const snapshotKey = 'gameDayBayesianScoreboardSnapshotV4:overall-session-exposure';
 const bigTeamSnapshotKey = 'gameDayBayesianScoreboardSnapshotV1:bigTeam';
 const smallTeamSnapshotKey = 'gameDayBayesianScoreboardSnapshotV1:smallTeam';
 const seasonRankingSettingsKey = 'gameDaySeasonRankingAdvancedSettingsV1';
@@ -863,6 +863,7 @@ const completed = await evaluate(client, `
           winnerOnly: snapshot.winnerOnlyGames,
           mattOrdinal: matt?.ordinal,
           schemaVersion: snapshot.schemaVersion,
+          modelVersion: snapshot.modelVersion,
           dynamicConverged: snapshot.diagnostics?.optimizer?.converged,
           leagueGamesIncluded: snapshot.diagnostics?.leagueGamesIncluded,
           bigTeamSchemaVersion: bigTeamSnapshot.schemaVersion,
@@ -880,7 +881,12 @@ const completed = await evaluate(client, `
           leagueHistory: snapshot.history?.league_team_bayesian_pooled,
           leagueRows: snapshot.ratings
             .filter(row => row.isLeagueContext)
-            .map(row => ({ id: row.id, name: row.name, games: row.games })),
+            .map(row => ({
+              id: row.id,
+              name: row.name,
+              games: row.games,
+              leagueRatingIsIndividual: row.leagueRatingIsIndividual,
+            })),
           rowCount: document.querySelectorAll('#bayesianTableBody tr').length
         });
       } else if (Date.now() - started > 30000) {
@@ -1543,7 +1549,8 @@ if (completed.games !== 126 || completed.scored !== 123 || completed.winnerOnly 
   throw new Error(`Unexpected snapshot counts: ${JSON.stringify(completed)}`);
 }
 if (
-  completed.schemaVersion !== 2 ||
+  completed.schemaVersion !== 3 ||
+  completed.modelVersion !== 'overall-session-exposure-hierarchical-v1' ||
   completed.dynamicConverged !== true ||
   completed.leagueGamesIncluded !== leagueGameCount ||
   completed.bigTeamSchemaVersion !== 1 ||
@@ -1555,7 +1562,8 @@ if (
   completed.leagueHistory !== undefined ||
   completed.leagueRows.length !== 1 ||
   completed.leagueRows[0].name !== 'League Team' ||
-  completed.leagueRows[0].games !== leagueGameCount
+  completed.leagueRows[0].games !== leagueGameCount ||
+  completed.leagueRows[0].leagueRatingIsIndividual !== true
 ) {
   throw new Error(`Bayesian league teams were not pooled into one row: ${JSON.stringify(completed)}`);
 }

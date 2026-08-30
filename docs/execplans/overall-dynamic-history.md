@@ -520,7 +520,7 @@ from the verified sweep, not a new or retuned model.
 - [x] Implement weekly model/storage identity and deterministic regressions.
 - [x] Integrate weekly history with the pending mobile chart/table changes.
 - [x] Run full validation and local phone audit.
-- [ ] Commit scoped files, push to origin/main, and verify deployment.
+- [x] Commit scoped files, push to origin/main, and verify deployment.
 
 ### Validation
 
@@ -544,7 +544,1256 @@ from the verified sweep, not a new or retuned model.
 
 ### Exact Next Action
 
-Commit only the seven reviewed Overall implementation, chart/table, test,
-cache, and ExecPlan files while leaving the five protected local changes
-unstaged. Push that commit to `origin/main`, verify the GitHub Pages workflow,
-and compare the deployed production files with the reviewed commit.
+The weekly Overall release is deployed. Let the user audit the production and
+local URLs; make no further rating or chart changes without new feedback.
+
+### Release Result
+
+- Scoped commit `918037967cfe10c929ef5e0232ece0116ac90fc8` was pushed to
+  `origin/main`; the five protected local files remained unstaged.
+- GitHub Pages run `33199720521` completed successfully.
+- Production `stats.html`, `overall-dynamic-ratings.js`, and `sw.js` matched the
+  reviewed local files byte-for-byte by SHA-256. The live model/storage identity
+  is `overall-dynamic-weekly-v3` / `gameDayBayesianScoreboardSnapshotV3:composite`,
+  and the live PWA cache generation is `vball-static-v28-overall-dynamic-history`.
+
+## Investigation — Dynamic Smoothing and Shared Improvement
+
+### Goal
+
+Determine why the deployed weekly Overall paths are effectively flat and test
+whether a better-calibrated process prior or a shared, league-anchored group
+trend can produce defensible absolute-skill histories. This is harness-only:
+do not modify, stage, commit, push, or deploy application code.
+
+### Current Evidence
+
+- The refreshed August 28 source has 76 players and 347 games through August
+  27, including all 99 league games at full likelihood impact.
+- Over the latest ten weeks, all 27 players with at least four weekly states
+  have under one public point of fitted central-skill range. The median is 0.18
+  points and the maximum is 0.82; AlexaY moves only 0.064 points over eight
+  weekly states despite growing from 51 to 140 cumulative games.
+- A preliminary full-data sensitivity check shows median ten-week central
+  ranges of 0.18, 0.71, 2.75, 10.41, and 33.29 points at monthly process SDs of
+  10, 20, 40, 80, and 160. These are descriptive fits, not sufficient for
+  choosing a model.
+
+### Requirements and Model Candidates
+
+- Reproduce the exact deployed Monday-anchored weekly model before trusting
+  comparisons. Preserve the 10-effective-point score-share likelihood, exact
+  elapsed-day Brownian scaling, stable pooled league opponent, full league
+  weight, current affine reference convention, and hold-last prediction.
+- Evaluate independent player random walks at monthly public process SDs 10
+  (current), 20, 40, 60, 80, 100, 120, and 160.
+- Evaluate a hierarchical shared-trend formulation in which each player's
+  change is centered on a common weekly cohort change learned relative to the
+  stable league opponent, with a separate smaller player-deviation process.
+  Sweep group movement SDs 20, 40, 60, 80, 100, and 120 against individual
+  deviation SDs 5, 10, 20, and 40. Anchor the first group state and preserve
+  identifiable static player and league baselines.
+- Shared movement must cancel from same-date local-vs-local comparisons and be
+  identified materially by league evidence; it must not manufacture a trend
+  merely from the changing composition of internal teams.
+- Make no monotonic-improvement assumption. The learned shared trend and every
+  player path may rise or fall.
+
+### Evaluation
+
+- Use expanding, blocked future-date validation with nonoverlapping play-date
+  test blocks. Report score-share log loss, winner Brier score and accuracy for
+  all games, league games, and internal games separately.
+- Compare each candidate with the current 10-point model using paired
+  play-date-clustered uncertainty. Treat differences whose intervals cross zero
+  as predictive ties.
+- On full-data fits report convergence/runtime, ten-week path ranges, AlexaY
+  and representative-player paths, learned group movement, individual residual
+  movement, current uncertainty, current-rating shifts, rank correlation,
+  top-10 overlap, and League Player rating.
+- Explicitly distinguish central skill, conservative ordinal, and the visible
+  leaderboard path with confidence/volume penalties. Do not select a model
+  because penalties create movement or because a line merely looks active.
+- If the broad grid exposes a plausible predictive plateau, run a narrower
+  deterministic refinement around its boundary. Report winners, losers,
+  tradeoffs, identifiability limitations, and recommended follow-up without
+  changing production.
+
+### Acceptance Criteria
+
+- Exact current-model equivalence is proven numerically on the 347-game source.
+- Every candidate includes all 99 league games at 1.0 weight and produces
+  finite deterministic fits and predictions.
+- The shared trend is explicitly anchored and its internal-game cancellation is
+  regression-tested.
+- Recommendations are based on held-out evidence plus calibration/path
+  diagnostics, with uncertainty and ranking impact stated clearly.
+- No application, protected handoff, database, Git, or deployment state changes.
+
+### Progress
+
+- [x] Confirm flatness is in the fitted skill path rather than only rendering.
+- [x] Build and validate the exact process-noise/shared-trend harness.
+- [x] Run broad blocked-validation and full-data sweeps.
+- [x] Refine promising candidates and report conclusions.
+
+### Harness Architecture Decision
+
+- The exact independent 10-point baseline reproduces the deployed weekly model
+  with zero numeric difference: 347 observations, 99 league games, 389 player
+  states / 390 dimensions, and the same three-iteration converged solution.
+- Accept the identified additive shared formulation for the experiment:
+  `skill = static player baseline + anchored cohort state + player deviation`.
+  The first cohort and per-player deviation states are fixed at zero; static
+  player and pooled-league baselines retain proper priors.
+- The cohort term has exactly zero coefficient in same-date internal game
+  contrasts. Mirrored synthetic league evidence produces equal-and-opposite
+  cohort movement, and deterministic/sparse-input checks pass.
+- Full-data uncertainty and conservative ratings must use the covariance of the
+  complete baseline + group + deviation linear combination, not a sum of
+  marginal variances. Evaluate a player's current skill at their last observed
+  appearance so an inactive player does not inherit later cohort drift without
+  evidence.
+
+### Broad Sweep Results
+
+- Thirty-two candidates completed four expanding-date folds covering 255 held-
+  out games. Every fit converged, retained full league weight, produced finite
+  endpoints, and passed deterministic repeat checks.
+- The current independent 10-point model scores 0.6924443 log loss, 0.2452080
+  winner Brier, and 57.25% accuracy. Every broad candidate is statistically tied
+  with it by paired play-date bootstrap intervals.
+- The apparent all-game log-loss winner is shared group-80 / deviation-5 at
+  0.6924413, but its future league log loss is slightly worse than baseline.
+  Its negligible player deviations and roughly 52-point common decline improve
+  only the internal-game regularization; they are not evidence that the league
+  anchor detected group improvement.
+- High shared-process candidates are structurally fragile: group-80 moves the
+  League Player from 2155 to about 1908 and changes current conservative ratings
+  by roughly 59 points RMS / 124 maximum while losing one top-10 member.
+- Independent SD 40 retains all ten top players with a 2.32-point median recent
+  central range; SD 60 also retains all ten with a 4.95-point range. SD 80 and
+  above increasingly alter current ratings/ranks without a predictive gain.
+- A modest shared group-20 process produces about an eight-point common decline,
+  a six-point median recent path range, top-10 overlap 10/10, and League Player
+  near 2119. The broad data still cannot distinguish this from zero shared
+  movement.
+
+### Refinement Results
+
+- The refinement evaluated independent monthly process SDs 45 through 75 and
+  shared group SDs 5 through 30 crossed with deviation SDs 40, 60, and 80. All
+  candidates converged, included all 99 league games at full weight, retained
+  finite equal endpoints, and remained predictively tied with the deployed
+  10-point model over the same four folds / 255 held-out games.
+- Independent SD 45 is the conservative edge of a useful display compromise:
+  its recent ten-week central-skill range is 2.91 points median, 9.31 p90, and
+  13.30 maximum. It retains all ten baseline top-10 players, leaves League
+  Player near 2152, and changes current conservative ratings by 15.83 points
+  RMS / 45.67 maximum. AlexaY's full central path range is 2.16 points.
+- Independent SD 50 gives slightly more movement (3.54 median, 11.29 p90,
+  16.14 maximum; AlexaY 2.67) while retaining the baseline top 10. Current
+  conservative-rating shifts grow to 19.46 points RMS / 56.23 maximum and
+  League Player remains near 2151.
+- Independent SD 60 remains the upper conservative boundary with 4.95 median,
+  15.62 p90, and 22.34 maximum recent central movement and 10/10 top-10
+  overlap, but current-rating shifts reach 27.53 points RMS / 79.72 maximum.
+  At SD 65 the top-10 overlap first falls to 9/10, and larger values continue
+  increasing rating/rank movement without held-out improvement.
+- Every shared candidate's posterior 95% interval for net cohort movement
+  includes zero. For group-10 / deviation-60, the fitted net is -2.21 points
+  with interval [-43.55, 39.12]; group-20 / deviation-60 is -8.03 with
+  interval [-87.00, 70.95]. Leave-one-league-date-out fits are sign-unstable:
+  removing the ten August 19 league games flips each tested shared fit from a
+  decline to an increase. The shared trend is therefore not identified.
+- The apparent shared-model gains do not improve future league-game scoring.
+  They arise from alternative regularization of internal games, where the
+  shared same-date coefficient is exactly zero, and should not be interpreted
+  as evidence of absolute group improvement or decline.
+- Central skill, conservative ordinal, and visible leaderboard history remain
+  materially different quantities. Large visible early changes are primarily
+  confidence and missing-game penalty washout; they are not fitted skill
+  movement. A future absolute-skill graph should use central skill for its line
+  and show uncertainty separately, while leaving the compact leaderboard row
+  on its existing conservative display transform.
+
+### Conclusions and Recommendation
+
+- There is no chart-sampling bug: the deployed 10-point process prior makes the
+  weekly central-skill model effectively static. The data do not identify one
+  statistically superior process SD; all tested values are on a predictive
+  plateau, so selecting more movement is a product/prior choice rather than a
+  discovered accuracy gain.
+- Reject the shared cohort-trend addition on the current data. It is weakly
+  anchored, date-sensitive, does not improve held-out league prediction, and
+  can materially distort League Player and current ratings.
+- If the goal is the most assumption-minimal statistical model, retain SD 10.
+  If the goal is a credible but readable absolute-skill history, independent SD
+  45 is the recommended conservative compromise; SD 50 is a reasonable more-
+  responsive alternative. Do not exceed SD 60 without accepting larger current
+  rating shifts, and SD 65 is the observed rank-stability boundary.
+- Even SD 45-50 central paths are small relative to a fixed 100- or 200-point
+  chart scale. A production follow-up should therefore pair any approved model
+  change with a locally adaptive Y domain and exact-value interaction rather
+  than increasing process noise solely to make the line look active.
+
+### Exact Next Action
+
+Report the harness results and await an explicit user decision. Make no
+production model, chart, test, Git, or deployment change. If the user chooses a
+candidate, first audit central-skill graph behavior at SD 45 and SD 50 with an
+adaptive Y scale before implementing either one.
+
+## Investigation — Individualized Back-Explanatory Skill Paths
+
+### User Reframing
+
+- Overall is intentionally not the forward-balancing model. OpenSkill-style
+  ratings already own that job and should not be displaced or used as the
+  principal selection criterion for this experiment.
+- The desired model should explain the complete historical record as coherently
+  as possible: different players may improve, decline, flatten, enter at
+  different levels, or return differently after long absences.
+- Do not impose one linear or nonlinear cohort trajectory on every player.
+  Population change may emerge through the network of individualized player
+  states and external evidence, but it must not be a mandatory shared slope.
+- A 95% change interval containing zero is not a rejection criterion for this
+  low-stakes exploratory display. Report posterior change probabilities and
+  uncertainty honestly instead of converting them into significance tests.
+
+### Goal
+
+Build and compare harness-only individualized state-space formulations that use
+league results, newcomer calibration, and return-gap behavior as distinct
+sources of retrospective evidence. Identify which formulation best explains
+the observed record without changing production or optimizing for team
+balancing.
+
+### Model Architecture
+
+- Represent each player with an individual time-varying latent path. Compare a
+  first-order random walk with a smooth changing-slope/local-linear formulation;
+  no player is required to share another player's direction or rate of change.
+- Keep internal-game observations as team-average player-state contrasts. They
+  identify relative contemporaneous ability and connect player histories across
+  the participation graph.
+- Attach each league observation directly to the contemporaneous states of the
+  participating local players. Model the outside side as a partially pooled
+  opponent/date latent value around a learned league distribution rather than
+  as a perfectly identical opponent on every date. Retain every league game at
+  full 1.0 likelihood weight.
+- When the data contain usable league/tier/court/opponent labels, test strongly
+  pooled offsets rather than assuming meaningful gaps. If opponent identity is
+  unavailable, treat league date as the observable external-context unit and
+  sweep a conservative opponent-date variance.
+- Learn a broad newcomer entry distribution and report each entrant's
+  retrospectively smoothed debut level relative to the active pool at entry.
+  Entry evidence updates the entrant and entry-prior calibration, not existing
+  players through a forced cohort adjustment.
+- Give long inactivity gaps their own transition behavior. Compare ordinary
+  elapsed-time variance with a gap-specific variance and a hierarchically
+  learned mean return effect. A returning player does not inherit changes made
+  by active players while absent; their post-return games determine the update.
+- Keep the external league benchmark/calibration layer separate from the
+  synthetic League Player display transform. Movement of that display row is a
+  diagnostic, not a veto criterion for this experimental Overall model.
+
+### Candidate Ladder
+
+1. Exact deployed weekly model and the previously identified independent SD
+   45/50 random-walk candidates.
+2. Individual changing-slope paths with strongly shrunk initial slopes and
+   swept slope-change smoothness.
+3. The best individual-path candidates with partially pooled league-date or
+   opponent effects.
+4. The best anchored candidate with learned newcomer entry calibration.
+5. The best anchored candidate with gap-specific return mean/variance, then the
+   combined entrant-and-return formulation when both effects are supported.
+
+### Back-Explanatory Evaluation
+
+- Primary: full-record posterior fit and date-blocked retrospective
+  reconstruction in which held-out dates are inferred using both earlier and
+  later evidence. Report score-share residuals/deviance, winner calibration,
+  complexity-adjusted fit where tractable, and separate league/internal
+  reconstruction. This is interpolation/backcasting, not forward forecasting.
+- Directly test the user's league-calibration question by constructing local
+  team ratings without the target league date and measuring whether comparable
+  rated teams perform differently against outside opposition over calendar
+  time. Use date clusters and report the estimated effect/probability rather
+  than requiring conventional significance.
+- Report newcomer debut offsets, their relationship with entry date, subsequent
+  shrinkage, and sensitivity to the definition of an established newcomer.
+- Report pre-gap versus post-return residuals over several gap thresholds,
+  learned mean return effects, added gap uncertainty, and whether the effect
+  remains after conditioning on league-anchored contemporaneous skill.
+- For each player report central path movement, changing-slope behavior,
+  posterior probability of improvement over useful recent windows, uncertainty,
+  direction changes, and representative histories. Distinguish these from
+  conservative ordinal and scoreboard volume/confidence transforms.
+- Use synthetic recovery checks for individualized improvement, decline,
+  newcomers, return rust, stable players, and variable outside opponents.
+  Include deterministic reruns and leave-one-league-date-out robustness.
+- Forward held-out prediction remains a secondary overfit sanity check only.
+  Do not select a model merely because it resembles the balancing model or wins
+  a microscopic future-game metric.
+
+### Constraints and Acceptance
+
+- Use the refreshed Drive-matched August 28 database: 76 players, 347 games
+  through August 27, including all 99 league games at full likelihood impact.
+- Harness and artifacts live outside production source except for durable
+  conclusions recorded in this ExecPlan. Do not change application behavior,
+  tests, scoreboard copy, balancing, Git history, or deployment state.
+- Preserve all unrelated dirty files. A useful result may be probabilistic and
+  exploratory, but it must state which conclusions come from observations and
+  which depend materially on priors or identifiability assumptions.
+
+### Progress
+
+- [x] Refresh and verify the authoritative Drive source for the new local day.
+- [x] Reframe the architecture and selection criteria around retrospective
+  explanation.
+- [x] Build the initial individualized explanatory harness and schema inventory.
+- [x] Prove exact numeric baseline equivalence and validate the joint
+  level/slope derivatives and posterior covariance.
+- [x] Run the individualized path-form and league-calibration comparisons.
+- [x] Run formal entrant-prior and return-gap component comparisons; the first
+  final-grid output measured these only as post-fit diagnostics.
+- [x] Refine the best candidates and report conclusions.
+
+### Initial Broad Harness Results
+
+- Scratch artifacts are
+  `/private/tmp/vball-individual-explanatory-harness.mjs` and
+  `/private/tmp/vball-individual-explanatory-results.json`; the repository and
+  production application were not changed.
+- The source spans 2026-04-12 through 2026-08-27. Its 99 league games occur on
+  23 dates and use five persistent league-context pseudo-opponent IDs: base,
+  Rec, Intermediate, Rec sand, and Intermediate sand. These are useful pooled
+  contexts but are not verified identities for individual outside teams.
+  League-level metadata is blank for 70 games and Intermediate for 29; courts
+  are 299 sand, 36 indoor, and 12 grass across all games.
+- There are 36 players with at least ten recorded games after their observed
+  debut. Inter-appearance gaps number 22 at 28+ days, seven at 42+ days, and
+  five at 56+ days. This supports one strongly shrunk 28-day return diagnostic,
+  but not a reliable multi-threshold return model.
+- Five date-blocked retrospective reconstructions used all 344 scored games.
+  RW10 scores 0.692527 score-share log loss / 0.241722 winner Brier. RW45 and
+  RW50 improve slightly to 0.692508 / 0.241621 and 0.692504 / 0.241598.
+- The initial individualized local-linear candidates use per-player level and
+  slope states, strongly shrunk initial slopes, persistent league-context
+  effects, and league-date effects at public SD 10 or 35. Context-35 improves
+  retrospective log loss to 0.692269 and league-only log loss to 0.687180,
+  compared with RW10 at 0.687811. Its overall Brier is worse at 0.241839 and
+  internal Brier is worse at 0.245248 versus 0.244178, consistent with a
+  back-explanatory-versus-balancing tradeoff rather than a forward advantage.
+- Representative context-35 central-skill path ranges are 23.3 points for
+  MelissaR, 19.9 for DustinR, 17.3 for JayY, 11.9 for JoshR, and 11.4 for BenT.
+  These are fitted central paths, not ordinal or volume/confidence transforms.
+- Leave-target-date league residual means still vary materially by date, from
+  approximately -0.167 to +0.137 score share. The current output does not yet
+  isolate a calibrated same-score calendar effect from league-context noise.
+- Deterministic, finite-state, and individualized-decline synthetic checks pass.
+  The RW10 structure matches production at 77 rows, 390 dimensions, all 99
+  league games, and three Newton iterations, but the harness has not yet proven
+  exact affine-shift, marginal-sigma, and history-knot equivalence.
+- The local-linear transition also needs analytic/numeric joint
+  gradient-Hessian validation and synthetic improvement/stable/entrant/return
+  recovery before its uncertainty or apparent fit advantage is decision-grade.
+- Refinement found and corrected a missing prior-slope contribution in the
+  experimental level-transition gradient/Hessian for
+  `level_t - level_(t-1) - dt*slope_(t-1)`. After correction, context-10 scores
+  0.692340 retrospective log loss / 0.241284 Brier and context-35 scores
+  0.692313 / 0.241238, both better than RW10 at 0.692527 / 0.241722. This
+  correction remains provisional until central-finite-difference derivative
+  checks and exact production-baseline comparison pass.
+- Corrective validation imports and exercises the actual scratch solver. The
+  existing exact weekly oracle remains an exact zero-difference RW10 comparison
+  on the unchanged source (344 scored, three winner-only, 99 league, 390
+  dimensions, three iterations). The actual local-linear gradient differs from
+  central differences by at most `9.91e-10`; its Hessian differs by at most
+  `1.22e-9`, and current-data covariance solves are finite and positive.
+- Actual fitted synthetic cases deterministically recover a stable path,
+  `+54.29` improvement, `-54.29` decline, variable outside-context ordering
+  without absorbing the whole context shift, and a strong weak-to-strong-to-
+  weak direction change at slope SD 35. The 27-week reversal midpoint is about
+  215 points above its start and 252 above its end; repeat state difference is
+  exactly zero. Validation artifacts are the importable scratch core and the
+  v2-v4 validation scripts/results under `/private/tmp/vball-individual-*`.
+- Primary review found that the first `vball-individual-explanatory-core.mjs`
+  merely re-exported the broad harness, whose top-level body performs a 52-
+  second sweep and rewrites its result file on every import. The final repeated
+  LOO/newcomer/return study must not run on that side-effectful foundation.
+  Split the definitions into a genuinely side-effect-free scratch core and
+  rerun the real validation imports before the final grid.
+- The isolated final grid compared 27 candidates: independent weekly random
+  walks at public process SD 10/45/50 and individual local-linear paths crossed
+  over slope SD 20/35/50, league-date SD 0/10/20/35, and persistent league-
+  context SD 10/25. Five chronological date blocks were reconstructed from all
+  other dates, so this is smoothing/backcasting rather than forward prediction.
+- Primary review corrected a reporting bug that had averaged an empty league
+  fold as zero for non-finalists and rejected the harness's invalid winner-
+  accuracy field. Recomputed game-weighted and equal-nonempty-block rankings
+  both select `ll45-s50-d35-c25`. Its game-weighted all-game log loss is
+  `0.691853466`, versus `0.692119825` for RW50 and `0.692176900` for deployed-
+  structure RW10. The best two local-linear candidates differ by only
+  `0.000002492`; the result supports the model family, not precise hyperparameter
+  certainty. The deterministic corrected summaries are under
+  `/private/tmp/vball-individual-explanatory-final-*`.
+- The selected full fit has 807 dimensions and converges in three Newton steps.
+  Primary review later found that the scratch path report converted latent
+  movement with `x50`, while the actual Overall display chain is
+  `x(25/3)x50`. Thus its originally reported `0.848` / `1.679` adjacent-knot
+  movement corresponds to about `7.07` / `13.99` displayed rating points. This
+  scale correction does not affect likelihoods, candidate ordering, direction,
+  or posterior probabilities, but it supersedes the path magnitudes previously
+  described as public points.
+- The fitted league-date calendar diagnostic has only a `0.512` probability of
+  a positive first-to-last effect; its equal-date bootstrap 95% range on the
+  expected logit is `[-0.397, 0.419]`. The data therefore do not identify an
+  across-calendar league improvement factor, although partially pooled
+  date/context variation improves retrospective reconstruction slightly.
+- Entrant-date slope is effectively zero in the post-fit diagnostic. Only nine
+  entrants have at least five later games and five have at least ten; their
+  apparent positive debut offsets are prior-sensitive. Fifteen usable 28-day
+  return events across 13 players show a small mean residual change of `-0.244`
+  public points (bootstrap 95% `[-0.488, -0.028]`), but this has not yet been
+  tested as a fitted transition component and must not be presented as retained.
+
+### Formal Entrant and Return Factor Results
+
+- A scratch-only integrated ladder fitted the selected local-linear family with
+  baseline, entrant offset, entrant offset plus entry-date slope, 28-day return
+  mean, fixed 20-point extra return transition SD, and supported combinations.
+  Every variant used the same five target-date-excluded reconstruction blocks
+  and all 99 league games at likelihood weight 1.0.
+- No factor wins robustly enough to retain. Game-weighted log loss nominally
+  favors return mean plus extra SD at `0.691850301`, only `0.000003165` below
+  the no-factor baseline. Equal-nonempty-block log loss instead nominally favors
+  entrant offset plus date slope at `0.691985460`, only `0.000004490` below
+  baseline. These gains total roughly `0.0011` log-likelihood units across all
+  347 reconstructed games and are far too small and weighting-sensitive to
+  justify extra assumptions.
+- Full-record fitted effects are also negligible: entrant offset `-0.24` public
+  points, entrant-date slope `-0.96` public points per 30 days, and return mean
+  about `-0.76` public points. The 20-point return extra-SD candidate is fixed,
+  not an empirically identified optimum. The integrated entrant coefficient is
+  centered on the common latent reference rather than a literal contemporaneous
+  pool-average contrast; its near-zero effect provides no reason to add the more
+  complicated coupling now.
+- Actual integrated derivatives match central finite differences within
+  `1.74e-10` for the gradient and `1.66e-10` for the Hessian. Deterministic
+  repeats are exact, and fitted synthetic fixtures recover entrant-above,
+  entrant-below, return-rust, and no-rust directions. The formal artifacts are
+  `/private/tmp/vball-individual-explanatory-factor-*`.
+- Final recommendation for any later Overall experiment is therefore the
+  no-factor individualized local-linear model with partially pooled league
+  context/date variation. Do not add a shared cohort trend, newcomer adjustment,
+  or return penalty on the current evidence. This is an explanatory display
+  choice, not a balancing-model proposal, and the family-level reconstruction
+  advantage over simpler random walks remains very small.
+
+### Exact Next Action
+
+Report the completed harness-only conclusions and await the user's decision.
+Make no production, scoreboard, balancing, test, Git, or deployment change.
+
+## Investigation — Absolute Versus Relative Skill Attribution
+
+### User Observation and Goal
+
+- Several players with negative individualized central-path changes have
+  visibly improved substantially in real volleyball skill and also perform
+  better in later league play. A line that calls this absolute decline is not
+  credible merely because those players may have improved less than the local
+  pool.
+- Diagnose whether the model is reporting relative pool position as absolute
+  skill, whether league opponent/date flexibility absorbs real local-pool
+  improvement, or whether team composition prevents league evidence from being
+  assigned to the correct individuals. This remains harness-only.
+
+### Required Diagnostics
+
+- For every materially negative 12-week path, separate internal-game and league-
+  game evidence by date, score share, teammate composition, opponent context,
+  and model residual. Do not equate raw league win rate with individual effect.
+- Refit the selected individualized model across a bounded anchor ladder:
+  pooled stable league opponent only; persistent league context without date
+  effects; the selected context-plus-date hierarchy; and a decomposition with
+  an explicit pool-level absolute component learned only from league evidence
+  plus zero-centered individual relative deviations.
+- Show how each assumption changes the direction and magnitude of representative
+  player paths and the inferred pool trajectory. Identify affine/gauge or
+  participation-network non-identifiability explicitly rather than allowing a
+  smoothing prior to choose an apparently objective absolute direction.
+- Test whether removing influential league dates or lineups flips the inferred
+  pool direction. Keep every included league observation at full 1.0 likelihood
+  weight and distinguish an outside-opponent-quality adjustment from a hidden
+  league dampener.
+- Use held-date retrospective reconstruction only as an overfit check. The
+  primary result is explanatory attribution and sensitivity, not future-game
+  winner accuracy.
+
+### Progress
+
+- [x] Confirm that the apparent declines are central estimates of roughly
+  80–161 displayed points after correcting the scratch scale, with extremely
+  broad posterior intervals; they are large central lines but not confident
+  claims of deterioration.
+- [x] Decompose negative-path player evidence and league lineup connectivity.
+- [x] Run the anchor/pool-decomposition sensitivity ladder.
+- [x] Report what is identifiable, what needs an explicit external assumption,
+  and the next defensible Overall model formulation.
+
+### Results and Diagnosis
+
+- The negative directions are robust to the existing league-anchor details.
+  Across a stable pooled opponent, persistent context only, and context plus
+  date SD 10/35, MelissaR remains about `-17` in the scratch's incorrect x50
+  units and JoshR about `-9` there. The date/context layer is not what creates
+  their relative decline.
+- Correcting to the actual displayed-rating scale changes the selected model's
+  representative 12-week central paths to approximately DustinR `+146`, JayY
+  `+112`, AlexaY `+3`, JoshR `-79`, MelissaR `-141`, PeterA `-161`, and KimK
+  `-91`. Their posterior intervals remain several hundred points wide and all
+  include zero. The model is selecting a direction under weak information, not
+  establishing physical decline.
+- League observations are team-average measurements and cannot assign a team
+  change uniquely to one member. Early/late teammate-set Jaccard overlap for
+  the strongest negative paths is only about `0.25` to `0.62`. For example,
+  MelissaR's early/late league score share is `0.533` / `0.529`, while JoshR's
+  is `0.560` / `0.540`; opponent and lineup changes prevent those raw numbers
+  from measuring individual physical improvement.
+- The exact identification problem is `theta_i(t)=P(t)+d_i(t)`. The pool term
+  `P(t)` cancels from every same-date internal game, so internal balanced games
+  identify only relative deviations `d_i(t)`. A league observation identifies
+  `mean(d_local)+P(t)-O(t)`. If outside date quality is free, adding the same
+  function to `P(t)` and `O(t)` leaves the likelihood unchanged. Zero-sum and
+  gauge constraints name a reference frame but do not create the missing
+  outside information.
+- A validated conditional two-stage diagnostic makes that distinction explicit:
+  internal games fit individualized local-linear relative paths and are exactly
+  recentered to a fixed 28-player reference cohort; league games then fit only
+  the cohort's absolute path. Recentring preserves every internal contrast to
+  `1.11e-16` and the reference mean is zero to `2.58e-17`.
+- With a middle 20-point pool process and stable recorded opponent contexts,
+  league evidence estimates only about `+23.9` displayed points over the full
+  April-August span and `+7.1` over the latest 12 weeks. Adding that to the
+  internal relative paths still gives MelissaR `-106`, JoshR `-69`, KimK `-87`,
+  and PeterA `-24`. Reasonable outside/date structures at the same pool process
+  put the latest 12-week pool movement at only about `+4.4` to `+8.0`.
+- The pool estimate is highly event-sensitive. Removing the ten August 19 Rec
+  league games (4-6 record, mean local score share about `0.438`) changes the
+  middle estimate from `+7.1` to `+17.1` over 12 weeks. Across all leave-one-
+  league-date fits it ranges from about `+4.0` to `+17.1`.
+- The two-stage diagnostic is conditional, not a final joint posterior; it does
+  not propagate relative-path uncertainty into the pool path. Its purpose is to
+  prove the attribution problem and expose assumptions. All 99 league games use
+  full weight and N=10. Deterministic repeats are exact, finite-difference
+  gradient/Hessian checks pass at the appropriate step size, and a synthetic
+  fixture recovers common improvement plus an individual relative decline while
+  preserving positive absolute improvement.
+- The current record therefore cannot support the label "absolute skill" by
+  outcomes alone. To recover the improvement known from observation, a future
+  model needs independent repeated-opponent/tier calibration, periodic physical-
+  skill observations, or an explicit domain prior on the pool reference path.
+  A common reference-scale component is mathematically necessary, but it need
+  not force identical individual slopes: each displayed path remains `P+d_i`.
+
+### Bracket-Phase Follow-up
+
+- The source tags six earlier indoor games as `leaguePhase: "bracket"` (three
+  on April 30, one on May 6, and two on May 7), but leaves all ten August 19 Rec
+  games and all five August 20 Intermediate games untagged even though those
+  dates were the final seeded/bracket competitions. No source or production
+  data was changed during this investigation.
+- The existing experiment does not read `leaguePhase`; it keys outside quality
+  only from `leagueOpponent.id`. Correcting the tags alone would therefore be a
+  necessary data-integrity fix but would not change the fitted paths unless the
+  model explicitly treats bracket play as a different outside-opponent context.
+- In an in-memory sensitivity run, all 99 league games remained at full N=10 and
+  likelihood weight 1.0. The 78 regular-phase games had local score share
+  `0.555`, versus `0.484` across the 21 bracket games after assigning August 19
+  and 20 to bracket phase. August 19 itself was 4-6 with `0.438` score share;
+  August 20 was 4-1 with `0.593`, so the two new bracket dates are materially
+  heterogeneous.
+- Under the middle 20-point pool process, adding one global bracket-strength
+  effect raises the inferred latest-12-week pool movement only modestly: from
+  `+7.1` displayed points with no phase term to `+8.3` under a moderate prior or
+  `+10.5` under a wider prior. Representative negative absolute paths remain
+  negative, and 13 cohort members remain below zero over the interval.
+- Omitting August 19 still raises the 12-week pool estimate to roughly `+17.1`
+  under every phase formulation. August 19 is the only Rec-bracket date, so a
+  Rec opponent shift, bracket difficulty, and the pool reference path cannot be
+  independently learned from this record. Opponent-by-phase interactions are
+  correspondingly prior-driven.
+- Bracket context is directionally real and belongs on the outside-opponent side
+  of a future explanatory model, not as a penalty to the participating players.
+  It makes the August 19 leverage less interpretable as physical decline, but it
+  does not supply enough independent calibration to make the current paths
+  objective absolute-skill estimates.
+
+### Exact Next Action
+
+Report the diagnosis and bracket sensitivity. Await a user decision about
+whether to correct the authoritative August 19/20 phase metadata and whether a
+future explanatory model should include bracket as an outside-opponent context,
+along with what external assumption or additional observation should define the
+absolute reference scale. Do not change application code, tests, data, Git
+history, or deploy.
+
+## Investigation — Plausibility-Constrained Individual Improvement
+
+### Goal
+
+- Incorporate the domain observation that persistent absolute physical-skill
+  decline is implausible for highly active players who visibly improve, while
+  preserving the ability to represent an off day, a short slump, return rust,
+  roster/opponent changes, and genuinely strong contrary evidence.
+- Keep this as a harness-only explanatory-model test. It is not a proposal for
+  team balancing, production ratings, database mutation, or deployment.
+
+### Model Families to Compare
+
+- Retain the identified decomposition `theta_i(t)=P(t)+d_i(t)`, full 1.0 league
+  likelihood weight, individualized paths, and in-memory bracket classification
+  for August 19 and 20.
+- Compare the unconstrained two-stage reference against: a soft asymmetric
+  long-run change prior that permits but disfavors persistent decline; a
+  hierarchical individualized improvement prior with a nonnegative cohort
+  center and player-specific deviations; a monotone or near-monotone long-run
+  skill path plus zero-centered date/session form shocks; and a hard-monotone
+  sensitivity bound. Do not force a shared player slope.
+- Separate durable skill from temporary performance. Bracket phase and recorded
+  opponent context belong on the outside-opponent term; same-day residual shocks
+  must not permanently rewrite player skill.
+
+### Evaluation
+
+- Report individual 12-week/full-span changes, number and magnitude of remaining
+  durable declines, temporary-form amplitudes, league/internal residuals, and
+  fit loss relative to the unconstrained reference.
+- Because the goal is retrospective explanation rather than forward balancing,
+  emphasize posterior likelihood or penalized explanatory fit, held-date
+  reconstruction only as an overfit warning, and sensitivity to prior strength.
+- Test whether the constraint merely relabels unexplained losses as noise, or
+  whether a skill-plus-form decomposition explains the record comparably without
+  implausible persistent declines. Include exact scale/unit and deterministic
+  checks plus at least one synthetic improving-player/off-day fixture.
+
+### Progress
+
+- [x] Implement and validate a bounded conditional anchor refit outside
+  production.
+- [x] Quantify what becomes identifiable only because of the domain prior.
+- [x] Test the focused durable-skill plus temporary league-session-form
+  extension before recommending any later UI experiment.
+
+### Conditional Anchor-Refit Results
+
+- Stage 1 retains the individualized internal-game relative paths and exact
+  cohort recentering. Stage 2 refits the weekly pool reference, stable recorded
+  outside contexts, and one global bracket effect while adding a downside-only
+  prior to each eligible player's absolute endpoint change. Positive changes
+  receive no extra reward. All 99 league observations remain N=10 and weight
+  1.0; August 19 and 20 are tagged as bracket only in memory.
+- In the primary 20-point pool process, the unconstrained fit estimates only
+  `+25.8` pool points over the full record and `+8.3` over 12 weeks. Thirteen of
+  28 sufficiently observed players have negative persistent endpoint changes,
+  with a minimum of `-128.8`.
+- A moderate 25-point downside scale moves the pool to `+124.1` full-span and
+  `+87.6` over 12 weeks, leaving three negative endpoints with a minimum of
+  `-27.3`. It changes representative paths from JoshR `-70` to `+21`, PeterA
+  `-21` to `+57`, KimK `-125` to `-24`, and MelissaR `-129` to `-27` while
+  retaining individualized relative differences.
+- A stronger 10-point downside scale moves the pool to `+143.7` full-span and
+  `+100.6` over 12 weeks. Remaining declines are only a few points (minimum
+  `-7.1`), while JoshR is `+37`, PeterA `+72`, KimK `-3`, and MelissaR `-7`.
+  A near-hard 2-point scale moves the pool to `+150.1` and leaves only numerical-
+  scale negative endpoints.
+- The raw league-likelihood costs are small: `+0.608`, `+1.049`, and `+1.220`
+  total NLL for the 25-, 10-, and 2-point priors, respectively, or roughly
+  `0.006` to `0.012` per league game. Leave-one-league-date-out NLL likewise
+  changes from `6.8801` per game unconstrained to `6.8886`, `6.8935`, and
+  `6.8953`. August 19 is the clearest conflict: held-date NLL rises from
+  `6.9664` to `7.1299` under the moderate prior.
+- A descriptive linear reference shift of about `+155.5` across the full grid
+  is required to make every player with at least 50 internal appearances
+  nonnegative; MelissaR is binding. Applying the belief to every sufficiently
+  observed player requires about `+165.1`, with BenT binding.
+- The data cannot select this absolute shift by itself. Under the moderate
+  prior, the learned Rec and Intermediate outside-context coefficients move by
+  about `+19.0` and `+11.7` points and the bracket effect moves by `+8.6`, while
+  the generic league-team context barely moves. This is the explicit domain
+  prior choosing among weakly identified pool-versus-outside decompositions.
+- A fitted synthetic true-decline case exposes the tradeoff: a baseline
+  `-235.2` absolute decline is attenuated to `-30.6` by the moderate prior at a
+  raw likelihood cost of `6.16`, and to `-0.2` by the near-hard prior at a cost
+  of `7.29`. The prior must therefore remain soft and visibly documented in the
+  model, even though the real record pays very little fit cost for it.
+- All primary fits and leave-date folds converge. Public-scale, deterministic,
+  recenter/contrast, and active-branch gradient/Hessian checks pass. The model
+  is still conditional rather than a joint posterior and has no explicit form
+  variable, so it cannot yet distinguish an off day from other transient error.
+
+### League-Session Form Follow-up
+
+- A second conditional Stage 2 comparison adds one equal-session-mean-zero local
+  team form effect to each league date, with the same stable outside contexts,
+  global bracket term, full league weight, and downside prior. This represents a
+  temporary team/day residual; it cannot identify which player had an off day
+  and does not alter internal-game relative paths.
+- With the moderate 25-point downside and 25-point form scales, August 19 is
+  assigned `-13.8` displayed points of temporary form while August 20 is
+  `-1.4`. Session-form RMS is `4.35` and August 19 is the largest absolute
+  residual. The durable pool result is essentially unchanged at `+124.4` full-
+  span and `+87.8` over 12 weeks, with the same three negative endpoints and a
+  minimum of `-27.1`.
+- The 25-point form term improves retrospective raw league NLL by `0.638`
+  relative to the matching no-form moderate-downside fit. A 10-point form scale
+  improves it by only `0.109` and assigns August 19 about `-2.35`; a 50-point
+  scale improves it by `2.08` but creates date effects as large as `45.8`, which
+  is too flexible to treat as independently supported.
+- Held-date scoring does not improve, as expected for an unobserved off day:
+  moderate downside changes from `6.88864` per game without form to `6.88900`
+  with 25-point form and `6.88991` with 50-point form. The session term is a
+  retrospective explanatory decomposition, not a forward predictor.
+- A sign mismatch in the first scratch reporting function was found during
+  primary review and corrected; fitted and separately reported likelihoods now
+  agree within `1e-8`. All primary and held-date fits converge, equal-session
+  gauges are centered, deterministic repeats are exact, and the combined
+  likelihood/prior/gauge/downside gradient and Hessian checks pass.
+- Synthetic fixtures show the intended separation: an improving durable path
+  retains positive change with a negative final-session residual, while
+  deterioration repeated across many sessions remains a durable negative under
+  the moderate prior rather than being erased by independent form effects. The
+  stronger downside prior, not the form term, is what attenuates that decline.
+- The defensible conceptual candidate is therefore individualized relative
+  paths plus an explicitly assumed positive absolute reference, a soft rather
+  than hard downside prior, bracket-aware outside context, and modest temporary
+  league-session form. The match record cannot choose the absolute-reference or
+  downside-prior strength; those remain transparent domain assumptions.
+
+### Exact Next Action
+
+Report the completed harness findings and await the user's decision about a
+later full joint player-level skill/form experiment or UI candidate. Do not
+change application code, production data, tests, Git history, or deploy.
+
+## Investigation — Exposure-Based Individual Improvement
+
+### Goal
+
+- Test whether durable improvement is explained more plausibly by recorded
+  playing exposure than by a shared calendar-time pool trend. Preserve player-
+  specific rates, temporary performance variation, and a small possibility of
+  genuine decline.
+- This remains harness-only. Do not change the Overall board, balancing model,
+  confidence/volume display penalty, source database, Git history, or deploy.
+
+### Joint Model
+
+- Fit one skill state per player per appearance date. Every game on a date uses
+  the skill entering that date; all of that date's recorded experience affects
+  only the player's next state, preventing same-session look-ahead.
+- Use the transition
+  `skill_i,next - skill_i,current = beta_i * exposure_i,date + residual`,
+  with calendar-gap-scaled process noise. Internal and league likelihoods then
+  refit the entire path jointly, avoiding a post-hoc `points * games` bonus and
+  double counting.
+- Keep all league games at N=10 and likelihood weight 1.0. Use stable recorded
+  outside contexts, the in-memory August 19/20 bracket classification, one
+  bracket-strength term, and test the validated modest league-session form term
+  only on finalists.
+- Model rates hierarchically and convexly where possible: a population rate with
+  an explicit prior-center sweep, partially pooled player deviations, and a
+  soft negative-rate tail. Do not estimate unconstrained independent rates for
+  sparse players.
+
+### Exposure Families and Sweep
+
+- Per-session exposure is `1 + lambda * (games_on_date - 1)`, with `lambda` at
+  least `0` (play dates), `0.1`, `0.25`, and `1` (raw games).
+- Compare linear cumulative exposure with diminishing-return transforms such as
+  `k * log(1 + exposure/k)` for meaningful `k` values. Count a session's
+  exposure only after that session completes.
+- Coarse-sweep shared rate centers including `0`, `1`, `2`, `3`, and `4` public
+  points per effective exposure and reasonable process scales. Narrow promising
+  regions before adding individual-rate SDs and session-form variation.
+- Include the user's explicit `+3 per raw game` proposal even if it is
+  implausibly large, so its consequences are measured rather than assumed.
+
+### Evaluation
+
+- Compare static single-value, no-drift dynamic, shared exposure-rate, and
+  partially pooled individual-rate models using raw retrospective likelihood,
+  separated prior/objective components, and held-date reconstruction only as an
+  overfit warning.
+- Report population and player-specific rate estimates with uncertainty or
+  curvature diagnostics, full-span/current durable changes, remaining negative
+  trends, implied changes for high-volume players, residual/form amplitudes,
+  bracket/outside effects, and sensitivity to exposure definition.
+- Penalize or reject models that gain fit by giving implausible rates to sparse
+  players, assigning enormous same-day gains, or absorbing genuine synthetic
+  decline into exposure. Validate causal exposure accounting, units,
+  determinism, derivatives, and synthetic different-rate/off-day/true-decline
+  fixtures.
+
+### Progress
+
+- [x] Implement and validate the joint exposure-drift harness.
+- [x] Run the coarse sweep and narrow promising exposure/rate/process regions.
+- [x] Test partial pooling, diminishing returns, and session form on finalists.
+- [x] Report winners, losers, identifiability, and the next defensible candidate.
+
+### Validated Joint-Core and Coarse Results
+
+- The scratch joint model fits 636 player/date entry states plus five stable
+  recorded league-context effects and one bracket effect. All 99 league games
+  retain N=10 and likelihood weight 1.0; August 19 and 20 are classified as
+  bracket only in memory. The repository, source database, and production app
+  remain unchanged.
+- Causal accounting is executable rather than assumed. Across 588 repeated
+  player/date appearances, every same-day game resolves to the same entry-state
+  index. A constructed extra same-day game changes neither that date's state
+  index nor its fixed-state likelihood, leaves the incoming transition
+  unchanged, and changes only the outgoing transition mean by the exact
+  `w_lambda` / `H` increment.
+- A separate 82-dimensional true-static comparator converges in two Newton
+  steps at raw NLL `2400.092009` (`1717.305515` internal and `682.786494`
+  league). The process-45 dynamic no-drift fit improves to `2397.593048`.
+  At the same fixed process scale, raw-game exposure at +1 point/game and the
+  blended exposure `lambda=0.25` at +2 points/effective exposure are
+  effectively tied: raw NLL `2396.332958` versus `2396.339059`, with objectives
+  `2398.675861` versus `2398.640041`.
+- The user's explicit +3-per-raw-game proposal is a clear coarse-grid loser at
+  raw NLL about `2403.6231` and objective about `2412.3252`. It overshoots the
+  observed record rather than merely losing on a complexity penalty.
+- Linear exposure and a mild diminishing transform (`k=75`) are effectively
+  tied in the initial region; `k=25` saturates too quickly. Process SD cannot be
+  selected by in-sample raw NLL because additional process flexibility always
+  improves fit, and the current unnormalised MAP objective is not comparable
+  across SD values. A held-date reconstruction is required before narrowing
+  process noise.
+- Static and joint likelihood/evaluator partitions, deterministic repeats,
+  public-unit conversion, and finite-difference gradient/Hessian checks pass.
+  Measured static partition and objective-sum errors are at most `4.55e-13`;
+  derivative errors are below `4.1e-8` for the gradient and `1.9e-10` for the
+  Hessian at their best tested steps.
+- Fitted synthetics validate the intended interpretation. With 18 appearance
+  dates, a planted +12-point rate, `lambda=0.5`, and three versus one games per
+  date, the fixed-process objective selects +12 from the ladder and recovers
+  about +408 versus +204 points of calendar-span gain. A planted durable
+  decline remains about -32 points under a moderate +8 exposure prior; forcing
+  +12 instead costs `5.72` raw likelihood units and `16.21` objective units.
+  Thus exposure drift guides the path but does not make genuine decline
+  impossible.
+
+### Held-Date Narrowing Results
+
+- Five deterministic contiguous date blocks cover all 52 play dates and all
+  347 games. Target games remain in the participation/exposure topology but
+  contribute no score likelihood. Perturbing every target score on a masked
+  date changes the fitted states and held predictions by exactly zero, proving
+  there is no score leakage.
+- Process SD 20, 45, and 80 remain on one broad held-date plateau. Their best
+  game-weighted NLLs are `6.918471`, `6.917544`, and `6.915820` per game. The
+  numerical SD80 lead is not identified: for its best exposure candidate, the
+  date-clustered interval versus matched no drift is
+  `[-0.01068, +0.00660]` NLL/game.
+- The blended definition `lambda=0.25, beta=2` is the numerical leader at every
+  tested process scale. At SD80 it reconstructs all games at `6.915820`,
+  internal games at `6.928117`, and league games at `6.885015` NLL/game. Its
+  99 league targets occur in four nonempty blocks; all retain full weight.
+- At the deliberately simpler SD20 edge of the plateau, refinement nominally
+  favors `lambda=0.25, beta=2.5, k=75` at `6.918110`. Linear versus mildly
+  diminishing exposure and exposure drift versus no drift remain tied; the
+  date-clustered interval for the nominal finalist is
+  `[-0.01714, +0.00735]`.
+- Raw +3 points per game is worse in every held-date process setting. At SD20
+  it loses by `0.04588` NLL/game with interval `[+0.00241, +0.10179]`; at SD45
+  and SD80 its losses shrink to `0.03601` and `0.02439` but their intervals
+  cross zero. The proposal is therefore directionally and sometimes clearly
+  inconsistent with the record, not a viable default.
+- Use SD20 and `lambda=0.25` as the conservative hierarchy-development point,
+  while retaining SD45 as a finalist sensitivity check. Treat `k=75` and
+  linear exposure as unresolved variants rather than declaring the tiny point
+  estimate a discovered optimum.
+
+### Hierarchical Player-Rate Coarse Results
+
+- The convex hierarchy learns one population improvement rate plus Gaussian-
+  shrunk player deviations. Players with no transition inherit the population
+  rate rather than receiving an unsupported estimate. Marginal curvature uses
+  the full covariance of population plus deviation, not a sum of marginal
+  standard deviations.
+- Deterministic, independent-likelihood, component-sum, masked-score, and
+  finite-difference checks pass. The general gradient/Hessian errors are about
+  `1.2e-9` / `1.0e-7`; the active one-sided negative-rate branch checks at
+  `8.1e-8` / `1.1e-7`. Masked target-score changes again leave topology,
+  states, and predictions exactly unchanged.
+- Fitted synthetics recover the ordering of two well-observed different-rate
+  players, shrink a deliberately sparse high-rate player almost exactly to the
+  population rate, and retain a planted declining player at a negative rate
+  even with a finite downside penalty. This confirms both partial pooling and
+  the escape path for genuine decline.
+- On the real SD20 / `lambda=0.25` / `k=75` grid, moderate player-rate SD 3 is
+  the stable useful region. With prior centers 1 and 2 it reconstructs held
+  dates at `6.917005` and `6.917093` NLL/game, versus `6.918257` and `6.918302`
+  for their matched shared-rate models. Correct game-weighted date-cluster
+  intervals are `[-0.00268, -0.00003]` and
+  `[-0.00254, -0.00006]`; equal-date intervals are also narrowly below zero.
+- This is a small family-level signal, not precise individual-rate certainty.
+  The center-1 fit learns population rate `2.04 +/- 1.20` public points per
+  effective exposure and shrinks player rates into `0.77` through `3.69`; the
+  center-2 fit learns `2.40 +/- 1.20` with rates `0.96` through `4.00`.
+- Rate SD 6 lowers the point estimate further to about `6.9161`, but both
+  bootstrap estimands cross zero, marginal population uncertainty grows to
+  about `1.43`, and two to five player rates become negative depending on the
+  population prior center. Treat this as the beginning of overfitting rather
+  than a preferred explanatory model.
+- Primary review found and corrected an initial bootstrap-unit bug: date-cluster
+  NLL totals had been divided by dates rather than sampled games. All intervals
+  above come from the regenerated 2,000-replicate game-weighted and separately
+  labeled equal-date bootstraps.
+
+### Finalist Exposure, Process, and Prior Results
+
+- Exposure-family priors were normalized to the same median total prior gain,
+  `10.4821` points, before comparing raw games with blended session/game
+  exposure. This prevents the exposure unit itself from deciding the result.
+  All scaling checks are exact to `1.78e-15`; all candidate factorizations use
+  zero numerical jitter.
+- Mildly diminishing raw-game exposure (`lambda=1`, `k=75`) is the numerical
+  held-date leader at `6.916876` NLL/game. The conservative blended exposure
+  (`lambda=0.25`, `k=75`) is `6.917005`. Their direct game-weighted date-cluster
+  interval is `[-0.00107, +0.00069]`, and the equal-date interval is
+  `[-0.00071, +0.00083]`; therefore the data do not identify which exposure
+  definition is better. Their normalized Laplace evidence differs by only
+  `0.47` log units, also too small to choose a shape.
+- The fitted median population rate-component gain across the observed span is
+  about `21.4` points for the blended finalist and `23.8` for the raw-game
+  finalist. These are total observed-span gains, not points awarded after every
+  game. The fitted raw-game rates are roughly `0.52` to `1.76` before
+  cumulative diminishing exposure; the blended rates are `0.77` to `3.69` in
+  their different effective-exposure units.
+- Process SD 20 remains the conservative choice. On the raw-game finalist,
+  process SD 45 and 80 improve held reconstruction by `0.00066` and `0.00197`
+  NLL/game, but their date-cluster intervals versus SD20 cross zero and their
+  normalized Laplace evidence is lower by about `1.10` and `3.71` log units.
+  The extra path motion is not identified strongly enough to justify it.
+- Changing the population-rate prior center between 1 and 3 moves the fitted
+  population rate materially, while held NLL changes only from `6.917005` to
+  `6.917377`. This is direct evidence that the absolute improvement scale is
+  still prior-sensitive even though positive durable improvement is the stable
+  qualitative result.
+- A dedicated normalized-evidence sweep confirms the partial-pooling tradeoff.
+  Relative to one shared rate, player-rate SDs `0.5`, `1.5`, `3`, and `6`
+  monotonically improve held-date NLL/game from `6.918257` to `6.916128`, but
+  monotonically reduce normalized Laplace evidence by `0.06`, `0.52`, `1.79`,
+  and `4.99` log units. Rate SD 3 is the bounded explanatory compromise:
+  it gives the small held-date improvement already reported, keeps all fitted
+  rates positive, and avoids the three negative and highly dispersed rates at
+  SD 6. It is not an evidence-selected winner over the simpler shared-rate
+  model.
+- Individual slopes remain uncertain. Under the two rate-SD-3 finalists,
+  representative full-span durable rate-component gains are about `+147` to
+  `+165` for Dustin, `+146` to `+168` for Matt, `+139` to `+158` for Joe,
+  `+116` to `+129` for Jack, `+103` to `+113` for Jay, about `+90` to `+96`
+  for Josh and Alexa, and about `+36` to `+48` for Kim and Melissa. Individual
+  rate standard deviations are often as large as the fitted rates, so these
+  values support smooth positive paths but not precise player-to-player slope
+  rankings.
+
+### League-Session Form Results
+
+- A zero-sum league-date form effect was added only to the league likelihood,
+  with all 99 league games still at full weight. Its 22 coordinates exactly
+  sum to zero; no-form fits exactly reproduce the accepted finalist metrics.
+  Determinism, likelihood partitions, derivatives, masked-score isolation, and
+  Helmert-basis checks pass.
+- Synthetic tests show the term behaves as intended: it isolates one planted
+  severe league off-day while retaining positive player improvement, and it
+  does not absorb a repeatedly planted durable decline.
+- The real data reject the extra form term as a default. Form SD 10, 25, and 50
+  improve in-sample NLL but worsen held-date NLL for both exposure finalists;
+  every interval crosses zero, and normalized Laplace evidence also declines.
+  At SD50 the fitted form RMS grows to about `14.5` points and assigns August 19
+  roughly `-42` points, demonstrating residual absorption rather than a stable
+  explanatory gain. Keep the bracket classification, but omit league-session
+  form from the candidate.
+
+### Conclusions and Recommendation
+
+- A fixed `+3` points per raw game is decisively too aggressive. The useful
+  model is a jointly fitted latent transition prior based on completed exposure,
+  with residual state motion free to contradict it when the games require that.
+- The stable result is modest positive population improvement associated with
+  playing exposure. The record does not identify raw games versus a
+  session-heavy blended exposure, and it does not contain enough independent
+  information to rank precise player improvement slopes confidently.
+- If an individualized explanatory graph is desired despite that uncertainty,
+  the defensible bounded candidate is process SD 20, hierarchical player-rate
+  SD 3, no league-session form, and a sensitivity band spanning both
+  `lambda=0.25, k=75` and raw-game `lambda=1, k=75` exposure. The displayed
+  interpretation should be a smooth partially pooled improvement path, not an
+  earned point bonus or a claim that the fitted slopes are exact.
+- No application code, production data, rating behavior, tests, Git history,
+  or deployment changed during this investigation.
+
+### Exact Next Action
+
+Report the completed harness findings and await the user's explicit decision
+about any later implementation or additional sensitivity test. Do not change
+application code, production data, rating behavior, tests, Git history, or
+deploy.
+
+## Implementation — Session-Weighted Individual Improvement
+
+### User Decision
+
+- On August 30, 2026 the user approved applying the session-weighted exposure
+  model and the moderately partially pooled individualized-rate model to the
+  Bayesian Overall scoreboard and its player graphs.
+- The user explicitly chose individualized slopes as a reality-based modeling
+  assumption even though normalized evidence prefers the simpler shared-rate
+  model. Preserve that product decision while keeping the slopes partially
+  pooled and the uncertainty honest.
+- This approval covers local implementation and verification. It does not
+  authorize staging, committing, pushing, or deployment.
+
+### Goal
+
+- Replace only Overall's current zero-mean weekly random-walk transition with
+  the validated causal exposure transition and hierarchical player-specific
+  improvement rates. The compact table remains Rating and Games; the existing
+  player overlay shows the new model's history.
+- Keep team balancing, static Big/Small Bayesian boards, Season Ranking, Trend,
+  Game History, and every non-Overall rating path unchanged.
+
+### Approved Model
+
+- Fit one entry-skill state per player per recorded appearance date. Every game
+  on the same date uses the same entry state. That date's completed exposure
+  can affect only the transition to a later appearance, never another result
+  from the same session.
+- Session exposure is `1 + 0.25 * (games_on_date - 1)`. Apply the approved mild
+  cumulative diminishing transform `H(E) = 75 * log(1 + E / 75)` and use
+  `beta_i * delta_H` as the transition mean.
+- Model `beta_i = beta_population + beta_deviation_i`. Use the validated public-
+  scale priors: population center 1, population SD 2, player-deviation SD 3,
+  and calendar-gap process SD 20 per square-root month. Convert those values
+  through the existing public/latent scale exactly once.
+- Do not add a downside penalty or hard nonnegative constraint. A well-supported
+  genuine decline must remain possible. Do not add league-session form.
+- Retain every league game at N=10 and likelihood weight 1.0. Preserve the
+  accepted stable recorded outside-context and bracket treatment, including the
+  in-model August 19/20 bracket classification, without mutating source data or
+  weakening league impact.
+- Keep one noninteractive `League Player` display row using the existing
+  same-roster-size individual interpretation. If outside contexts require a
+  pooled display reference, derive it deterministically from the fitted league
+  observations rather than hard-coding a rating.
+
+### Display and Persistence Requirements
+
+- Overall row ratings and ranks use each player's latest fitted entry state,
+  posterior uncertainty, and the existing confidence/volume display transform.
+  The active confidence toggle continues to control only its existing display
+  adjustment; it must not silently disable or rescale the fitted exposure model.
+- Preserve the current compact mobile table, graph dialog, adaptive axes,
+  monthly date labels, league-average reference, accessibility, and close/focus
+  behavior. Do not add a slope column, model explanation, label, or help text.
+- Preserve the user-selected weekly graph distribution by exposing at most one
+  plotted checkpoint per active Monday-anchored week, selected deterministically
+  from the fitted appearance-date path. The final checkpoint must equal the
+  current table row under the active display options.
+- Store the partially pooled player rate and its posterior uncertainty in the
+  Overall-only snapshot for deterministic graph/model reuse, but do not expose
+  new UI copy or an extra scoreboard field.
+- Introduce a new Overall model/storage identity and reject deployed weekly-v3
+  snapshots. Keep static Big/Small snapshot behavior unchanged and include all
+  model-defining parameters in the cache identity.
+
+### Constraints and Non-goals
+
+- Preserve the six pre-existing dirty files reported at startup. Limit edits to
+  the Overall implementation, its worker/integration path, focused tests, PWA
+  cache generation, and this ExecPlan.
+- Do not alter source game data, production databases, balancing ratings,
+  scoreboard penalty tiers, or user-facing explanatory copy.
+- Do not stage, commit, push, or deploy.
+
+### Milestones
+
+1. Adapt the validated scratch model into a browser-safe production core,
+   introduce the new snapshot schema/model identity, and add deterministic
+   model tests.
+2. Integrate the model with the Overall worker/table/history graph while
+   preserving the compact UI and weekly graph distribution.
+3. Add focused browser regressions and update the PWA cache generation.
+4. Run the full test suite, required Season Ranking/Trend/Game History
+   consistency pass, balancing-invariance check, current-data audit, and a
+   phone-width local browser audit.
+
+### Acceptance Criteria
+
+- Current data fit all 76 players and all 347 games, including all 99 league
+  games at full weight; every finite row/history endpoint is deterministic.
+- Same-day games share one entry state and cannot learn from exposure earned
+  later that day. Synthetic different-rate, sparse-player shrinkage, stable,
+  improving, and genuine-decline fixtures recover the intended behavior.
+- The production candidate reproduces the accepted harness parameterization
+  and current-data outputs within documented numerical tolerance.
+- Overall's latest graph point exactly equals its table row under default and
+  advanced display options. Weekly checkpoint density, League Player reference,
+  mobile geometry, keyboard/dialog behavior, and static Big/Small scoping pass.
+- A fixed balancing fixture is byte-for-byte unchanged. Season Ranking, Trend,
+  and Game History remain mutually aligned under sampled default and advanced
+  options with the same game set, league inclusion, team-size, rolling-window,
+  visible rating/rank, and game-count transforms.
+- The current-data fit is responsive enough for the existing worker/cache
+  workflow, all automated tests pass, `git diff --check` passes, and an exact
+  local audit URL is reported.
+
+### Progress
+
+- [x] Verify the August 30 direct Drive source and local-data equivalence.
+- [x] Record the approved production parameterization and boundaries.
+- [x] Implement and validate the production model core and snapshot schema.
+- [x] Integrate and verify the Overall table and graphs.
+- [x] Complete the repository-wide consistency and local phone audit.
+
+### Milestone 1 Validation
+
+- `overall-dynamic-ratings.js` now implements the appearance-date causal model,
+  hierarchical player rates, stable league contexts, all existing bracket tags
+  plus the in-model August 19/20 classification, and Overall snapshot schema 3
+  under the new v4 storage identity.
+- An exact scratch comparison on the refreshed 76-player / 347-game source
+  matches the accepted finalist at objective `2398.750695879797`, population
+  rate `2.036900186663914`, 693 dimensions, and 636 appearance states. Three
+  representative player rates match exactly; context and bracket differences
+  are no larger than `1.25e-14`.
+- The final Hessian is factored once and reused for all state, context, league,
+  population-rate, and player-rate covariance solves. Current-data model plus
+  posterior formatting fell from about 8.3 seconds in the first draft to about
+  1.63 seconds.
+- Focused dynamic tests pass 11/11 and the unchanged static Bayesian tests pass
+  23/23. They cover causal same-day exposure, exact units, full league weight,
+  source-tagged and added bracket dates, partial pooling, sparse inheritance,
+  different-rate and genuine-decline recovery, snapshot rejection, League
+  Player conversion, endpoint/uncertainty/order invariants, weekly helper
+  compatibility, and invalid-history rejection. Syntax and diff checks pass.
+
+### Milestone 2 Validation
+
+- Composite/Overall now sends raw recorded games to the dynamic worker, so the
+  five stable outside contexts and all bracket metadata reach the accepted
+  model. Static Big/Small continue to receive their existing pooled league
+  opponent and remain on the static Bayesian path.
+- Stats recognizes only schema 3 plus the new model identity as dynamic Overall.
+  The v4 storage key isolates it from deployed weekly-v3 snapshots, while the
+  model's `playerRates` remain persisted but absent from table/UI rendering.
+- Appearance-date history is projected to the latest fitted entry state in each
+  Monday-anchored week before the unchanged display transform. This preserves
+  the weekly graph distribution and makes the final projected knot the actual
+  latest state used by the table.
+- Composite calculation, staleness checks, and League Player display conversion
+  use the same raw snapshot-scoped games. A deterministic audit reports a fresh
+  schema-3 snapshot as not stale with zero added/modified games; editing one raw
+  score reports exactly one modified game. Current-data harmonic effective size
+  remains exactly `6.404805914972282`.
+- Focused dynamic tests remain 11/11, the worker syntax check and diff check
+  pass, and no new user-facing copy or static-scoreboard behavior was added.
+
+### Milestone 3 Validation
+
+- The focused dynamic-history browser regression now seeds and rejects an old
+  weekly-v3 payload, waits for schema 3 plus the new model identity, verifies
+  persisted player-rate metadata remains absent from the compact UI, and keeps
+  the exact existing `Trend / # / Player / Rating / Games` headers.
+- At 390px it verifies the graph has exactly one marker per active Monday week
+  despite retaining the full appearance-date posterior in storage, preserves
+  true elapsed-time spacing, derives the exact adaptive month ticks, and keeps
+  the final endpoint equal to the table row.
+- The displayed League Player row and dashed graph reference agree exactly
+  after snapshot-scoped roster-size conversion. Table geometry, visible focus,
+  dialog containment/return, all close paths, sparse history, and noninteractive
+  League Player/static Big mode all pass.
+- Exact focused command:
+  `VBALL_BROWSER_SMOKE=1 node test/overall-dynamic-history-browser.mjs
+  http://127.0.0.1:5176 http://127.0.0.1:9444` reports
+  `Dynamic Overall history overlay browser test passed.` The isolated browser
+  was terminated after the run.
+- The PWA cache generation is now
+  `vball-static-v29-session-exposure-overall`; the revised dynamic module and
+  worker remain in the offline app shell. Browser-test/service-worker syntax,
+  focused Overall tests 11/11, and diff checks pass.
+
+### Milestone 4 Validation
+
+- Final review caught a multi-context League Player aggregation defect before
+  publication. Averaging all 99 fitted outside terms before converting the
+  posterior team average to one player over-shrank uncertainty and would have
+  displayed the synthetic row first at about 2644. The corrected row converts
+  every league observation with its own fitted context plus bracket covariance
+  and recorded local roster size, then takes the game-weighted mean individual
+  posterior. It is persisted as already individual so the display layer cannot
+  apply the roster conversion twice.
+- The corrected current-data League Player has `mu 25.054284483826823`,
+  `sigma 1.271383865679414`, and `ordinal 21.24013288678858`, displaying as
+  2562 at rank 5. This remains higher than the prior weekly model's 2155 because
+  the approved exposure model treats five stable league contexts as tightly
+  calibrated anchors; no context prior or other approved model parameter was
+  silently retuned.
+- `npm test` passes 43/43, `npm run test:handoff` passes 25/25, and worker,
+  service-worker, browser-test syntax plus `git diff --check` pass. The focused
+  dynamic suite remains 11/11. The PWA cache generation is
+  `vball-static-v30-session-exposure-league-individual` so the final League
+  correction cannot be hidden behind the earlier candidate cache.
+- The broad clean-profile browser regression passes end to end. Its required
+  cross-view consistency sample remains aligned across Season Ranking, Trend,
+  and Game History: JoeM is 2258 over 55 games under the default one-month,
+  league-included, confidence-adjusted options and 2409 over 49 games when the
+  season window and confidence penalty are removed and league games are hidden.
+  Play-tab new-data/correction guards and the four-hour action throttle also
+  complete normally. `index.html` and `ratings.js` have no task diff and no
+  Overall-v4/player-rate dependency, preserving balancing behavior.
+- The fresh current-data browser audit uses all 76 players and 347 games through
+  August 27, including all 99 league games and 21 bracket games. The production
+  core exactly retains objective `2398.750695879797`, 693 dimensions, 636
+  appearance-date states, five league contexts, 50 individual rate deviations,
+  zero Cholesky jitter, and the accepted population rate
+  `2.036900186663913 +/- 1.198789125313495` public points per effective
+  exposure. It converges in three Newton iterations.
+- Representative fitted player rates remain individualized and partially
+  pooled: DustinR `2.886 +/- 2.026`, MattA `3.506 +/- 2.424`, AlexaY
+  `2.368 +/- 2.659`, RichaP `1.954 +/- 3.123`, and MelissaR
+  `0.774 +/- 2.206`. Their fitted first-to-last central paths are respectively
+  positive by about 167, 175, 95, 43, and 35 public rating points. These rates
+  stay in snapshot metadata and are not exposed as a new table field or copy.
+- At 390x844 the exact compact headers remain
+  `Trend / # / Player / Rating / Games`, the table fits without horizontal
+  overflow, and the current top four are MattA 2604, DustinR 2593, JoeM 2587,
+  and JackT 2582. DustinR's overlay has 20 weekly markers, seven readable
+  Y ticks, monthly April-through-August labels, a 14px minimum label size,
+  exact 2593 graph/table endpoint equality, an exact 2562 League reference,
+  contained dialog geometry, correct close-button focus, and no console errors.
+  The audited screenshots are
+  `/private/tmp/vball-current-session-exposure-table.png` and
+  `/private/tmp/vball-current-session-exposure-graph.png`.
+- The final focused mobile/history regression and full browser smoke both pass
+  against the healthy local audit URL
+  `http://127.0.0.1:5176/stats.html?tab=allTime&mode=composite`.
+
+### Exact Next Action
+
+On August 30, 2026 the user audited the remote Tailscale beta and explicitly
+requested publication to GitHub Pages, accepting the current candidate including
+its 2562 League Player reference. Release only the seven reviewed feature,
+integration, cache, regression, and ExecPlan files. Keep `HANDOFF.md`,
+`default_database`, and the four unrelated handoff implementation/test files
+unstaged. Push the scoped commit to `origin/main`, wait for the GitHub Pages run,
+and verify the deployed feature files against that exact source revision.

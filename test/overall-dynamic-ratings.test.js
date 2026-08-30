@@ -1,203 +1,387 @@
-import assert from 'node:assert/strict';
-import test from 'node:test';
+import assert from "node:assert/strict";
+import test from "node:test";
 import {
   calculateOverallDynamicScoreboard,
   formatDynamicLeagueIndividualRating,
   getDynamicLeagueIndividualEffectiveSize,
-  OVERALL_DYNAMIC_SNAPSHOT_SCHEMA_VERSION,
-  OVERALL_DYNAMIC_MONTHLY_SD_LATENT,
-  OVERALL_DYNAMIC_MONTHLY_BROWNIAN_DAYS,
-  OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
-  OVERALL_DYNAMIC_SNAPSHOT_STORAGE_KEY,
-  OVERALL_DYNAMIC_WEEKLY_BUCKET_ANCHOR,
+  getOverallDynamicCumulativeExposureTransform,
+  getOverallDynamicSessionExposure,
   getOverallDynamicWeeklyBucketKey,
   getOverallDynamicWeeklyInterpolation,
   getOverallDynamicWeeklyTransitionVariance,
+  OVERALL_DYNAMIC_BRACKET_DATES,
+  OVERALL_DYNAMIC_MODEL_VERSION,
+  OVERALL_DYNAMIC_N_EFF,
+  OVERALL_DYNAMIC_MONTHLY_BROWNIAN_DAYS,
+  OVERALL_DYNAMIC_MONTHLY_SD_LATENT,
+  OVERALL_DYNAMIC_PLAYER_DEVIATION_SD_PUBLIC,
+  OVERALL_DYNAMIC_POPULATION_RATE_CENTER_PUBLIC,
+  OVERALL_DYNAMIC_POPULATION_RATE_SD_PUBLIC,
+  OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
+  OVERALL_DYNAMIC_SNAPSHOT_SCHEMA_VERSION,
+  OVERALL_DYNAMIC_SNAPSHOT_STORAGE_KEY,
   validateOverallDynamicSnapshot,
-} from '../overall-dynamic-ratings.js';
-import { BAYESIAN_POOLED_LEAGUE_OPPONENT_ID } from '../bayesian-ratings.js';
+} from "../overall-dynamic-ratings.js";
+import { BAYESIAN_POOLED_LEAGUE_OPPONENT_ID } from "../bayesian-ratings.js";
 
 const player = (id, name = id) => ({ id, name });
-const internal = (id, date, redTeam, blueTeam, winner = 'red', scoreRed = 25, scoreBlue = 18) =>
-  ({ id, createdAt: date, redTeam, blueTeam, winner, scoreRed, scoreBlue });
-const league = (id, date, redTeam, winner = 'red', scoreRed = winner === 'red' ? 25 : 18, scoreBlue = winner === 'red' ? 18 : 25, extra = {}) =>
-  ({ id, createdAt: date, redTeam, blueTeam: [], winner, scoreRed, scoreBlue, isLeagueGame: true, ...extra });
-const row = (snapshot, id) => snapshot.ratings.find(candidate => candidate.id === id);
-
-test('dynamic Overall pools every league context equally into one learned row', () => {
-  const a = player('a', 'A');
-  const snapshot = calculateOverallDynamicScoreboard({ players: [a], games: [
-    league(1, '2026-01-01', [a], 'red', 25, 20, { courtType: 'indoor', leagueLevel: 'rec' }),
-    league(2, '2026-02-01', [a], 'blue', 20, 25, { courtType: 'sand', leagueLevel: 'intermediate' }),
-    league(3, '2026-03-01', [a], 'red', 25, 15, { courtType: 'grass', leagueLabel: 'one-day' }),
-  ] });
-  const pooled = row(snapshot, BAYESIAN_POOLED_LEAGUE_OPPONENT_ID);
-  assert.equal(snapshot.gamesConsidered, 3);
-  assert.equal(snapshot.diagnostics.leagueGamesIncluded, 3);
-  assert.equal(pooled.games, 3);
-  assert.equal(pooled.isLeagueContext, true);
-  assert.notEqual(pooled.mu, 25);
+const league = (
+  id,
+  date,
+  redTeam,
+  winner = "red",
+  scoreRed = winner === "red" ? 25 : 18,
+  scoreBlue = winner === "red" ? 18 : 25,
+  extra = {},
+) => ({
+  id,
+  createdAt: date,
+  redTeam,
+  blueTeam: [],
+  winner,
+  scoreRed,
+  scoreBlue,
+  isLeagueGame: true,
+  ...extra,
 });
+const internal = (
+  id,
+  date,
+  redTeam,
+  blueTeam,
+  winner = "red",
+  scoreRed = 25,
+  scoreBlue = 18,
+) => ({ id, createdAt: date, redTeam, blueTeam, winner, scoreRed, scoreBlue });
+const row = (snapshot, id) =>
+  snapshot.ratings.find((candidate) => candidate.id === id);
+const rate = (snapshot, id) =>
+  snapshot.playerRates.players.find((candidate) => candidate.id === id);
 
-test('pooled league display converts team uncertainty to a fingerprint-scoped individual', () => {
-  const a = player('a');
-  const games = [
-    league(1, '2026-01-01', Array.from({ length: 5 }, () => a)),
-    league(2, '2026-01-02', Array.from({ length: 7 }, () => a)),
-  ];
-  const snapshot = calculateOverallDynamicScoreboard({ players: [a], games });
-  const pooled = row(snapshot, BAYESIAN_POOLED_LEAGUE_OPPONENT_ID);
-  const nEff = getDynamicLeagueIndividualEffectiveSize(games, snapshot.gameFingerprints);
-  const individual = formatDynamicLeagueIndividualRating(pooled, games, snapshot.gameFingerprints);
-  assert.equal(nEff, 2 / (1 / 5 + 1 / 7));
-  assert.equal(individual.mu, pooled.mu);
-  assert.equal(individual.sigma, pooled.sigma * Math.sqrt(nEff));
-  assert.equal(individual.ordinal, individual.mu - 3 * individual.sigma);
-  assert.equal(individual.name, 'League Player');
-  assert.equal(individual.games, pooled.games);
-  assert.equal(getDynamicLeagueIndividualEffectiveSize([], snapshot.gameFingerprints), 1);
-  assert.equal(getDynamicLeagueIndividualEffectiveSize([{ ...games[0], scoreRed: 24 }], snapshot.gameFingerprints), 1);
-});
-
-test('fixed roster distribution has deterministic individual uncertainty and display conversion', () => {
-  const pooled = { id: 'league', name: 'League Team', mu: 25, sigma: 2, games: 4, wins: 2, winrate: .5 };
-  const games = [5, 6, 7, 8].map((size, index) => ({
-    id: index + 1,
-    createdAt: `2026-01-0${index + 1}`,
-    isLeagueGame: true,
-    redTeam: Array.from({ length: size }, (_, playerIndex) => player(`${index}-${playerIndex}`)),
-    blueTeam: [], scoreRed: 25, scoreBlue: 20, winner: 'red',
-  }));
-  const snapshot = calculateOverallDynamicScoreboard({ players: games.flatMap(game => game.redTeam), games });
-  const nEff = getDynamicLeagueIndividualEffectiveSize(games, snapshot.gameFingerprints);
-  const individual = formatDynamicLeagueIndividualRating(pooled, games, snapshot.gameFingerprints);
-  assert.equal(nEff, 4 / (1 / 5 + 1 / 6 + 1 / 7 + 1 / 8));
-  assert.equal(individual.sigma, 2 * Math.sqrt(nEff));
-  assert.equal(Math.round(1500 + 50 * individual.ordinal), Math.round(1500 + 50 * (25 - 6 * Math.sqrt(nEff))));
-  assert.equal(individual.games, 4);
-});
-
-test('history endpoint exactly matches each current real-player rating', () => {
-  const a = player('a'), b = player('b');
-  const snapshot = calculateOverallDynamicScoreboard({ players: [a, b], games: [
-    internal(1, '2026-01-04', [a], [b]), league(2, '2026-02-04', [a]),
-  ] });
-  for (const id of ['a', 'b']) {
-    const latest = snapshot.history[id].at(-1); const rating = row(snapshot, id);
-    for (const key of ['mu', 'sigma', 'ordinal']) assert.equal(latest[key], rating[key]);
-    assert.equal(rating.ordinal, rating.mu - 3 * rating.sigma);
-  }
-  assert.deepEqual(snapshot.history.a.map(knot => knot.games), [1, 2]);
-});
-
-test('improving player rises against a stable pooled league and fitting is deterministic', () => {
-  const a = player('a'), b = player('b');
-  const games = [
-    league(1, '2026-01-01', [a], 'blue'), league(2, '2026-02-01', [a], 'red'), league(3, '2026-03-01', [a], 'red'),
-    league(4, '2026-01-01', [b], 'red'), league(5, '2026-02-01', [b], 'blue'), league(6, '2026-03-01', [b], 'red'),
-  ];
-  const first = calculateOverallDynamicScoreboard({ players: [a,b], games });
-  const second = calculateOverallDynamicScoreboard({ players: [a,b], games });
-  const history = first.history.a;
-  assert.ok(history.at(-1).mu > history[0].mu);
-  assert.deepEqual(first.ratings, second.ratings);
-  assert.deepEqual(first.history, second.history);
-});
-
-test('identical weekly league evidence leaves a synthetic history effectively flat', () => {
-  const a = player('a');
-  const games = Array.from({ length: 6 }, (_, index) =>
-    league(index + 1, `2026-0${index + 1}-01`, [a], 'red', 25, 18)
-  );
-  const values = calculateOverallDynamicScoreboard({ players: [a], games }).history.a.map(knot => knot.mu);
-  assert.ok(Math.max(...values) - Math.min(...values) < 0.01);
-});
-
-test('weekly buckets use the Monday anchor, exact interpolation, and Brownian transition variance', () => {
-  assert.equal(OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT, (25 / 3) * 50);
-  assert.equal(OVERALL_DYNAMIC_MONTHLY_SD_LATENT, 10 / ((25 / 3) * 50));
-  assert.equal(OVERALL_DYNAMIC_WEEKLY_BUCKET_ANCHOR, '2000-01-03');
-  assert.equal(getOverallDynamicWeeklyBucketKey('2026-01-04'), '2025-12-29');
-  assert.equal(getOverallDynamicWeeklyBucketKey('2026-01-05'), '2026-01-05');
-  assert.equal(getOverallDynamicWeeklyBucketKey('2026-01-11'), '2026-01-05');
-  assert.equal(getOverallDynamicWeeklyInterpolation('2026-01-05', '2026-01-19', '2026-01-12'), .5);
+test("exposure math and public/latent conversions are exact", () => {
+  assert.equal(getOverallDynamicSessionExposure(1), 1);
+  assert.equal(getOverallDynamicSessionExposure(5), 2);
+  assert.equal(getOverallDynamicCumulativeExposureTransform(0), 0);
   assert.equal(
-    getOverallDynamicWeeklyTransitionVariance('2026-01-05', '2026-01-12'),
-    OVERALL_DYNAMIC_MONTHLY_SD_LATENT ** 2 * 7 / OVERALL_DYNAMIC_MONTHLY_BROWNIAN_DAYS
+    getOverallDynamicCumulativeExposureTransform(75),
+    75 * Math.log(2),
   );
-  const a = player('a'), b = player('b');
-  const snapshot = calculateOverallDynamicScoreboard({ players: [a, b], games: [
-    league(1, '2026-01-01', [a], 'red', 25, 1),
-    league(2, '2026-03-01', [a], 'red', 25, 25),
-    league(3, '2026-01-01', [b], 'blue', 1, 25),
-    league(4, '2026-03-01', [b], 'red', 25, 25),
-  ] });
-  const values = snapshot.history.a.map(knot => knot.mu);
-  assert.ok(values.at(-1) > 25.05, 'later state should retain early evidence through the transition prior');
+  assert.equal(
+    OVERALL_DYNAMIC_POPULATION_RATE_CENTER_PUBLIC /
+      OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
+    1 / OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
+  );
+  assert.equal(
+    OVERALL_DYNAMIC_POPULATION_RATE_SD_PUBLIC /
+      OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
+    2 / OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
+  );
+  assert.equal(
+    OVERALL_DYNAMIC_PLAYER_DEVIATION_SD_PUBLIC /
+      OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
+    3 / OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
+  );
 });
 
-test('weekly history assigns all games in a bucket to its cumulative knot', () => {
-  const a = player('a');
-  const snapshot = calculateOverallDynamicScoreboard({ players: [a], games: [
-    league(1, '2026-01-05', [a]),
-    league(2, '2026-01-11', [a]),
-    league(3, '2026-01-12', [a]),
-  ] });
-  assert.deepEqual(snapshot.history.a.map(knot => knot.date), ['2026-01-05', '2026-01-12']);
-  assert.deepEqual(snapshot.history.a.map(knot => knot.games), [2, 3]);
+test("same-day games share an entry state and only alter their outgoing exposure", () => {
+  const a = player("a"),
+    b = player("b");
+  const base = [
+    league("1", "2026-01-01", [a]),
+    league("2", "2026-01-02", [a]),
+    league("3", "2026-02-01", [a]),
+    league("4", "2026-01-01", [b]),
+    league("5", "2026-02-01", [b]),
+  ];
+  const extraSameDay = [...base, league("same-day-extra", "2026-01-02", [a])];
+  const first = calculateOverallDynamicScoreboard({
+    players: [a, b],
+    games: base,
+  });
+  const second = calculateOverallDynamicScoreboard({
+    players: [a, b],
+    games: extraSameDay,
+  });
+  assert.deepEqual(
+    first.history.a.map((k) => k.date),
+    ["2026-01-01", "2026-01-02", "2026-02-01"],
+  );
+  assert.equal(first.history.a[1].exposureBefore, 1);
+  assert.equal(first.history.a[1].exposureAfter, 2);
+  assert.equal(second.history.a[1].exposureAfter, 2.25);
+  assert.equal(
+    second.history.a.length,
+    first.history.a.length,
+    "additional same-day games do not create another entry state",
+  );
+  assert.notEqual(
+    first.history.a[2].exposureBefore,
+    second.history.a[2].exposureBefore,
+    "completed session affects only later transition exposure",
+  );
 });
 
-test('all history and league uncertainties use finite posterior marginals', () => {
-  const a = player('a');
+test("all league contexts retain N=10/full likelihood and bracket dates are in-model", () => {
+  const a = player("a");
   const games = [
-    league(1, '2026-01-01', [a], 'red'),
-    league(2, '2026-02-01', [a], 'blue'),
-    league(3, '2026-03-01', [a], 'red'),
+    league("normal", "2026-08-18", [a], "red", 25, 20, {
+      leagueOpponent: { id: "stable-outside" },
+    }),
+    league("bracket", OVERALL_DYNAMIC_BRACKET_DATES[0], [a], "blue", 20, 25, {
+      leagueOpponent: { id: "stable-outside" },
+    }),
+    league("source-bracket", "2026-09-01", [a], "red", 25, 20, {
+      leagueOpponent: { id: "stable-outside" },
+      leaguePhase: "bracket",
+    }),
+    league("other", "2026-08-21", [a], "red", 25, 19, {
+      leagueOpponent: { id: "other-outside" },
+    }),
   ];
   const snapshot = calculateOverallDynamicScoreboard({ players: [a], games });
-  const leagueRow = row(snapshot, BAYESIAN_POOLED_LEAGUE_OPPONENT_ID);
-  snapshot.history.a.forEach(knot => assert.ok(Number.isFinite(knot.variance) && knot.variance > 0));
-  assert.ok(leagueRow.sigma < 25 / 3, 'observed league uncertainty must be lower than its unit-prior sigma');
-  const fewer = calculateOverallDynamicScoreboard({ players: [a], games: games.slice(0, 1) });
-  assert.ok(leagueRow.sigma < row(fewer, BAYESIAN_POOLED_LEAGUE_OPPONENT_ID).sigma);
+  assert.equal(snapshot.diagnostics.nEff, OVERALL_DYNAMIC_N_EFF);
+  assert.equal(snapshot.diagnostics.leagueGamesIncluded, 4);
+  assert.equal(snapshot.diagnostics.bracketLeagueGamesIncluded, 2);
+  assert.deepEqual(snapshot.diagnostics.leagueContexts, [
+    "other-outside",
+    "stable-outside",
+  ]);
+  assert.equal(row(snapshot, BAYESIAN_POOLED_LEAGUE_OPPONENT_ID).games, 4);
 });
 
-test('bridge fallback includes every qualifying player and is invariant to game order', () => {
-  const players = Array.from({ length: 6 }, (_, index) => player(String(index)));
-  const games = players.flatMap((entry, playerIndex) => Array.from({ length: 5 }, (_, gameIndex) =>
-    league(`${playerIndex}-${gameIndex}`, `2026-0${gameIndex + 1}-01`, [entry], gameIndex % 2 ? 'blue' : 'red')
-  ));
-  const first = calculateOverallDynamicScoreboard({ players, games });
-  const shuffled = calculateOverallDynamicScoreboard({ players, games: [...games].reverse() });
-  assert.deepEqual(first.diagnostics.bridgeCohort.ids, players.map(entry => entry.id));
-  assert.deepEqual(first.diagnostics.bridgeCohort, shuffled.diagnostics.bridgeCohort);
-  assert.deepEqual(first.ratings, shuffled.ratings);
+test("partially pooled player rates are deterministic, finite, and sparse players inherit population", () => {
+  const a = player("a"),
+    b = player("b"),
+    sparse = player("sparse");
+  const games = [
+    league("1", "2026-01-01", [a], "blue"),
+    league("2", "2026-02-01", [a], "red"),
+    league("3", "2026-03-01", [a], "red"),
+    league("4", "2026-01-01", [b], "red"),
+    league("5", "2026-02-01", [b], "blue"),
+    league("6", "2026-03-01", [b], "blue"),
+    league("7", "2026-01-01", [sparse], "red"),
+  ];
+  const one = calculateOverallDynamicScoreboard({
+    players: [a, b, sparse],
+    games,
+  });
+  const two = calculateOverallDynamicScoreboard({
+    players: [a, b, sparse],
+    games,
+  });
+  assert.deepEqual(one.ratings, two.ratings);
+  assert.deepEqual(one.playerRates, two.playerRates);
+  assert.equal(rate(one, "sparse").independentlyEstimated, false);
+  assert.equal(rate(one, "sparse").rate, one.playerRates.population.rate);
+  for (const entry of one.playerRates.players)
+    assert.ok(
+      Number.isFinite(entry.rate) &&
+        Number.isFinite(entry.sigma) &&
+        entry.sigma > 0,
+    );
 });
 
-test('sparse and no-league inputs remain finite and league synthetic identity is isolated', () => {
-  const a = player('a'), unused = player('unused');
-  const snapshot = calculateOverallDynamicScoreboard({ players: [a, unused], games: [league(1, '2026-01-01', [a])] });
-  assert.equal(snapshot.history[BAYESIAN_POOLED_LEAGUE_OPPONENT_ID], undefined);
-  for (const rating of snapshot.ratings) for (const key of ['mu','sigma','ordinal','games']) assert.ok(Number.isFinite(rating[key]));
-  assert.equal(row(snapshot, 'unused').games, 0);
-  assert.equal(row(snapshot, BAYESIAN_POOLED_LEAGUE_OPPONENT_ID).isSynthetic, true);
+test("constructed improving, stable, and declining fixtures recover different-rate ordering", () => {
+  const up = player("up"),
+    flat = player("flat"),
+    down = player("down");
+  const dates = Array.from(
+    { length: 10 },
+    (_, index) => `2026-${String(index + 1).padStart(2, "0")}-01`,
+  );
+  const games = dates.flatMap((date, index) =>
+    Array.from({ length: 10 }, (_, gameIndex) => [
+      league(`u${index}-${gameIndex}`, date, [up], index < 5 ? "blue" : "red"),
+      league(
+        `f${index}-${gameIndex}`,
+        date,
+        [flat],
+        index % 2 ? "blue" : "red",
+      ),
+      league(
+        `d${index}-${gameIndex}`,
+        date,
+        [down],
+        index < 5 ? "red" : "blue",
+      ),
+    ]).flat(),
+  );
+  const snapshot = calculateOverallDynamicScoreboard({
+    players: [up, flat, down],
+    games,
+  });
+  assert.ok(rate(snapshot, "up").rate > rate(snapshot, "flat").rate);
+  assert.ok(rate(snapshot, "flat").rate > rate(snapshot, "down").rate);
+  assert.ok(snapshot.history.up.at(-1).mu > snapshot.history.up[0].mu);
+  assert.ok(
+    snapshot.history.down.at(-1).mu < snapshot.history.down[0].mu,
+    "no downside constraint permits genuine decline",
+  );
 });
 
-test('weekly snapshot identity validates and monthly snapshots are rejected', () => {
-  const a = player('a');
-  const snapshot = calculateOverallDynamicScoreboard({ players: [a], games: [league(1, '2026-01-05', [a])] });
+test("snapshot has a new Overall-only identity, rejects weekly-v3, and round-trips", () => {
+  const a = player("a"),
+    snapshot = calculateOverallDynamicScoreboard({
+      players: [a],
+      games: [league("1", "2026-01-01", [a])],
+    });
   assert.equal(snapshot.schemaVersion, OVERALL_DYNAMIC_SNAPSHOT_SCHEMA_VERSION);
-  assert.equal(OVERALL_DYNAMIC_SNAPSHOT_STORAGE_KEY, 'gameDayBayesianScoreboardSnapshotV3:composite');
-  assert.equal(validateOverallDynamicSnapshot(snapshot), true);
-  assert.throws(() => validateOverallDynamicSnapshot({ ...snapshot, schemaVersion: 1 }));
-  assert.throws(() => validateOverallDynamicSnapshot({ ...snapshot, modelVersion: 'overall-dynamic-v2' }));
-  assert.throws(() => validateOverallDynamicSnapshot({
-    ...snapshot,
-    diagnostics: { ...snapshot.diagnostics, optimizer: { ...snapshot.diagnostics.optimizer, converged: false } },
-  }));
-  const invalidHistoryGames = {
-    ...snapshot,
-    history: { ...snapshot.history, a: [{ ...snapshot.history.a[0], games: -1 }] },
-  };
-  assert.throws(() => validateOverallDynamicSnapshot(invalidHistoryGames), /history game count/);
+  assert.equal(snapshot.modelVersion, OVERALL_DYNAMIC_MODEL_VERSION);
+  assert.equal(
+    OVERALL_DYNAMIC_SNAPSHOT_STORAGE_KEY,
+    "gameDayBayesianScoreboardSnapshotV4:overall-session-exposure",
+  );
+  assert.equal(
+    validateOverallDynamicSnapshot(JSON.parse(JSON.stringify(snapshot))),
+    true,
+  );
+  assert.throws(() =>
+    validateOverallDynamicSnapshot({ ...snapshot, schemaVersion: 2 }),
+  );
+  assert.throws(() =>
+    validateOverallDynamicSnapshot({
+      ...snapshot,
+      modelVersion: "overall-dynamic-weekly-v3",
+    }),
+  );
+});
+
+test("league individual interpretation remains roster-size scoped and static games remain normal observations", () => {
+  const a = player("a"),
+    b = player("b");
+  const games = [
+    league("l", "2026-01-01", [a, a, a, a, a]),
+    internal("i", "2026-01-02", [a], [b]),
+  ];
+  const snapshot = calculateOverallDynamicScoreboard({
+    players: [a, b],
+    games,
+  });
+  const pooled = row(snapshot, BAYESIAN_POOLED_LEAGUE_OPPONENT_ID),
+    individual = formatDynamicLeagueIndividualRating(
+      pooled,
+      games,
+      snapshot.gameFingerprints,
+    );
+  assert.equal(
+    getDynamicLeagueIndividualEffectiveSize(games, snapshot.gameFingerprints),
+    5,
+  );
+  assert.equal(individual.sigma, pooled.sigma);
+  assert.equal(individual.leagueRatingIsIndividual, true);
+  assert.equal(row(snapshot, "b").games, 1);
+});
+
+test("League Player uncertainty is fingerprint-scoped across mixed roster sizes", () => {
+  const games = [5, 6, 7, 8].map((size, index) =>
+    league(
+      `league-${size}`,
+      `2026-01-0${index + 1}`,
+      Array.from({ length: size }, (_, playerIndex) =>
+        player(`${index}-${playerIndex}`),
+      ),
+    ),
+  );
+  const players = games.flatMap((game) => game.redTeam);
+  const snapshot = calculateOverallDynamicScoreboard({ players, games });
+  const pooled = row(snapshot, BAYESIAN_POOLED_LEAGUE_OPPONENT_ID);
+  const nEff = 4 / (1 / 5 + 1 / 6 + 1 / 7 + 1 / 8);
+  const individual = formatDynamicLeagueIndividualRating(
+    pooled,
+    games,
+    snapshot.gameFingerprints,
+  );
+  assert.equal(
+    getDynamicLeagueIndividualEffectiveSize(games, snapshot.gameFingerprints),
+    nEff,
+  );
+  assert.equal(individual.sigma, pooled.sigma);
+  assert.equal(individual.leagueRatingIsIndividual, true);
+  assert.equal(
+    getDynamicLeagueIndividualEffectiveSize(
+      [{ ...games[0], scoreRed: 24 }],
+      snapshot.gameFingerprints,
+    ),
+    1,
+  );
+});
+
+test("history endpoints, posterior uncertainty, order, and sparse/no-league behavior remain valid", () => {
+  const a = player("a"),
+    b = player("b"),
+    unused = player("unused");
+  const games = [
+    internal("i1", "2026-01-01", [a], [b]),
+    league("l1", "2026-02-01", [a]),
+    league("l2", "2026-03-01", [a], "blue"),
+  ];
+  const snapshot = calculateOverallDynamicScoreboard({
+    players: [a, b, unused],
+    games,
+  });
+  const reordered = calculateOverallDynamicScoreboard({
+    players: [a, b, unused],
+    games: [...games].reverse(),
+  });
+  for (const id of ["a", "b"]) {
+    const latest = snapshot.history[id].at(-1);
+    const rating = row(snapshot, id);
+    for (const key of ["mu", "sigma", "ordinal"])
+      assert.equal(latest[key], rating[key]);
+  }
+  assert.deepEqual(snapshot.ratings, reordered.ratings);
+  assert.equal(snapshot.history.unused, undefined);
+  assert.equal(row(snapshot, "unused").games, 0);
+  assert.equal(
+    row(snapshot, BAYESIAN_POOLED_LEAGUE_OPPONENT_ID).isSynthetic,
+    true,
+  );
+  const fewer = calculateOverallDynamicScoreboard({
+    players: [a, b],
+    games: games.slice(0, 2),
+  });
+  assert.ok(
+    row(snapshot, BAYESIAN_POOLED_LEAGUE_OPPONENT_ID).sigma <
+      row(fewer, BAYESIAN_POOLED_LEAGUE_OPPONENT_ID).sigma,
+  );
+  for (const knot of Object.values(snapshot.history).flat())
+    assert.ok(Number.isFinite(knot.variance) && knot.variance > 0);
+});
+
+test("weekly integration helpers retain their anchor and transition math", () => {
+  assert.equal(getOverallDynamicWeeklyBucketKey("2026-01-04"), "2025-12-29");
+  assert.equal(getOverallDynamicWeeklyBucketKey("2026-01-05"), "2026-01-05");
+  assert.equal(
+    getOverallDynamicWeeklyInterpolation(
+      "2026-01-05",
+      "2026-01-19",
+      "2026-01-12",
+    ),
+    0.5,
+  );
+  assert.equal(
+    getOverallDynamicWeeklyTransitionVariance("2026-01-05", "2026-02-04"),
+    OVERALL_DYNAMIC_MONTHLY_SD_LATENT ** 2,
+  );
+  assert.equal(OVERALL_DYNAMIC_MONTHLY_BROWNIAN_DAYS, 30);
+});
+
+test("snapshot validation rejects invalid history", () => {
+  const a = player("a");
+  const snapshot = calculateOverallDynamicScoreboard({
+    players: [a],
+    games: [league("1", "2026-01-01", [a])],
+  });
+  assert.throws(
+    () =>
+      validateOverallDynamicSnapshot({
+        ...snapshot,
+        history: {
+          ...snapshot.history,
+          a: [{ ...snapshot.history.a[0], games: -1 }],
+        },
+      }),
+    /history exposure/,
+  );
 });

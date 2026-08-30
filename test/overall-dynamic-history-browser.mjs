@@ -8,7 +8,7 @@ if (process.env.VBALL_BROWSER_SMOKE !== '1') {
 const baseUrl = process.argv[2] || 'http://127.0.0.1:5176';
 const cdpUrl = process.argv[3] || 'http://127.0.0.1:9223';
 const db = JSON.parse(fs.readFileSync('test/fixtures/bayesian-2026-06-20.json', 'utf8'));
-const snapshotKey = 'gameDayBayesianScoreboardSnapshotV3:composite';
+const snapshotKey = 'gameDayBayesianScoreboardSnapshotV4:overall-session-exposure';
 
 const targets = await fetch(`${cdpUrl}/json/list`).then(response => response.json());
 const target = targets.find(candidate => candidate.type === 'page');
@@ -37,7 +37,7 @@ await new Promise(resolve => setTimeout(resolve, 400));
 await evaluate(`
   localStorage.setItem('gameDayPlayers', ${JSON.stringify(JSON.stringify(db.players))});
   localStorage.setItem('gameDayGames', ${JSON.stringify(JSON.stringify(db.games))});
-  localStorage.removeItem(${JSON.stringify(snapshotKey)});
+  localStorage.setItem(${JSON.stringify(snapshotKey)}, JSON.stringify({ schemaVersion: 2, modelVersion: 'overall-dynamic-weekly-v3' }));
   localStorage.removeItem('gameDayBayesianScoreboardSnapshotV1:bigTeam');
   localStorage.removeItem('gameDayBayesianScoreboardSnapshotV1:smallTeam');
 `);
@@ -46,12 +46,25 @@ await new Promise(resolve => setTimeout(resolve, 400));
 await evaluate(`document.getElementById('calculateBayesianButton').click()`);
 const ready = await evaluate(`new Promise(resolve => {
   const started = Date.now(); const timer = setInterval(() => {
-    if (localStorage.getItem(${JSON.stringify(snapshotKey)}) || Date.now() - started > 30000) {
-      clearInterval(timer); resolve(Boolean(localStorage.getItem(${JSON.stringify(snapshotKey)})));
+    const snapshot = JSON.parse(localStorage.getItem(${JSON.stringify(snapshotKey)}) || 'null');
+    if (snapshot?.schemaVersion === 3 && snapshot?.modelVersion === 'overall-session-exposure-hierarchical-v1' || Date.now() - started > 30000) {
+      clearInterval(timer); resolve(snapshot?.schemaVersion === 3 && snapshot?.modelVersion === 'overall-session-exposure-hierarchical-v1');
     }
   }, 100);
 })`);
 if (!ready) throw new Error('Dynamic Overall snapshot was not calculated.');
+const v4SnapshotState = await evaluate(`(() => {
+  const snapshot = JSON.parse(localStorage.getItem(${JSON.stringify(snapshotKey)}));
+  const table = document.querySelector('.bayesian-table')?.textContent || '';
+  return {
+    schemaVersion: snapshot?.schemaVersion,
+    modelVersion: snapshot?.modelVersion,
+    playerRates: Array.isArray(snapshot?.playerRates?.players),
+    visibleRateField: /playerRates|populationRate|rateComponentGain/i.test(table),
+    ratingHeader: [...document.querySelectorAll('.bayesian-table th')].map(cell => cell.textContent.trim()),
+  };
+})()`);
+if (v4SnapshotState.schemaVersion !== 3 || v4SnapshotState.modelVersion !== 'overall-session-exposure-hierarchical-v1' || !v4SnapshotState.playerRates || v4SnapshotState.visibleRateField || v4SnapshotState.ratingHeader.join('|') !== 'Trend|#|Player|Rating|Games') throw new Error(`V4 snapshot persistence or compact table failed: ${JSON.stringify(v4SnapshotState)}`);
 
 await evaluate(`document.querySelector('#bayesianTableBody .history-player-button')?.focus()`);
 await send('Page.bringToFront');
@@ -74,7 +87,17 @@ const openState = await evaluate(`(() => {
     labelledBy: document.getElementById('overallHistoryDialog').getAttribute('aria-labelledby'),
     focusClose: document.activeElement?.id, line: path?.getAttribute('points') || '', band: band?.getAttribute('points') || '',
     rowRating: cells[3]?.textContent?.trim(), endpoint: svg?.dataset.historyEndpoint || '', xValues: svg?.dataset.historyXValues || '',
-    dates: JSON.parse(localStorage.getItem(${JSON.stringify(snapshotKey)})).history[button?.dataset.overallHistoryPlayerId || '']?.map(knot => knot.date) || [],
+    dates: (() => {
+      const knots = JSON.parse(localStorage.getItem(${JSON.stringify(snapshotKey)})).history[button?.dataset.overallHistoryPlayerId || ''] || [];
+      const anchor = Date.parse('2000-01-03T00:00:00Z');
+      const buckets = new Map();
+      knots.forEach(knot => {
+        const instant = Date.parse(String(knot.date || '').slice(0, 10) + 'T00:00:00Z');
+        const bucket = Number.isFinite(instant) ? new Date(anchor + Math.floor((instant - anchor) / (7 * 86400000)) * 7 * 86400000).toISOString().slice(0, 10) : '';
+        if (bucket) buckets.set(bucket, knot.date);
+      });
+      return [...buckets.values()];
+    })(),
   };
 })()`);
 if (!openState.button || openState.leagueInteractive || !openState.dialogVisible || openState.modal !== 'true' || openState.labelledBy !== 'overallHistoryTitle' || openState.focusClose !== 'closeOverallHistoryButton' || !openState.line || !openState.band || Number(openState.endpoint) !== Number(openState.rowRating)) throw new Error(`Overlay open semantics failed: ${JSON.stringify(openState)}`);
@@ -137,6 +160,27 @@ const mobileChart = await evaluate(`(() => {
   });
   const markers = [...svg.querySelectorAll('.history-chart-point')].map(point => [Number(point.getAttribute('cx')), Number(point.getAttribute('cy'))]);
   const historyKnotCount = JSON.parse(localStorage.getItem(${JSON.stringify(snapshotKey)})).history[button?.dataset.overallHistoryPlayerId || '']?.length || 0;
+  const expectedMonthTicks = (() => {
+    const knots = JSON.parse(localStorage.getItem(${JSON.stringify(snapshotKey)})).history[button?.dataset.overallHistoryPlayerId || ''] || [];
+    const anchor = Date.parse('2000-01-03T00:00:00Z');
+    const weekly = new Map();
+    knots.forEach(knot => {
+      const instant = Date.parse(String(knot.date || '').slice(0, 10) + 'T00:00:00Z');
+      const bucket = Number.isFinite(instant) ? new Date(anchor + Math.floor((instant - anchor) / (7 * 86400000)) * 7 * 86400000).toISOString().slice(0, 10) : '';
+      if (bucket) weekly.set(bucket, knot.date);
+    });
+    const dates = [...weekly.values()];
+    const first = /^\\d{4}-\\d{2}/.exec(dates[0] || '');
+    const last = /^\\d{4}-\\d{2}/.exec(dates.at(-1) || '');
+    if (!first || !last) return [];
+    const start = new Date(first[0] + '-01T00:00:00Z'), end = new Date(last[0] + '-01T00:00:00Z'), months = [];
+    for (let date = new Date(start); date <= end; date.setUTCMonth(date.getUTCMonth() + 1)) months.push(new Date(date));
+    const stride = Math.max(1, Math.ceil(months.length / 7));
+    const ticks = months.filter((_date, index) => index % stride === 0);
+    if (ticks.at(-1)?.getTime() !== months.at(-1)?.getTime()) ticks.push(months.at(-1));
+    const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return ticks.map((date, index) => names[date.getUTCMonth()] + (index === 0 || date.getUTCFullYear() !== ticks[index - 1].getUTCFullYear() ? " '" + String(date.getUTCFullYear()).slice(-2) : ''));
+  })();
   const expectedActiveWeeklyBucketCount = (() => {
     const id = String(button?.dataset.overallHistoryPlayerId || '');
     const anchor = Date.parse('2000-01-03T00:00:00Z');
@@ -163,6 +207,7 @@ const mobileChart = await evaluate(`(() => {
     yTicks,
     gridlines: svg.querySelectorAll('.history-chart-grid').length,
     xTicks,
+    expectedMonthTicks,
     xTicksDoNotOverlap: xTickBoxes.every((box, index) => index === 0 || box.left >= xTickBoxes[index - 1].right - 0.5),
     markers,
     historyKnotCount,
@@ -175,7 +220,7 @@ const mobileChart = await evaluate(`(() => {
     yDomain: (svg.dataset.historyYDomain || '').split(',').map(Number),
   };
 })()`);
-if (mobileChart.endpoint !== mobileChart.rowRating || mobileChart.yTicks.length < 6 || mobileChart.gridlines < mobileChart.yTicks.length || !mobileChart.yTicks.every(Number.isFinite) || mobileChart.xTicks.length < 3 || !/^[A-Z][a-z]{2} '\d{2}$/.test(mobileChart.xTicks[0]) || !mobileChart.xTicks.every(label => /^[A-Z][a-z]{2}(?: '\d{2})?$/.test(label)) || !mobileChart.xTicksDoNotOverlap || mobileChart.effectiveLabelSize < 12 || !mobileChart.markers.length || mobileChart.historyKnotCount !== mobileChart.expectedActiveWeeklyBucketCount || mobileChart.markers.length !== mobileChart.expectedActiveWeeklyBucketCount || !mobileChart.markers.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y)) || !mobileChart.leagueLine || mobileChart.leagueReference !== mobileChart.leagueRating || mobileChart.leagueLabel !== `League avg ${mobileChart.leagueRating}` || mobileChart.yDomain.length !== 2 || !mobileChart.yDomain.every(Number.isFinite) || mobileChart.leagueReference < mobileChart.yDomain[0] || mobileChart.leagueReference > mobileChart.yDomain[1]) throw new Error(`Mobile history chart failed: ${JSON.stringify(mobileChart)}`);
+if (mobileChart.endpoint !== mobileChart.rowRating || mobileChart.yTicks.length < 6 || mobileChart.gridlines < mobileChart.yTicks.length || !mobileChart.yTicks.every(Number.isFinite) || mobileChart.xTicks.join('|') !== mobileChart.expectedMonthTicks.join('|') || !/^[A-Z][a-z]{2} '\d{2}$/.test(mobileChart.xTicks[0]) || !mobileChart.xTicks.every(label => /^[A-Z][a-z]{2}(?: '\d{2})?$/.test(label)) || !mobileChart.xTicksDoNotOverlap || mobileChart.effectiveLabelSize < 12 || !mobileChart.markers.length || mobileChart.historyKnotCount < mobileChart.expectedActiveWeeklyBucketCount || mobileChart.markers.length !== mobileChart.expectedActiveWeeklyBucketCount || !mobileChart.markers.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y)) || !mobileChart.leagueLine || mobileChart.leagueReference !== mobileChart.leagueRating || mobileChart.leagueLabel !== `League avg ${mobileChart.leagueRating}` || mobileChart.yDomain.length !== 2 || !mobileChart.yDomain.every(Number.isFinite) || mobileChart.leagueReference < mobileChart.yDomain[0] || mobileChart.leagueReference > mobileChart.yDomain[1]) throw new Error(`Mobile history chart failed: ${JSON.stringify(mobileChart)}`);
 const mobileRows = await evaluate(`(() => {
   const rows = [...document.querySelectorAll('#bayesianTableBody tr')];
   const league = rows.find(row => row.textContent.includes('League Player'));
@@ -199,8 +244,14 @@ const mobileRows = await evaluate(`(() => {
       const pooled = snapshot.ratings.find(row => row.isLeagueContext);
       const sizes = ${JSON.stringify(db.games.filter(game => game.isLeagueGame).map(game => game.redTeam.length))};
       const nEff = sizes.length / sizes.reduce((sum, size) => sum + 1 / size, 0);
-      const ordinal = pooled.mu - 3 * pooled.sigma * Math.sqrt(nEff);
-      return { rating: Math.round(1500 + 50 * ordinal), nEff };
+      const ordinal = pooled.leagueRatingIsIndividual
+        ? pooled.ordinal
+        : pooled.mu - 3 * pooled.sigma * Math.sqrt(nEff);
+      return {
+        rating: Math.round(1500 + 50 * ordinal),
+        nEff,
+        leagueRatingIsIndividual: pooled.leagueRatingIsIndividual,
+      };
     })(),
   };
 })()`);
@@ -215,8 +266,8 @@ const focusedButton = await evaluate(`(() => {
     outlineWidth: Number.parseFloat(style.outlineWidth) || 0,
   };
 })()`);
-// The fixed 2026-06-20 fixture deterministically places the derived row 14th.
-if (mobileRows.leagueName !== 'League Player' || Number(mobileRows.leagueRating) !== mobileRows.expected.rating || Number(mobileRows.leagueRank) !== 14 || mobileRows.leagueInteractive || !mobileRows.buttonOneLine || mobileRows.buttonHeight > 24 || mobileRows.restingBorderBottomWidth !== '0px' || mobileRows.restingBorderBottomStyle !== 'none' || mobileRows.restingTextDecoration !== 'none' || !mobileRows.gamesHeaderFits || mobileRows.gamesHeader !== 'Games' || !mobileRows.constrainedWrapper || !focusedButton.isFocused || !focusedButton.focusVisible || focusedButton.outlineStyle === 'none' || focusedButton.outlineWidth <= 0) throw new Error(`Mobile dynamic table failed: ${JSON.stringify({ mobileRows, focusedButton })}`);
+// The fixed 2026-06-20 fixture deterministically places the v4 individual row second.
+if (mobileRows.leagueName !== 'League Player' || Number(mobileRows.leagueRating) !== mobileRows.expected.rating || mobileRows.expected.leagueRatingIsIndividual !== true || Number(mobileRows.leagueRank) !== 2 || mobileRows.leagueInteractive || !mobileRows.buttonOneLine || mobileRows.buttonHeight > 24 || mobileRows.restingBorderBottomWidth !== '0px' || mobileRows.restingBorderBottomStyle !== 'none' || mobileRows.restingTextDecoration !== 'none' || !mobileRows.gamesHeaderFits || mobileRows.gamesHeader !== 'Games' || !mobileRows.constrainedWrapper || !focusedButton.isFocused || !focusedButton.focusVisible || focusedButton.outlineStyle === 'none' || focusedButton.outlineWidth <= 0) throw new Error(`Mobile dynamic table failed: ${JSON.stringify({ mobileRows, focusedButton })}`);
 await send('Page.navigate', { url: `${baseUrl}/stats.html?tab=season` });
 await new Promise(resolve => setTimeout(resolve, 500));
 const normalRowHeight = await evaluate(`document.querySelector('#statsTableBody tr')?.getBoundingClientRect().height || 0`);

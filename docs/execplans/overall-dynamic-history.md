@@ -1790,10 +1790,142 @@ deploy.
 
 ### Exact Next Action
 
-On August 30, 2026 the user audited the remote Tailscale beta and explicitly
-requested publication to GitHub Pages, accepting the current candidate including
-its 2562 League Player reference. Release only the seven reviewed feature,
-integration, cache, regression, and ExecPlan files. Keep `HANDOFF.md`,
-`default_database`, and the four unrelated handoff implementation/test files
-unstaged. Push the scoped commit to `origin/main`, wait for the GitHub Pages run,
-and verify the deployed feature files against that exact source revision.
+The individualized session-weighted Overall model is deployed. Let the user
+audit the production page; make no further model, rating, graph, or scoreboard
+changes without new feedback.
+
+### Release Result
+
+- Scoped commit `58e27129d2910acf7a7d1fc675c938cc15ea199a` was pushed to
+  `origin/main`; the protected local database and handoff files remained
+  unstaged.
+- GitHub Pages run `33333109907` completed successfully.
+- Cache-busted production `stats.html`, `overall-dynamic-ratings.js`, and
+  `sw.js` matched the local commit's SHA-256 hashes exactly.
+- Release validation passed 43/43 application tests, 25/25 handoff tests, the
+  focused phone/history regression, the complete clean-profile browser smoke,
+  syntax checks, and `git diff --check`. The required default and advanced
+  Season Ranking/Trend/Game History consistency samples remained aligned.
+
+## Follow-up — Central Skill History and Irreducible League-Player Variance
+
+### User Decision and Diagnosis
+
+- On August 30, 2026 the user rejected the newly deployed graph's implausible
+  common decline among high-volume top players and the 2562 synthetic League
+  Player row, then explicitly approved both scoped corrections below.
+- The apparent decline is a display artifact. Over the latest eight weeks the
+  fitted central means for MattA, DustinR, JoeM, JackT, JayY, AlexaY, AlexS,
+  and JoshR all rise by roughly 34–70 public points, while their visible
+  `mu - 3*sigma` histories fall by roughly 45–80 because posterior uncertainty
+  widens at the right boundary of a dynamic smoother.
+- League Player's posterior team-average mean is reasonably identified, but
+  its 1.27 sigma measures precision of a repeatedly observed team average, not
+  irreducible variation of one unknown opponent player. Treating it as the
+  latter makes the synthetic player artificially certain and highly ranked.
+
+### Approved Corrections
+
+- Keep the compact Overall table and all real-player ranks on the existing
+  conservative display transform. Change only the player-history graph's solid
+  line to the posterior central mean `mu`, expressed on the existing public
+  display scale without confidence or missing-game penalties.
+- Center the existing uncertainty band on that mean and retain its existing
+  one-posterior-sigma width. The latest graph point is intentionally no longer
+  required to equal the conservative table row; it must equal the transformed
+  latest posterior mean instead.
+- Keep graph quantities comparable: the dashed `League avg` reference uses the
+  fitted League Player central mean on the same scale as the central player
+  line. The compact League Player table row remains conservative.
+- Preserve learning of the league team-average mean, but add an irreducible
+  individual-player variation component of `3.75` rating-scale sigma in
+  quadrature with the inferred team-average/roster uncertainty. This component
+  never shrinks with the number of league games. Apply it idempotently to both
+  newly calculated and already cached dynamic Overall snapshots.
+- The expected current-data League Player row is approximately 2155–2160 and
+  should return near its prior rank. Derive the exact result in verification;
+  do not hard-code a display score or rank.
+- Preserve full league likelihood weight/N=10, every fitted player/history
+  state and mean, all player-specific exposure rates, balancing, static
+  Big/Small boards, Season Ranking, Trend, Game History, table copy, and mobile
+  interaction behavior. Add no explanatory UI copy.
+- Bump only the PWA app-shell cache identity needed to deliver the display fix.
+  Do not stage, commit, push, or deploy without a new explicit publication
+  request.
+
+### Milestone and Acceptance
+
+- [x] Implement the variance floor and central-history rendering with focused
+  model/browser regressions.
+- [x] Run the complete application suite, handoff suite, focused mobile/history
+  test, full cross-view browser consistency pass, current-data numeric audit,
+  and 390px local visual audit.
+- League Player's mean remains unchanged, its sigma cannot fall below the
+  irreducible component, cached/new formatting is idempotent, and its current
+  row returns near 2155–2160.
+- Every plotted player line/band is centered on posterior `mu`; the latest line
+  point equals the latest transformed mean, while the table retains its prior
+  rating and rank. The graph's league reference is the transformed central
+  League Player mean.
+- No production, database, Git, or publication state changes during local
+  implementation and verification.
+
+### Validation and Result
+
+- `overall-dynamic-ratings.js` adds the approved fixed `3.75` individual-player
+  sigma in quadrature after the snapshot-scoped same-roster interpretation.
+  The formatter marks the result and is idempotent for both newly calculated
+  and cached dynamic snapshots; the fitted league mean and every real-player
+  posterior remain unchanged.
+- `stats.html` now plots each history knot at transformed posterior `mu`, with
+  its band centered at `mu +/- sigma`. The dashed league reference uses the
+  transformed fitted League Player mean, while the compact table continues to
+  use the existing conservative ordinal and confidence/volume transforms.
+- On the current 76-player / 347-game source, including all 99 league games at
+  full weight, the stored League Player mean remains exactly
+  `25.054284483826823`. Its pre-floor sigma is `1.2713838656794136`; after the
+  fixed component the displayed individual sigma is `3.959661214537164`, its
+  ordinal is `13.17530084021533`, and the compact row displays `2159` at shown
+  rank `74` over 99 source matches. No score or rank is hard-coded.
+- The 390px current-data audit opens DustinR with a central graph endpoint of
+  `2916`, versus the intentionally unchanged conservative table row of `2593`.
+  The path rises across 20 weekly markers, the one-sigma band is centered on
+  it, and the dashed central league reference is `2753`. Six readable Y ticks,
+  April-through-August labels, 14px minimum axis text, contained dialog
+  geometry, correct Close focus, and zero page exceptions all pass. The audit
+  screenshot is `/private/tmp/vball-current-session-exposure-graph.png`.
+- The focused dynamic suite and 390px history regression pass. `npm test`
+  passes 44/44, `npm run test:handoff` passes 25/25, all three JavaScript syntax
+  checks pass, and `git diff --check` passes. The full clean-profile browser
+  regression passes end to end, including the required Season Ranking / Trend /
+  Game History consistency samples: JoeM remains 2258 over 55 games by default
+  and 2409 over 49 games with the rolling window and confidence penalty removed
+  and league games hidden. Play-tab sync/correction and four-hour throttle
+  guards also remain green.
+- The PWA app-shell cache identity is
+  `vball-static-v31-central-history-league-variance`. Nothing was staged,
+  committed, pushed, or deployed.
+- The verified local audit server is listening at
+  `http://127.0.0.1:5176/stats.html?tab=allTime&mode=composite`. The existing
+  Tailscale client was reopened, but its prior private hostname remains
+  DNS-unreachable and the CLI cannot load preferences, so remote audit access
+  must not be represented as healthy until Tailscale reconnects.
+
+### Exact Next Action
+
+The user explicitly authorized publication on August 30, 2026. Commit only the
+six reviewed implementation, test, cache, and ExecPlan files; preserve the five
+unrelated database/handoff changes unstaged. Push the resulting `mac-beta` HEAD
+to `origin/main`, then verify the GitHub Pages run and production file hashes.
+
+### Release Preflight
+
+- Refreshed `origin/main` exactly matches the verified base commit
+  `58e27129d2910acf7a7d1fc675c938cc15ea199a`, so this release is a clean
+  fast-forward containing only the scoped follow-up.
+- The verified release scope is `overall-dynamic-ratings.js`, `stats.html`,
+  `sw.js`, `test/overall-dynamic-history-browser.mjs`,
+  `test/overall-dynamic-ratings.test.js`, and this ExecPlan.
+- Preserve `HANDOFF.md`, `default_database`,
+  `docs/CODEX_THREAD_HANDOFF.md`, `scripts/codex_handoff.py`, and
+  `test/test_codex_handoff.py` unstaged and uncommitted.

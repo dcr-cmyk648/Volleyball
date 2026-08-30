@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v30-session-exposure-league-individual';
+const CACHE_VERSION = 'vball-static-v31-central-history-league-variance';
 const APP_SHELL = [
   './',
   './index.html',

@@ -8133,16 +8133,13 @@
       }, new Map());
       return [...weeklyKnots.values()].map(knot => {
         const games = Math.max(0, Number(knot.games) || 0);
-        const penalty = getScoreboardMissingGamePenaltyRaw(row.scoreboardMaxGames, games);
-        const toDisplay = raw => formatDisplayedRating(
-          getOverallStandingsRawOrdinal(Number(raw) || 0, games) - penalty
-        );
+        const toDisplay = raw => formatDisplayedRating(Number(raw) || 0);
         return {
           date: String(knot.date || ''),
           games,
-          value: Number(toDisplay(knot.ordinal)),
-          lower: Number(toDisplay(Number(knot.ordinal) - Number(knot.sigma))),
-          upper: Number(toDisplay(Number(knot.ordinal) + Number(knot.sigma))),
+          value: Number(toDisplay(knot.mu)),
+          lower: Number(toDisplay(Number(knot.mu) - Number(knot.sigma))),
+          upper: Number(toDisplay(Number(knot.mu) + Number(knot.sigma))),
         };
       }).filter(point =>
         point.date && [point.value, point.lower, point.upper].every(Number.isFinite)
@@ -8210,8 +8207,10 @@
       const points = getOverallHistoryDisplayPoints(row);
       overallHistoryChartEl.replaceChildren();
       const finite = points.length ? points : [{ date: '', value: Number(row.displayRating) || 1500, lower: Number(row.displayRating) || 1500, upper: Number(row.displayRating) || 1500 }];
-      const leagueRow = getBayesianDisplayRows().find(candidate => candidate.isLeagueContext);
-      const leagueReference = Number(leagueRow?.displayRating);
+      const leagueRow = bayesianSnapshot?.ratings?.find(candidate => candidate.isLeagueContext);
+      const leagueReference = Number.isFinite(Number(leagueRow?.mu))
+        ? Number(formatDisplayedRating(Number(leagueRow.mu)))
+        : NaN;
       const hasLeagueReference = Number.isFinite(leagueReference);
       const allValues = finite.flatMap(point => [point.lower, point.upper, point.value]);
       if (hasLeagueReference) allValues.push(leagueReference);

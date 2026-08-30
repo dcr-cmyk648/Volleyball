@@ -10,6 +10,7 @@ import {
   getOverallDynamicWeeklyInterpolation,
   getOverallDynamicWeeklyTransitionVariance,
   OVERALL_DYNAMIC_BRACKET_DATES,
+  OVERALL_DYNAMIC_LEAGUE_INDIVIDUAL_SIGMA_FLOOR,
   OVERALL_DYNAMIC_MODEL_VERSION,
   OVERALL_DYNAMIC_N_EFF,
   OVERALL_DYNAMIC_MONTHLY_BROWNIAN_DAYS,
@@ -268,7 +269,17 @@ test("league individual interpretation remains roster-size scoped and static gam
     getDynamicLeagueIndividualEffectiveSize(games, snapshot.gameFingerprints),
     5,
   );
-  assert.equal(individual.sigma, pooled.sigma);
+  assert.equal(individual.sigma, Math.hypot(pooled.sigma, 3.75));
+  assert.equal(individual.mu, pooled.mu);
+  assert.ok(individual.sigma >= OVERALL_DYNAMIC_LEAGUE_INDIVIDUAL_SIGMA_FLOOR);
+  assert.deepEqual(
+    formatDynamicLeagueIndividualRating(
+      individual,
+      games,
+      snapshot.gameFingerprints,
+    ),
+    individual,
+  );
   assert.equal(individual.leagueRatingIsIndividual, true);
   assert.equal(row(snapshot, "b").games, 1);
 });
@@ -296,7 +307,7 @@ test("League Player uncertainty is fingerprint-scoped across mixed roster sizes"
     getDynamicLeagueIndividualEffectiveSize(games, snapshot.gameFingerprints),
     nEff,
   );
-  assert.equal(individual.sigma, pooled.sigma);
+  assert.equal(individual.sigma, Math.hypot(pooled.sigma, 3.75));
   assert.equal(individual.leagueRatingIsIndividual, true);
   assert.equal(
     getDynamicLeagueIndividualEffectiveSize(
@@ -305,6 +316,42 @@ test("League Player uncertainty is fingerprint-scoped across mixed roster sizes"
     ),
     1,
   );
+});
+
+test("League Player irreducible variance is idempotent for cached individual rows", () => {
+  const a = player("a"),
+    b = player("b");
+  const games = [
+    league("l", "2026-01-01", [a, a, a, a, a]),
+    internal("i", "2026-01-02", [a], [b]),
+  ];
+  const snapshot = calculateOverallDynamicScoreboard({ players: [a, b], games });
+  const stored = row(snapshot, BAYESIAN_POOLED_LEAGUE_OPPONENT_ID);
+  const first = formatDynamicLeagueIndividualRating(
+    stored,
+    games,
+    snapshot.gameFingerprints,
+  );
+  const cached = {
+    ...first,
+    leagueRatingIsIndividual: false,
+    leagueRatingHasIrreducibleVariance: true,
+  };
+  const restored = formatDynamicLeagueIndividualRating(
+    cached,
+    games,
+    snapshot.gameFingerprints,
+  );
+
+  assert.equal(first.mu, stored.mu);
+  assert.equal(
+    first.sigma,
+    Math.hypot(stored.sigma, OVERALL_DYNAMIC_LEAGUE_INDIVIDUAL_SIGMA_FLOOR),
+  );
+  assert.ok(first.sigma >= OVERALL_DYNAMIC_LEAGUE_INDIVIDUAL_SIGMA_FLOOR);
+  assert.equal(restored.mu, first.mu);
+  assert.equal(restored.sigma, first.sigma);
+  assert.equal(restored.ordinal, first.ordinal);
 });
 
 test("history endpoints, posterior uncertainty, order, and sparse/no-league behavior remain valid", () => {

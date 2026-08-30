@@ -24,6 +24,7 @@ export const OVERALL_DYNAMIC_PLAYER_DEVIATION_SD_PUBLIC = 3;
 export const OVERALL_DYNAMIC_PROCESS_SD_PUBLIC = 20;
 export const OVERALL_DYNAMIC_INITIAL_SD_PUBLIC = 45;
 export const OVERALL_DYNAMIC_CONTEXT_SD_PUBLIC = 25;
+export const OVERALL_DYNAMIC_LEAGUE_INDIVIDUAL_SIGMA_FLOOR = 3.75;
 export const OVERALL_DYNAMIC_BRACKET_DATES = ["2026-08-19", "2026-08-20"];
 export const OVERALL_DYNAMIC_PUBLIC_POINTS_PER_RAW_ORDINAL = 50;
 export const OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT =
@@ -58,17 +59,30 @@ export function formatDynamicLeagueIndividualRating(
   games = [],
   gameFingerprints = {},
 ) {
-  if (pooledRating?.leagueRatingIsIndividual) {
+  const hasFloor = Boolean(pooledRating?.leagueRatingHasIrreducibleVariance);
+  if (pooledRating?.leagueRatingIsIndividual || hasFloor) {
+    const sigma = hasFloor
+      ? Number(pooledRating?.sigma) || 0
+      : Math.hypot(
+          Number(pooledRating?.sigma) || 0,
+          OVERALL_DYNAMIC_LEAGUE_INDIVIDUAL_SIGMA_FLOOR,
+        );
     return {
       ...pooledRating,
       name: "League Player",
+      sigma,
+      ordinal: (Number(pooledRating?.mu) || BAYESIAN_DISPLAY_BASE) - 3 * sigma,
+      leagueRatingHasIrreducibleVariance: true,
       isLeagueContext: true,
       isSynthetic: true,
     };
   }
   const n = getDynamicLeagueIndividualEffectiveSize(games, gameFingerprints),
     mu = Number(pooledRating?.mu) || BAYESIAN_DISPLAY_BASE,
-    sigma = Math.max(1e-6, (Number(pooledRating?.sigma) || 0) * Math.sqrt(n));
+    sigma = Math.hypot(
+      Math.max(1e-6, (Number(pooledRating?.sigma) || 0) * Math.sqrt(n)),
+      OVERALL_DYNAMIC_LEAGUE_INDIVIDUAL_SIGMA_FLOOR,
+    );
   return {
     ...pooledRating,
     name: "League Player",
@@ -76,6 +90,7 @@ export function formatDynamicLeagueIndividualRating(
     sigma,
     ordinal: mu - 3 * sigma,
     leagueIndividualEffectiveSize: n,
+    leagueRatingHasIrreducibleVariance: true,
     isLeagueContext: true,
     isSynthetic: true,
   };

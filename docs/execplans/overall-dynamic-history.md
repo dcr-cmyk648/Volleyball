@@ -1913,10 +1913,9 @@ changes without new feedback.
 
 ### Exact Next Action
 
-The user explicitly authorized publication on August 30, 2026. Commit only the
-six reviewed implementation, test, cache, and ExecPlan files; preserve the five
-unrelated database/handoff changes unstaged. Push the resulting `mac-beta` HEAD
-to `origin/main`, then verify the GitHub Pages run and production file hashes.
+The central-history and irreducible League Player variance release is deployed.
+Let the user audit production; make no further model, graph, or rating changes
+without new feedback.
 
 ### Release Preflight
 
@@ -1929,3 +1928,18 @@ to `origin/main`, then verify the GitHub Pages run and production file hashes.
 - Preserve `HANDOFF.md`, `default_database`,
   `docs/CODEX_THREAD_HANDOFF.md`, `scripts/codex_handoff.py`, and
   `test/test_codex_handoff.py` unstaged and uncommitted.
+
+### Release Result
+
+- Scoped implementation commit
+  `3f5876f42c68c05bba6eb10205e6fb984bb62672` was pushed to `origin/main`;
+  the five protected database/handoff changes remained unstaged.
+- GitHub Pages run `33340891429` completed successfully for that exact commit.
+- Cache-busted production `stats.html`, `overall-dynamic-ratings.js`, and
+  `sw.js` matched the reviewed local files byte-for-byte by SHA-256. Their
+  hashes are respectively `2f7b6d0bc1812b16e38da336e10c8169a117c55cd9a9e2fea4f75f913873cd73`,
+  `5e7b1501c9146be395065679b0ec67de71ca65204fba7fe67d839a8da4adc210`,
+  and `e82506125225d98c2cd4cc88958292ce9aff5cc984f6298b6395f4ba737a59af`.
+- Release validation remains 44/44 application tests, 25/25 handoff tests, the
+  focused mobile/history regression, the complete clean-profile browser smoke,
+  syntax checks, and a clean diff check.

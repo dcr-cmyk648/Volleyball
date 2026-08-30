@@ -8097,10 +8097,12 @@
       const scoreboardMaxGames = getScoreboardMaxGamesForRows(baseRows);
       const rankedRows = baseRows
         .map(row => {
-          const experimentalLeaderboardRaw = row?.isLeagueContext
-            ? Number(row.ordinal) || 0
-            : getOverallStandingsRawOrdinal(Number(row.ordinal) || 0, Number(row.games) || 0) -
-              getScoreboardMissingGamePenaltyRaw(scoreboardMaxGames, Number(row.games) || 0);
+          const experimentalLeaderboardRaw = isDynamicOverall
+            ? Number(row.mu) || 0
+            : row?.isLeagueContext
+              ? Number(row.ordinal) || 0
+              : getOverallStandingsRawOrdinal(Number(row.ordinal) || 0, Number(row.games) || 0) -
+                getScoreboardMissingGamePenaltyRaw(scoreboardMaxGames, Number(row.games) || 0);
           return {
             ...row,
             scoreboardMaxGames,

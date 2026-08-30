@@ -1943,3 +1943,92 @@ without new feedback.
 - Release validation remains 44/44 application tests, 25/25 handoff tests, the
   focused mobile/history regression, the complete clean-profile browser smoke,
   syntax checks, and a clean diff check.
+
+## Follow-up — Align Overall Table With Central-Skill Graph
+
+### User Decision and Scope
+
+- On August 30, 2026 the user found the conservative Overall table rating and
+  central-skill graph value confusing and asked for the table to line up with
+  the graph.
+- Dynamic Bayesian Overall only will use the latest transformed posterior mean
+  `mu` for each visible Rating value, sorting, rank, and prior-snapshot rank
+  movement. The displayed table value must exactly equal that player's latest
+  graph endpoint.
+- Apply the same rule to the synthetic League Player row: its table Rating must
+  equal the graph's central `League avg` reference and it must be ranked by that
+  central value. Retain the approved irreducible individual variance in the
+  snapshot and uncertainty interpretation; it simply no longer reduces the
+  central table value.
+- The dynamic Overall confidence and volume deductions no longer determine its
+  displayed Rating or rank. Preserve the existing under-10-games visibility
+  control. Do not change Season Ranking's approved penalty tiers or any static
+  Big/Small scoreboard behavior.
+- Preserve the model fit, every `mu`/`sigma`, player-rate metadata, full league
+  impact, game counts, graph path/band, filters, compact mobile formatting,
+  accessibility, and existing concise UI copy. Do not add explanatory text.
+- Reuse schema-3 snapshots because they already persist the required central
+  values; no refit or storage migration is needed. Bump the PWA cache identity
+  so deployed phones cannot retain the prior table interpretation.
+- Do not stage, commit, push, or deploy without a separate explicit publication
+  request. Preserve the five unrelated database/handoff changes.
+
+### Acceptance and Validation
+
+- [x] Implement one shared central display/rank transform for current and prior
+  dynamic Overall rows, including League Player, without touching static modes.
+- [x] Add focused browser regression coverage for row/endpoint equality,
+  central sorting/ranking, central trend movement, League row/reference
+  equality, cache reuse, mobile geometry, and static-mode isolation.
+- [x] Run the application and handoff suites, focused mobile/history test, full
+  cross-view browser consistency pass, current-data numeric audit, 390px visual
+  audit, syntax checks, and `git diff --check`.
+
+### Validation and Result
+
+- `stats.html` uses dynamic schema-3 `mu` as the one shared visible Rating,
+  sorting, rank, and prior-rank movement input. This path includes League
+  Player and bypasses only the dynamic Overall ordinal/confidence/volume
+  deductions; static Big/Small retain their existing transforms.
+- The focused 390px browser regression passes with cached schema-3 reuse and no
+  refit, exact central table ordering/ranks, a seeded prior-rank arrow, exact
+  row/graph endpoint equality, exact League row/reference equality, weekly
+  markers, centered uncertainty band, mobile geometry/accessibility, and static
+  Big-Team isolation. Its fixture leaders are MattA `2821`, JoeM `2798`, and
+  MelissaR `2789`; League Player and its dashed reference are both `2747`.
+- On the current 76-player / 347-game source, DustinR is `2916` in both table
+  and graph. League Player is `2753` in both table and dashed reference, ranking
+  `45` over 99 source matches. The central top four are MattA `2949`, JoeM
+  `2928`, DustinR `2916`, and JackT `2902`; all 99 league games and the fitted
+  model parameters remain unchanged.
+- The current 390x844 screenshot is
+  `/private/tmp/vball-current-session-exposure-graph.png`. It retains 20 weekly
+  markers, six readable Y ticks, April-through-August labels, 14px minimum text,
+  contained dialog geometry, correct Close focus, and zero page exceptions.
+- `npm test` passes 44/44 and `npm run test:handoff` passes 25/25. The full
+  clean-profile browser regression passes, including the required Season
+  Ranking / Trend / Game History samples: JoeM remains 2258 over 55 games by
+  default and 2409 over 49 games with league games hidden and the season window
+  and confidence penalty removed. Play sync/correction and four-hour throttle
+  guards also remain green. Syntax checks and `git diff --check` pass.
+- The PWA cache identity is `vball-static-v32-central-overall-table`. Nothing
+  was staged, committed, pushed, or deployed.
+
+### Exact Next Action
+
+The user explicitly authorized publication on August 30, 2026. Commit only the
+four reviewed table, cache, browser-regression, and ExecPlan files; preserve the
+five unrelated database/handoff changes unstaged. Push the resulting
+`mac-beta` HEAD to `origin/main`, then verify GitHub Pages and production file
+hashes.
+
+### Release Preflight
+
+- Refreshed `origin/main` exactly matches the verified local base commit
+  `1fd314137091a1f0cc236846cb471fb9dbb170bf`, so the release is a clean
+  fast-forward.
+- Release scope is `stats.html`, `sw.js`,
+  `test/overall-dynamic-history-browser.mjs`, and this ExecPlan.
+- Preserve `HANDOFF.md`, `default_database`,
+  `docs/CODEX_THREAD_HANDOFF.md`, `scripts/codex_handoff.py`, and
+  `test/test_codex_handoff.py` unstaged and uncommitted.

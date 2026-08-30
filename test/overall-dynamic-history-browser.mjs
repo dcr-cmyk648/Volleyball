@@ -56,15 +56,79 @@ if (!ready) throw new Error('Dynamic Overall snapshot was not calculated.');
 const v4SnapshotState = await evaluate(`(() => {
   const snapshot = JSON.parse(localStorage.getItem(${JSON.stringify(snapshotKey)}));
   const table = document.querySelector('.bayesian-table')?.textContent || '';
+  const names = new Map(JSON.parse(localStorage.getItem('gameDayPlayers') || '[]').map(player => [String(player.id), player.name]));
+  const expectedRows = snapshot.ratings
+    .filter(row => Number(row.games) > 0)
+    .map(row => ({
+      id: String(row.id),
+      name: row.isLeagueContext ? 'League Player' : names.get(String(row.id)) || row.name,
+      games: Number(row.games) || 0,
+      rating: Math.round(1500 + 50 * Number(row.mu)),
+      mu: Number(row.mu),
+    }))
+    .sort((a, b) => b.mu - a.mu || b.games - a.games || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+    .map((row, index) => ({ ...row, rank: index + 1 }));
+  const tableRows = [...document.querySelectorAll('#bayesianTableBody tr')].map(row => {
+    const cells = [...row.querySelectorAll('td')];
+    return {
+      rank: Number(cells[1]?.textContent),
+      name: cells[2]?.textContent?.trim(),
+      rating: Number(cells[3]?.textContent),
+      games: Number(cells[4]?.textContent),
+    };
+  });
   return {
     schemaVersion: snapshot?.schemaVersion,
     modelVersion: snapshot?.modelVersion,
+    calculatedAt: snapshot?.calculatedAt,
     playerRates: Array.isArray(snapshot?.playerRates?.players),
     visibleRateField: /playerRates|populationRate|rateComponentGain/i.test(table),
     ratingHeader: [...document.querySelectorAll('.bayesian-table th')].map(cell => cell.textContent.trim()),
+    centralRowsMatch: tableRows.length === expectedRows.length && tableRows.every((row, index) =>
+      row.rank === expectedRows[index].rank &&
+      row.name === expectedRows[index].name &&
+      row.rating === expectedRows[index].rating &&
+      row.games === expectedRows[index].games
+    ),
   };
 })()`);
-if (v4SnapshotState.schemaVersion !== 3 || v4SnapshotState.modelVersion !== 'overall-session-exposure-hierarchical-v1' || !v4SnapshotState.playerRates || v4SnapshotState.visibleRateField || v4SnapshotState.ratingHeader.join('|') !== 'Trend|#|Player|Rating|Games') throw new Error(`V4 snapshot persistence or compact table failed: ${JSON.stringify(v4SnapshotState)}`);
+if (v4SnapshotState.schemaVersion !== 3 || v4SnapshotState.modelVersion !== 'overall-session-exposure-hierarchical-v1' || !v4SnapshotState.playerRates || v4SnapshotState.visibleRateField || v4SnapshotState.ratingHeader.join('|') !== 'Trend|#|Player|Rating|Games' || !v4SnapshotState.centralRowsMatch) throw new Error(`V4 snapshot persistence or central table failed: ${JSON.stringify(v4SnapshotState)}`);
+
+await send('Page.navigate', { url: `${baseUrl}/stats.html?tab=allTime&mode=composite` });
+await new Promise(resolve => setTimeout(resolve, 500));
+const cacheReuse = await evaluate(`(() => {
+  const snapshot = JSON.parse(localStorage.getItem(${JSON.stringify(snapshotKey)}) || 'null');
+  return {
+    calculatedAt: snapshot?.calculatedAt,
+    schemaVersion: snapshot?.schemaVersion,
+    modelVersion: snapshot?.modelVersion,
+  };
+})()`);
+if (cacheReuse.calculatedAt !== v4SnapshotState.calculatedAt || cacheReuse.schemaVersion !== 3 || cacheReuse.modelVersion !== 'overall-session-exposure-hierarchical-v1') throw new Error(`Schema-3 snapshot was not reused: ${JSON.stringify({ v4SnapshotState, cacheReuse })}`);
+
+const priorTrendExpectation = await evaluate(`(() => {
+  const snapshot = JSON.parse(localStorage.getItem(${JSON.stringify(snapshotKey)}));
+  const rowsFor = ratings => ratings
+    .filter(row => Number(row.games) > 0)
+    .map(row => ({ id: String(row.id), mu: Number(row.mu), games: Number(row.games) || 0, name: row.name || String(row.id), isLeagueContext: Boolean(row.isLeagueContext) }))
+    .sort((a, b) => b.mu - a.mu || b.games - a.games || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+    .map((row, index) => ({ ...row, rank: index + 1 }));
+  const priorRatings = snapshot.ratings.map(row => ({ ...row, mu: -Number(row.mu) }));
+  const current = rowsFor(snapshot.ratings);
+  const priorRanks = new Map(rowsFor(priorRatings).map(row => [row.id, row.rank]));
+  const target = current.find(row => !row.isLeagueContext && priorRanks.get(row.id) !== row.rank);
+  const delta = target ? priorRanks.get(target.id) - target.rank : 0;
+  snapshot.priorRatings = priorRatings;
+  localStorage.setItem(${JSON.stringify(snapshotKey)}, JSON.stringify(snapshot));
+  return { id: target?.id || '', expected: delta > 0 ? '▲ ' + delta : delta < 0 ? '▼ ' + delta : '—' };
+})()`);
+await send('Page.navigate', { url: `${baseUrl}/stats.html?tab=allTime&mode=composite` });
+await new Promise(resolve => setTimeout(resolve, 500));
+const priorTrendActual = await evaluate(`(() => {
+  const button = document.querySelector('[data-overall-history-player-id="' + CSS.escape(${JSON.stringify(priorTrendExpectation.id)}) + '"]');
+  return button?.closest('tr')?.querySelector('td')?.textContent?.trim() || '';
+})()`);
+if (!priorTrendExpectation.id || priorTrendActual !== priorTrendExpectation.expected) throw new Error(`Central prior-rank movement failed: ${JSON.stringify({ priorTrendExpectation, priorTrendActual })}`);
 
 await evaluate(`document.querySelector('#bayesianTableBody .history-player-button')?.focus()`);
 await send('Page.bringToFront');
@@ -105,7 +169,7 @@ const openState = await evaluate(`(() => {
     })(),
   };
 })()`);
-if (!openState.button || openState.leagueInteractive || !openState.dialogVisible || openState.modal !== 'true' || openState.labelledBy !== 'overallHistoryTitle' || openState.focusClose !== 'closeOverallHistoryButton' || !openState.line || !openState.band || Number(openState.endpoint) !== openState.expectedCentralEndpoint || Number(openState.endpoint) === Number(openState.rowRating)) throw new Error(`Overlay open semantics failed: ${JSON.stringify(openState)}`);
+if (!openState.button || openState.leagueInteractive || !openState.dialogVisible || openState.modal !== 'true' || openState.labelledBy !== 'overallHistoryTitle' || openState.focusClose !== 'closeOverallHistoryButton' || !openState.line || !openState.band || Number(openState.endpoint) !== openState.expectedCentralEndpoint || Number(openState.endpoint) !== Number(openState.rowRating)) throw new Error(`Overlay open semantics failed: ${JSON.stringify(openState)}`);
 const timestamps = openState.dates.map(date => Date.parse(`${date}T00:00:00Z`));
 const xValues = openState.xValues.split(',').map(Number);
 if (timestamps.length > 2 && timestamps[2] - timestamps[1] !== timestamps[1] - timestamps[0] && Math.abs((xValues[2] - xValues[1]) - (xValues[1] - xValues[0])) < 0.01) {
@@ -240,7 +304,7 @@ const mobileChart = await evaluate(`(() => {
     yDomain,
   };
 })()`);
-if (mobileChart.endpoint !== mobileChart.expectedCentralEndpoint || mobileChart.endpoint === mobileChart.rowRating || Math.abs(mobileChart.bandCenter - mobileChart.endpoint) > 0.6 || Math.abs(mobileChart.bandHalfWidth - mobileChart.expectedBandSigma) > 0.6 || mobileChart.yTicks.length < 5 || mobileChart.gridlines < mobileChart.yTicks.length || !mobileChart.yTicks.every(Number.isFinite) || mobileChart.xTicks.join('|') !== mobileChart.expectedMonthTicks.join('|') || !/^[A-Z][a-z]{2} '\d{2}$/.test(mobileChart.xTicks[0]) || !mobileChart.xTicks.every(label => /^[A-Z][a-z]{2}(?: '\d{2})?$/.test(label)) || !mobileChart.xTicksDoNotOverlap || mobileChart.effectiveLabelSize < 12 || !mobileChart.markers.length || mobileChart.historyKnotCount < mobileChart.expectedActiveWeeklyBucketCount || mobileChart.markers.length !== mobileChart.expectedActiveWeeklyBucketCount || !mobileChart.markers.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y)) || !mobileChart.leagueLine || mobileChart.leagueReference !== mobileChart.expectedCentralLeagueReference || mobileChart.leagueReference === mobileChart.leagueRating || mobileChart.leagueLabel !== `League avg ${mobileChart.leagueReference}` || mobileChart.yDomain.length !== 2 || !mobileChart.yDomain.every(Number.isFinite) || mobileChart.leagueReference < mobileChart.yDomain[0] || mobileChart.leagueReference > mobileChart.yDomain[1]) throw new Error(`Mobile history chart failed: ${JSON.stringify(mobileChart)}`);
+if (mobileChart.endpoint !== mobileChart.expectedCentralEndpoint || mobileChart.endpoint !== mobileChart.rowRating || Math.abs(mobileChart.bandCenter - mobileChart.endpoint) > 0.6 || Math.abs(mobileChart.bandHalfWidth - mobileChart.expectedBandSigma) > 0.6 || mobileChart.yTicks.length < 5 || mobileChart.gridlines < mobileChart.yTicks.length || !mobileChart.yTicks.every(Number.isFinite) || mobileChart.xTicks.join('|') !== mobileChart.expectedMonthTicks.join('|') || !/^[A-Z][a-z]{2} '\d{2}$/.test(mobileChart.xTicks[0]) || !mobileChart.xTicks.every(label => /^[A-Z][a-z]{2}(?: '\d{2})?$/.test(label)) || !mobileChart.xTicksDoNotOverlap || mobileChart.effectiveLabelSize < 12 || !mobileChart.markers.length || mobileChart.historyKnotCount < mobileChart.expectedActiveWeeklyBucketCount || mobileChart.markers.length !== mobileChart.expectedActiveWeeklyBucketCount || !mobileChart.markers.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y)) || !mobileChart.leagueLine || mobileChart.leagueReference !== mobileChart.expectedCentralLeagueReference || mobileChart.leagueReference !== mobileChart.leagueRating || mobileChart.leagueLabel !== `League avg ${mobileChart.leagueReference}` || mobileChart.yDomain.length !== 2 || !mobileChart.yDomain.every(Number.isFinite) || mobileChart.leagueReference < mobileChart.yDomain[0] || mobileChart.leagueReference > mobileChart.yDomain[1]) throw new Error(`Mobile history chart failed: ${JSON.stringify(mobileChart)}`);
 const mobileRows = await evaluate(`(() => {
   const rows = [...document.querySelectorAll('#bayesianTableBody tr')];
   const league = rows.find(row => row.textContent.includes('League Player'));
@@ -262,18 +326,8 @@ const mobileRows = await evaluate(`(() => {
     expected: (() => {
       const snapshot = JSON.parse(localStorage.getItem(${JSON.stringify(snapshotKey)}));
       const pooled = snapshot.ratings.find(row => row.isLeagueContext);
-      const sizes = ${JSON.stringify(db.games.filter(game => game.isLeagueGame).map(game => game.redTeam.length))};
-      const nEff = sizes.length / sizes.reduce((sum, size) => sum + 1 / size, 0);
-      const convertedSigma = pooled.leagueRatingIsIndividual
-        ? pooled.sigma
-        : pooled.sigma * Math.sqrt(nEff);
-      const sigma = pooled.leagueRatingHasIrreducibleVariance
-        ? convertedSigma
-        : Math.hypot(convertedSigma, 3.75);
-      const ordinal = pooled.mu - 3 * sigma;
       return {
-        rating: Math.round(1500 + 50 * ordinal),
-        nEff,
+        rating: Math.round(1500 + 50 * Number(pooled.mu)),
         leagueRatingIsIndividual: pooled.leagueRatingIsIndividual,
       };
     })(),
@@ -290,7 +344,7 @@ const focusedButton = await evaluate(`(() => {
     outlineWidth: Number.parseFloat(style.outlineWidth) || 0,
   };
 })()`);
-// The fixed fixture keeps the synthetic row conservative and noninteractive.
+// The fixed fixture keeps the synthetic row central and noninteractive.
 if (mobileRows.leagueName !== 'League Player' || Number(mobileRows.leagueRating) !== mobileRows.expected.rating || mobileRows.expected.leagueRatingIsIndividual !== true || Number(mobileRows.leagueRank) <= 1 || mobileRows.leagueInteractive || !mobileRows.buttonOneLine || mobileRows.buttonHeight > 24 || mobileRows.restingBorderBottomWidth !== '0px' || mobileRows.restingBorderBottomStyle !== 'none' || mobileRows.restingTextDecoration !== 'none' || !mobileRows.gamesHeaderFits || mobileRows.gamesHeader !== 'Games' || !mobileRows.constrainedWrapper || !focusedButton.isFocused || !focusedButton.focusVisible || focusedButton.outlineStyle === 'none' || focusedButton.outlineWidth <= 0) throw new Error(`Mobile dynamic table failed: ${JSON.stringify({ mobileRows, focusedButton })}`);
 await send('Page.navigate', { url: `${baseUrl}/stats.html?tab=season` });
 await new Promise(resolve => setTimeout(resolve, 500));

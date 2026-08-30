@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v31-central-history-league-variance';
+const CACHE_VERSION = 'vball-static-v32-central-overall-table';
 const APP_SHELL = [
   './',
   './index.html',

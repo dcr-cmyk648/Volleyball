@@ -2016,11 +2016,9 @@ without new feedback.
 
 ### Exact Next Action
 
-The user explicitly authorized publication on August 30, 2026. Commit only the
-four reviewed table, cache, browser-regression, and ExecPlan files; preserve the
-five unrelated database/handoff changes unstaged. Push the resulting
-`mac-beta` HEAD to `origin/main`, then verify GitHub Pages and production file
-hashes.
+The central Overall table-alignment release is deployed. Let the user audit
+production; make no further model, table, graph, or rating changes without new
+feedback.
 
 ### Release Preflight
 
@@ -2032,3 +2030,17 @@ hashes.
 - Preserve `HANDOFF.md`, `default_database`,
   `docs/CODEX_THREAD_HANDOFF.md`, `scripts/codex_handoff.py`, and
   `test/test_codex_handoff.py` unstaged and uncommitted.
+
+### Release Result
+
+- Scoped implementation commit
+  `19036d5190d8a8b8d9c32c7cbdf0a13d0913b15b` was pushed to `origin/main`;
+  the five protected database/handoff changes remained unstaged.
+- GitHub Pages run `33342299386` completed successfully for that exact commit.
+- Cache-busted production `stats.html` and `sw.js` match the reviewed local
+  files byte-for-byte. Their SHA-256 hashes are respectively
+  `3222417246d61d8addaed728329466ac6c4455b5647e1b0f50716f739636e8a0` and
+  `c9fd20898d3599e9a12d305f61baf188b9f0d04e3d27b61531bd2951d2c56b8e`.
+- Release validation remains 44/44 application tests, 25/25 handoff tests, the
+  focused mobile/history regression, the complete clean-profile browser smoke,
+  syntax checks, current-data phone audit, and a clean diff check.

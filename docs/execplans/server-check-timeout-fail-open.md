@@ -122,8 +122,9 @@ usable with the device's local data when live verification cannot finish.
 
 ## Exact Next Action
 
-Implement and verify the local-play follow-up below, then publish its scoped
-repair without touching the five unrelated local dirty files.
+The timeout repair and advisory-only local-play follow-up are complete and live.
+Preserve the five unrelated local dirty files for their owning work; no further
+action is required for this incident.
 
 ## Follow-up — Server State Never Gates Local Play
 
@@ -169,7 +170,7 @@ repair without touching the five unrelated local dirty files.
 - [x] Advisory-only Play implementation and focused regression updates.
 - [x] Focused Play browser scenarios, Node suite, handoff suite, syntax checks,
   and diff checks completed.
-- [ ] Scoped push to `main` and production verification.
+- [x] Scoped push to `main` and production verification.
 
 ### Follow-up Verification
 
@@ -186,3 +187,7 @@ repair without touching the five unrelated local dirty files.
 - The app-shell cache generation is
   `vball-static-v34-advisory-play-checks`; local audit remains available at
   `http://127.0.0.1:5173/index.html`.
+- Scoped commit `953bc2de2ec35fd541bd276f1b3461d45a7deb35` was pushed to
+  GitHub `main`. Pages run `33817829904` completed successfully, and
+  cache-busted production reads verified the v34 service worker, immediate
+  advisory calls at both Play actions, and absence of the old mandatory gate.

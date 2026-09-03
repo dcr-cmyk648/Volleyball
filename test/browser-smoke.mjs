@@ -1017,6 +1017,7 @@ const playCorrectionServerDb = {
     : game),
 };
 const playServerDatabaseOverrideKey = 'vballTestPlayServerDatabaseOverride';
+const playServerNeverResolveKey = 'vballTestPlayServerNeverResolve';
 
 await client.send('Page.addScriptToEvaluateOnNewDocument', {
   source: `
@@ -1028,6 +1029,9 @@ await client.send('Page.addScriptToEvaluateOnNewDocument', {
         const url = typeof input === 'string' ? input : (input?.url || '');
         if (url.includes('/api/google-stats') || url.includes('script.google.com/macros')) {
           window.__playSafetyServerFetchCount += 1;
+          if (localStorage.getItem(${JSON.stringify(playServerNeverResolveKey)}) === 'true') {
+            return new Promise(() => {});
+          }
           const serverDatabaseJson = localStorage.getItem(${JSON.stringify(playServerDatabaseOverrideKey)}) ||
             defaultServerDatabaseJson;
           return Promise.resolve(new Response(serverDatabaseJson, {
@@ -1277,6 +1281,61 @@ if (
   balanceAfterSync.serverFetches !== 1
 ) {
   throw new Error(`Team balancing did not resume after sync: ${JSON.stringify(balanceAfterSync)}`);
+}
+
+await evaluate(client, `
+  localStorage.setItem('gameDayPlayers', ${JSON.stringify(JSON.stringify(db.players))});
+  localStorage.setItem('gameDayGames', ${JSON.stringify(JSON.stringify(db.games))});
+  localStorage.setItem('gameDayDefaultDatabasePromptChoice', 'declined');
+  localStorage.removeItem('gameDayMainPageState');
+  localStorage.removeItem(${JSON.stringify(playActionServerCheckCacheKey)});
+  localStorage.setItem(${JSON.stringify(playServerNeverResolveKey)}, 'true');
+`);
+
+load = waitForLoad(client);
+await client.send('Page.navigate', { url: `${baseUrl}/index.html` });
+await load;
+
+const balanceFailOpen = await evaluate(client, `
+  new Promise(resolve => {
+    window.confirm = () => true;
+    for (let index = 0; index < 4; index += 1) {
+      const nextCheckbox = [...document.querySelectorAll('.player-row input[type="checkbox"]')]
+        .find(checkbox => !checkbox.checked);
+      nextCheckbox?.click();
+    }
+
+    const started = performance.now();
+    document.getElementById('assignTeamsButton').click();
+    const timer = setInterval(() => {
+      const balanceStatus = document.getElementById('balanceStatus')?.textContent || '';
+      const busy = !document.getElementById('busyOverlay')?.classList.contains('hidden');
+      const assigned = !balanceStatus.startsWith('No team assignment yet.');
+      if ((!busy && assigned) || performance.now() - started > 8000) {
+        clearInterval(timer);
+        resolve({
+          assigned,
+          busy,
+          elapsedMs: performance.now() - started,
+          serverFetches: window.__playSafetyServerFetchCount,
+          syncDialogOpen: Boolean(document.getElementById('defaultDatabaseDialog')?.open),
+        });
+      }
+    }, 50);
+  })
+`, true);
+
+await evaluate(client, `localStorage.removeItem(${JSON.stringify(playServerNeverResolveKey)})`);
+
+if (
+  !balanceFailOpen.assigned ||
+  balanceFailOpen.busy ||
+  balanceFailOpen.syncDialogOpen ||
+  balanceFailOpen.serverFetches !== 1 ||
+  balanceFailOpen.elapsedMs < 2500 ||
+  balanceFailOpen.elapsedMs >= 8000
+) {
+  throw new Error(`Team balancing did not fail open after a stalled server check: ${JSON.stringify(balanceFailOpen)}`);
 }
 
 const unevenManualPlayers = playServerDb.players.slice(0, 14);
@@ -1593,6 +1652,7 @@ console.log(JSON.stringify({
     registrationAfterThrottleExpiry,
     correctionOnlyBlocked,
     correctionOnlySync,
+    balanceFailOpen,
   },
   statsServerSync: {
     statsSemanticCorrectionCheck,

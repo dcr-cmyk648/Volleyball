@@ -1270,6 +1270,8 @@
   const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
   const PLAY_ACTION_SERVER_CHECK_CACHE_KEY = 'gameDayPlayActionServerCheckCacheV1';
   const PLAY_ACTION_SERVER_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+  const GOOGLE_STATS_REQUEST_TIMEOUT_MS = 45 * 1000;
+  const PLAY_ACTION_BALANCE_CHECK_WAIT_MS = 3 * 1000;
   const DEFAULT_DB_SOURCE_PATH = './default_database';
   const DIRECT_GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwahqGocPhBwCTaB2HjnM3WIjoTOoc-lk94i8JjkRaTfEXf-rT-OXe0pkpQkZk5u0Tm/exec';
   const IS_LOCAL_SERVER =
@@ -3285,7 +3287,7 @@
   async function handleAssignTeamsClick() {
     clearError();
 
-    if (!await ensurePlayActionServerDataIsCurrent()) {
+    if (!await ensurePlayActionServerDataIsCurrent({ allowBalanceFailOpen: true })) {
       return;
     }
 
@@ -5046,8 +5048,14 @@
     const errors = [];
 
     for (const endpoint of GOOGLE_STATS_ENDPOINTS) {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), GOOGLE_STATS_REQUEST_TIMEOUT_MS);
+
       try {
-        const response = await fetch(endpoint, { cache: 'no-store' });
+        const response = await fetch(endpoint, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
 
         if (!response.ok) {
           throw new Error(`${endpoint} returned HTTP ${response.status}.`);
@@ -5070,6 +5078,8 @@
         return parsed;
       } catch (error) {
         errors.push(String(error && error.message ? error.message : error));
+      } finally {
+        window.clearTimeout(timeout);
       }
     }
 
@@ -5387,10 +5397,30 @@
     startPlayActionServerCheck();
   }
 
-  async function ensurePlayActionServerDataIsCurrent() {
+  async function waitForPlayActionServerCheck(pendingCheck, timeoutMs) {
+    let timeoutId = null;
+    try {
+      return await Promise.race([
+        pendingCheck.then(() => true),
+        new Promise(resolve => {
+          timeoutId = window.setTimeout(() => resolve(false), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+    }
+  }
+
+  async function ensurePlayActionServerDataIsCurrent({ allowBalanceFailOpen = false } = {}) {
     if (playActionServerCheckPromise) {
       const pendingCheck = playActionServerCheckPromise;
-      await runWithBusy('Checking server for updates...', async () => pendingCheck);
+      const completed = allowBalanceFailOpen
+        ? await runWithBusy(
+          'Checking server for updates...',
+          async () => waitForPlayActionServerCheck(pendingCheck, PLAY_ACTION_BALANCE_CHECK_WAIT_MS)
+        )
+        : (await runWithBusy('Checking server for updates...', async () => pendingCheck), true);
+      if (!completed) return true;
       return finishPlayActionServerCheck();
     }
 
@@ -5403,7 +5433,13 @@
     }
 
     const pendingCheck = startPlayActionServerCheck();
-    await runWithBusy('Checking server for updates...', async () => pendingCheck);
+    const completed = allowBalanceFailOpen
+      ? await runWithBusy(
+        'Checking server for updates...',
+        async () => waitForPlayActionServerCheck(pendingCheck, PLAY_ACTION_BALANCE_CHECK_WAIT_MS)
+      )
+      : (await runWithBusy('Checking server for updates...', async () => pendingCheck), true);
+    if (!completed) return true;
     return finishPlayActionServerCheck();
   }
 

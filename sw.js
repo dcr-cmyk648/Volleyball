@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v32-central-overall-table';
+const CACHE_VERSION = 'vball-static-v33-server-check-timeout';
 const APP_SHELL = [
   './',
   './index.html',

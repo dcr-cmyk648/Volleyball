@@ -122,6 +122,67 @@ usable with the device's local data when live verification cannot finish.
 
 ## Exact Next Action
 
-The repair is implemented, tested, pushed, and verified in production. Preserve
-the five unrelated local dirty files for their owning work; no further action is
-required for this incident.
+Implement and verify the local-play follow-up below, then publish its scoped
+repair without touching the five unrelated local dirty files.
+
+## Follow-up — Server State Never Gates Local Play
+
+### User Feedback
+
+- The first release still opens `Sync Required Before Playing` when a completed
+  check detects server-side changes, including a season-date-only change.
+- When the device has local-only games, that modal offers a destructive
+  overwrite as the only route forward. This violates the product rule that a
+  server or synchronization issue must never prevent local play.
+
+### Superseding Decision
+
+- Play's automatic check is advisory only. It may cache `ready`, `stale`, or
+  `unavailable` for four hours, but none of those states may block team
+  assignment or local player registration.
+- Do not open the sync-required modal as a prerequisite to either Play action.
+  Server updates remain available through the existing optional/manual sync
+  surface; local-only games are never deleted merely to unlock Play.
+- Preserve the 45-second network deadline, the four-hour cache, and the current
+  server-change detection. Remove the now-redundant three-second action wait if
+  Play actions no longer need to await advisory verification.
+- Do not add explanatory copy or change synchronization merge semantics in this
+  urgent repair.
+
+### Follow-up Acceptance Criteria
+
+- With a prompt server response reporting a new game, correction, player,
+  tournament pair, or season-date-only update, both team assignment and player
+  registration continue using local data without a modal or destructive sync.
+- With local-only games absent from the server, Play remains fully usable and
+  those local games remain unchanged.
+- Slow, failed, and hanging checks likewise cannot delay or block Play.
+- The advisory check still runs no more than once per four hours and its cached
+  stale state remains available for a later optional sync flow.
+- Focused browser coverage, the Node suite, handoff suite, and diff checks pass;
+  the service-worker cache generation is bumped and the scoped release is
+  verified on GitHub Pages.
+
+### Follow-up Progress
+
+- [x] Screenshot diagnosis and product-policy correction recorded.
+- [x] Advisory-only Play implementation and focused regression updates.
+- [x] Focused Play browser scenarios, Node suite, handoff suite, syntax checks,
+  and diff checks completed.
+- [ ] Scoped push to `main` and production verification.
+
+### Follow-up Verification
+
+- Play now hydrates or starts its four-hour advisory check and immediately
+  continues registration or team assignment; no Play action awaits a server
+  promise or interprets `stale` as a modal gate.
+- The browser regression passed prompt-stale registration, cached-stale team
+  assignment, local-only-game preservation, correction/player/season-date
+  advisory state, and never-resolving-server registration and balancing. The
+  broad script proceeded beyond all revised Play checks before stopping at its
+  later pre-existing Stats omitted-false semantic assertion.
+- `npm test` passes 44/44, `npm run test:handoff` passes 25/25, and JavaScript
+  syntax plus `git diff --check` pass.
+- The app-shell cache generation is
+  `vball-static-v34-advisory-play-checks`; local audit remains available at
+  `http://127.0.0.1:5173/index.html`.

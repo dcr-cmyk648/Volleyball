@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v33-server-check-timeout';
+const CACHE_VERSION = 'vball-static-v34-advisory-play-checks';
 const APP_SHELL = [
   './',
   './index.html',

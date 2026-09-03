@@ -1003,6 +1003,12 @@ const serverOnlyGame = {
   isLeagueGame: false,
   courtType: 'indoor',
 };
+const localOnlyGame = {
+  ...serverOnlyGame,
+  id: 9999999999998,
+  createdAt: 9999999999998,
+  date: '2026-06-22',
+};
 const playServerDb = {
   ...db,
   players: [...db.players, serverOnlyPlayer],
@@ -1012,6 +1018,7 @@ const correctionOnlyPlayer = { id: 'server-correction-player', name: 'Server Cor
 const playCorrectionServerDb = {
   ...playServerDb,
   players: [...playServerDb.players, correctionOnlyPlayer],
+  seasonStartDate: '2026-05-29',
   games: playServerDb.games.map(game => String(game.id) === String(serverOnlyGame.id)
     ? { ...game, scoreRed: 26 }
     : game),
@@ -1047,7 +1054,7 @@ await client.send('Page.addScriptToEvaluateOnNewDocument', {
 
 await evaluate(client, `
   localStorage.setItem('gameDayPlayers', ${JSON.stringify(JSON.stringify(db.players))});
-  localStorage.setItem('gameDayGames', ${JSON.stringify(JSON.stringify(db.games))});
+  localStorage.setItem('gameDayGames', ${JSON.stringify(JSON.stringify([...db.games, localOnlyGame]))});
   localStorage.setItem('gameDayDefaultDatabasePromptChoice', 'declined');
   localStorage.removeItem('gameDayMainPageState');
   localStorage.removeItem(${JSON.stringify(playActionServerCheckCacheKey)});
@@ -1057,7 +1064,7 @@ load = waitForLoad(client);
 await client.send('Page.navigate', { url: `${baseUrl}/index.html` });
 await load;
 
-const registrationBlocked = await evaluate(client, `
+const registrationAdvisory = await evaluate(client, `
   new Promise(resolve => {
     const search = document.getElementById('playerSearchInput');
     search.value = 'Existing Server Player';
@@ -1067,7 +1074,7 @@ const registrationBlocked = await evaluate(client, `
     const started = Date.now();
     const timer = setInterval(() => {
       const syncDialog = document.getElementById('defaultDatabaseDialog');
-      if (syncDialog?.open || Date.now() - started > 10000) {
+      if (Boolean(document.getElementById('addPlayerDialog')?.open) || Date.now() - started > 10000) {
         clearInterval(timer);
         resolve({
           syncDialogOpen: Boolean(syncDialog?.open),
@@ -1083,37 +1090,48 @@ const registrationBlocked = await evaluate(client, `
 `, true);
 
 if (
-  !registrationBlocked.syncDialogOpen ||
-  registrationBlocked.addPlayerDialogOpen ||
-  registrationBlocked.title !== 'Sync Required Before Playing' ||
-  !registrationBlocked.message.includes('1 new game') ||
-  registrationBlocked.syncButton !== 'Sync Newest Stats' ||
-  registrationBlocked.serverFetches !== 1
+  registrationAdvisory.syncDialogOpen ||
+  !registrationAdvisory.addPlayerDialogOpen ||
+  registrationAdvisory.serverFetches !== 1
 ) {
-  throw new Error(`Player registration was not blocked by stale server data: ${JSON.stringify(registrationBlocked)}`);
+  throw new Error(`Player registration waited for an advisory stale check: ${JSON.stringify(registrationAdvisory)}`);
 }
 
-await evaluate(client, `document.getElementById('declineLoadDefaultDatabaseButton').click()`);
+await evaluate(client, `document.getElementById('cancelPlayerButton').click()`);
 load = waitForLoad(client);
 await client.send('Page.navigate', { url: `${baseUrl}/index.html` });
 await load;
 
-const balanceBlocked = await evaluate(client, `
+const balanceAdvisory = await evaluate(client, `
   new Promise(resolve => {
-    const balanceStatusBefore = document.getElementById('balanceStatus')?.textContent || '';
+    window.confirm = () => true;
+    const search = document.getElementById('playerSearchInput');
+    search.value = '';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    for (let index = 0; index < 4; index += 1) {
+      const nextCheckbox = [...document.querySelectorAll('.player-row input[type="checkbox"]')]
+        .find(checkbox => !checkbox.checked);
+      nextCheckbox?.click();
+    }
+    const started = performance.now();
     document.getElementById('assignTeamsButton').click();
-
-    const started = Date.now();
+    const initialBusyMessage = document.getElementById('busyMessage')?.textContent || '';
     const timer = setInterval(() => {
       const syncDialog = document.getElementById('defaultDatabaseDialog');
-      if (syncDialog?.open || Date.now() - started > 3000) {
+      const busy = !document.getElementById('busyOverlay')?.classList.contains('hidden');
+      const assigned = !(document.getElementById('balanceStatus')?.textContent || '').startsWith('No team assignment yet.');
+      if ((!busy && assigned) || performance.now() - started > 15000) {
         clearInterval(timer);
         resolve({
           syncDialogOpen: Boolean(syncDialog?.open),
-          title: document.getElementById('defaultDatabaseDialogTitle')?.textContent || '',
           serverFetches: window.__playSafetyServerFetchCount,
-          balanceStatusBefore,
-          balanceStatus: document.getElementById('balanceStatus')?.textContent || '',
+          assigned,
+          busy,
+          initialBusyMessage,
+          selectedCount: document.getElementById('selectedCount')?.textContent || '',
+          error: document.getElementById('errorMessage')?.textContent || '',
+          localOnlyGamePresent: JSON.parse(localStorage.getItem('gameDayGames') || '[]')
+            .some(game => String(game.id) === ${JSON.stringify(String(localOnlyGame.id))}),
         });
       }
     }, 50);
@@ -1121,49 +1139,28 @@ const balanceBlocked = await evaluate(client, `
 `, true);
 
 if (
-  !balanceBlocked.syncDialogOpen ||
-  balanceBlocked.title !== 'Sync Required Before Playing' ||
-  balanceBlocked.serverFetches !== 0 ||
-  balanceBlocked.balanceStatus !== balanceBlocked.balanceStatusBefore
+  balanceAdvisory.syncDialogOpen ||
+  !balanceAdvisory.assigned ||
+  balanceAdvisory.busy ||
+  balanceAdvisory.initialBusyMessage === 'Checking server for updates...' ||
+  balanceAdvisory.serverFetches !== 0 ||
+  !balanceAdvisory.localOnlyGamePresent
 ) {
-  throw new Error(`Team balancing was not blocked by stale server data: ${JSON.stringify(balanceBlocked)}`);
+  throw new Error(`Cached stale server state gated local team assignment: ${JSON.stringify(balanceAdvisory)}`);
 }
 
-const afterSafetySync = await evaluate(client, `
-  new Promise(resolve => {
-    window.alert = () => {};
-    document.getElementById('confirmLoadDefaultDatabaseButton').click();
+const staleCache = await evaluate(client, `(() => {
+  const cached = JSON.parse(localStorage.getItem(${JSON.stringify(playActionServerCheckCacheKey)}) || 'null');
+  return {
+    state: cached?.state || '',
+    hasMeta: Boolean(cached?.meta),
+    localOnlyGamePresent: JSON.parse(localStorage.getItem('gameDayGames') || '[]')
+      .some(game => String(game.id) === ${JSON.stringify(String(localOnlyGame.id))}),
+  };
+})()`);
 
-    const started = Date.now();
-    const timer = setInterval(() => {
-      const localPlayers = JSON.parse(localStorage.getItem('gameDayPlayers') || '[]');
-      const localGames = JSON.parse(localStorage.getItem('gameDayGames') || '[]');
-      const syncedPlayer = localPlayers.some(player => player.id === 'server-only-player');
-      const syncedGame = localGames.some(game => String(game.id) === '9999999999999');
-      const syncDialogOpen = Boolean(document.getElementById('defaultDatabaseDialog')?.open);
-
-      if ((syncedPlayer && syncedGame && !syncDialogOpen) || Date.now() - started > 10000) {
-        clearInterval(timer);
-        resolve({
-          syncedPlayer,
-          syncedGame,
-          syncDialogOpen,
-          localPlayerCount: localPlayers.length,
-          localGameCount: localGames.length,
-          serverFetches: window.__playSafetyServerFetchCount,
-        });
-      }
-    }, 50);
-  })
-`, true);
-
-if (
-  !afterSafetySync.syncedPlayer ||
-  !afterSafetySync.syncedGame ||
-  afterSafetySync.syncDialogOpen ||
-  afterSafetySync.serverFetches !== 0
-) {
-  throw new Error(`Safety-dialog sync did not update local data: ${JSON.stringify(afterSafetySync)}`);
+if (staleCache.state !== 'stale' || !staleCache.hasMeta || !staleCache.localOnlyGamePresent) {
+  throw new Error(`Advisory stale state was not cached without changing local games: ${JSON.stringify(staleCache)}`);
 }
 
 load = waitForLoad(client);
@@ -1233,7 +1230,7 @@ if (
   !registrationAfterThrottleExpiry.addPlayerDialogOpen ||
   registrationAfterThrottleExpiry.syncDialogOpen ||
   registrationAfterThrottleExpiry.serverFetches !== 1 ||
-  registrationAfterThrottleExpiry.cachedState !== 'ready' ||
+  registrationAfterThrottleExpiry.cachedState !== 'stale' ||
   registrationAfterThrottleExpiry.cachedAge < 0 ||
   registrationAfterThrottleExpiry.cachedAge >= playActionServerCheckIntervalMs
 ) {
@@ -1296,9 +1293,38 @@ load = waitForLoad(client);
 await client.send('Page.navigate', { url: `${baseUrl}/index.html` });
 await load;
 
+const registrationFailOpen = await evaluate(client, `(() => {
+  const search = document.getElementById('playerSearchInput');
+  search.value = 'Stalled Server Player';
+  search.dispatchEvent(new Event('input', { bubbles: true }));
+  const started = performance.now();
+  document.getElementById('openAddPlayerDialog').click();
+  return new Promise(resolve => setTimeout(() => resolve({
+    addPlayerDialogOpen: Boolean(document.getElementById('addPlayerDialog')?.open),
+    busy: !document.getElementById('busyOverlay')?.classList.contains('hidden'),
+    syncDialogOpen: Boolean(document.getElementById('defaultDatabaseDialog')?.open),
+    elapsedMs: performance.now() - started,
+    serverFetches: window.__playSafetyServerFetchCount,
+  }), 100));
+})()`, true);
+
+if (
+  !registrationFailOpen.addPlayerDialogOpen ||
+  registrationFailOpen.busy ||
+  registrationFailOpen.syncDialogOpen ||
+  registrationFailOpen.elapsedMs >= 1000 ||
+  registrationFailOpen.serverFetches !== 1
+) {
+  throw new Error(`Player registration waited for a stalled advisory check: ${JSON.stringify(registrationFailOpen)}`);
+}
+
 const balanceFailOpen = await evaluate(client, `
   new Promise(resolve => {
     window.confirm = () => true;
+    document.getElementById('cancelPlayerButton').click();
+    const search = document.getElementById('playerSearchInput');
+    search.value = '';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
     for (let index = 0; index < 4; index += 1) {
       const nextCheckbox = [...document.querySelectorAll('.player-row input[type="checkbox"]')]
         .find(checkbox => !checkbox.checked);
@@ -1307,18 +1333,22 @@ const balanceFailOpen = await evaluate(client, `
 
     const started = performance.now();
     document.getElementById('assignTeamsButton').click();
+    const initialBusyMessage = document.getElementById('busyMessage')?.textContent || '';
     const timer = setInterval(() => {
       const balanceStatus = document.getElementById('balanceStatus')?.textContent || '';
       const busy = !document.getElementById('busyOverlay')?.classList.contains('hidden');
       const assigned = !balanceStatus.startsWith('No team assignment yet.');
-      if ((!busy && assigned) || performance.now() - started > 8000) {
+      if ((!busy && assigned) || performance.now() - started > 15000) {
         clearInterval(timer);
         resolve({
           assigned,
           busy,
+          initialBusyMessage,
           elapsedMs: performance.now() - started,
           serverFetches: window.__playSafetyServerFetchCount,
           syncDialogOpen: Boolean(document.getElementById('defaultDatabaseDialog')?.open),
+          selectedCount: document.getElementById('selectedCount')?.textContent || '',
+          error: document.getElementById('errorMessage')?.textContent || '',
         });
       }
     }, 50);
@@ -1332,10 +1362,9 @@ if (
   balanceFailOpen.busy ||
   balanceFailOpen.syncDialogOpen ||
   balanceFailOpen.serverFetches !== 1 ||
-  balanceFailOpen.elapsedMs < 2500 ||
-  balanceFailOpen.elapsedMs >= 8000
+  balanceFailOpen.initialBusyMessage === 'Checking server for updates...'
 ) {
-  throw new Error(`Team balancing did not fail open after a stalled server check: ${JSON.stringify(balanceFailOpen)}`);
+  throw new Error(`Team balancing waited for a stalled advisory check: ${JSON.stringify(balanceFailOpen)}`);
 }
 
 const unevenManualPlayers = playServerDb.players.slice(0, 14);
@@ -1524,7 +1553,7 @@ load = waitForLoad(client);
 await client.send('Page.navigate', { url: `${baseUrl}/index.html` });
 await load;
 
-const correctionOnlyBlocked = await evaluate(client, `
+const correctionOnlyAdvisory = await evaluate(client, `
   new Promise(resolve => {
     const search = document.getElementById('playerSearchInput');
     search.value = 'Correction-only audit';
@@ -1534,7 +1563,7 @@ const correctionOnlyBlocked = await evaluate(client, `
     const started = Date.now();
     const timer = setInterval(() => {
       const dialog = document.getElementById('defaultDatabaseDialog');
-      if (dialog?.open || Date.now() - started > 10000) {
+      if (Boolean(document.getElementById('addPlayerDialog')?.open) || Date.now() - started > 10000) {
         clearInterval(timer);
         resolve({
           dialogOpen: Boolean(dialog?.open),
@@ -1543,6 +1572,7 @@ const correctionOnlyBlocked = await evaluate(client, `
           message: document.getElementById('defaultDatabaseText')?.textContent || '',
           status: document.getElementById('defaultDatabaseStatus')?.textContent || '',
           serverFetches: window.__playSafetyServerFetchCount,
+          cachedState: JSON.parse(localStorage.getItem(${JSON.stringify(playActionServerCheckCacheKey)}) || 'null')?.state || '',
         });
       }
     }, 25);
@@ -1550,56 +1580,15 @@ const correctionOnlyBlocked = await evaluate(client, `
 `, true);
 
 if (
-  !correctionOnlyBlocked.dialogOpen ||
-  correctionOnlyBlocked.addPlayerDialogOpen ||
-  correctionOnlyBlocked.title !== 'Sync Required Before Playing' ||
-  !correctionOnlyBlocked.message.includes('1 corrected game') ||
-  !correctionOnlyBlocked.message.includes('1 player update') ||
-  correctionOnlyBlocked.message.includes('new game') ||
-  correctionOnlyBlocked.serverFetches !== 1
+  correctionOnlyAdvisory.dialogOpen ||
+  !correctionOnlyAdvisory.addPlayerDialogOpen ||
+  correctionOnlyAdvisory.serverFetches !== 1 ||
+  correctionOnlyAdvisory.cachedState !== 'stale'
 ) {
-  throw new Error(`Play did not block a correction-only server update: ${JSON.stringify(correctionOnlyBlocked)}`);
+  throw new Error(`Correction-only server state gated Play: ${JSON.stringify(correctionOnlyAdvisory)}`);
 }
 
-const correctionOnlySync = await evaluate(client, `
-  new Promise(resolve => {
-    window.alert = () => {};
-    const fetchesBeforeApply = window.__playSafetyServerFetchCount;
-    const applyStarted = performance.now();
-    document.getElementById('confirmLoadDefaultDatabaseButton').click();
-
-    const started = Date.now();
-    const timer = setInterval(() => {
-      const dialog = document.getElementById('defaultDatabaseDialog');
-      const localPlayers = JSON.parse(localStorage.getItem('gameDayPlayers') || '[]');
-      const localGames = JSON.parse(localStorage.getItem('gameDayGames') || '[]');
-      const correctedGame = localGames.find(game => String(game.id) === ${JSON.stringify(String(serverOnlyGame.id))});
-      const correctedPlayer = localPlayers.some(player => player.id === 'server-correction-player');
-
-      if ((!dialog?.open && correctedGame?.scoreRed === 26 && correctedPlayer) || Date.now() - started > 10000) {
-        clearInterval(timer);
-        resolve({
-          dialogOpen: Boolean(dialog?.open),
-          correctedScore: correctedGame?.scoreRed,
-          correctedPlayer,
-          fetchesBeforeApply,
-          fetchesAfterApply: window.__playSafetyServerFetchCount,
-          applyMs: performance.now() - applyStarted,
-        });
-      }
-    }, 25);
-  })
-`, true);
-
-if (
-  correctionOnlySync.dialogOpen ||
-  correctionOnlySync.correctedScore !== 26 ||
-  !correctionOnlySync.correctedPlayer ||
-  correctionOnlySync.fetchesAfterApply !== correctionOnlySync.fetchesBeforeApply ||
-  correctionOnlySync.applyMs >= 5000
-) {
-  throw new Error(`Correction-only sync did not apply its checked payload: ${JSON.stringify(correctionOnlySync)}`);
-}
+await evaluate(client, `document.getElementById('cancelPlayerButton').click()`);
 
 client.close();
 
@@ -1647,11 +1636,12 @@ console.log(JSON.stringify({
     },
   },
   playServerCheck: {
-    registrationBlocked,
-    balanceBlocked,
+    registrationAdvisory,
+    balanceAdvisory,
     registrationAfterThrottleExpiry,
-    correctionOnlyBlocked,
-    correctionOnlySync,
+    correctionOnlyAdvisory,
+    staleCache,
+    registrationFailOpen,
     balanceFailOpen,
   },
   statsServerSync: {

@@ -1271,7 +1271,6 @@
   const PLAY_ACTION_SERVER_CHECK_CACHE_KEY = 'gameDayPlayActionServerCheckCacheV1';
   const PLAY_ACTION_SERVER_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
   const GOOGLE_STATS_REQUEST_TIMEOUT_MS = 45 * 1000;
-  const PLAY_ACTION_BALANCE_CHECK_WAIT_MS = 3 * 1000;
   const DEFAULT_DB_SOURCE_PATH = './default_database';
   const DIRECT_GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwahqGocPhBwCTaB2HjnM3WIjoTOoc-lk94i8JjkRaTfEXf-rT-OXe0pkpQkZk5u0Tm/exec';
   const IS_LOCAL_SERVER =
@@ -3286,10 +3285,7 @@
 
   async function handleAssignTeamsClick() {
     clearError();
-
-    if (!await ensurePlayActionServerDataIsCurrent({ allowBalanceFailOpen: true })) {
-      return;
-    }
+    warmPlayActionServerCheck();
 
     if (!confirmReassignWithOutstandingScores()) {
       return;
@@ -5014,28 +5010,6 @@
     return changes;
   }
 
-  function formatServerDatabaseChanges(changes) {
-    const parts = [];
-    if (changes.missingGames.length) {
-      parts.push(`${changes.missingGames.length} new game${changes.missingGames.length === 1 ? '' : 's'}`);
-    }
-    if (changes.changedGames.length) {
-      parts.push(`${changes.changedGames.length} corrected game${changes.changedGames.length === 1 ? '' : 's'}`);
-    }
-    if (changes.changedPlayers.length) {
-      parts.push(`${changes.changedPlayers.length} player update${changes.changedPlayers.length === 1 ? '' : 's'}`);
-    }
-    if (changes.changedTournamentPairs.length) {
-      parts.push(`${changes.changedTournamentPairs.length} tournament-pair update${changes.changedTournamentPairs.length === 1 ? '' : 's'}`);
-    }
-    if (changes.seasonStartDateChanged) {
-      parts.push('a season-date update');
-    }
-
-    if (parts.length <= 1) return parts[0] || 'server updates';
-    return `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
-  }
-
   function isValidSeasonStartDate(value) {
     return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
   }
@@ -5179,34 +5153,15 @@
     const serverChanges = getServerDatabaseChanges(meta);
     const wouldDeleteLocalGames = localGamesMissingFromServer.length > 0;
     const shouldUseDangerButton = Boolean(meta.usedFallback) || wouldDeleteLocalGames;
-    const isPlaySafetyGate = mode === 'playSafety' && !meta.usedFallback && serverChanges.hasChanges;
-
-    defaultDatabaseDialogTitleEl.textContent = isPlaySafetyGate
-      ? 'Sync Required Before Playing'
-      : 'Load Newest Stats?';
-    declineLoadDefaultDatabaseButtonEl.textContent = isPlaySafetyGate ? 'Close' : 'No';
-    defaultDatabaseStatusEl.classList.toggle('server-warning', Boolean(meta.usedFallback) || isPlaySafetyGate);
+    defaultDatabaseDialogTitleEl.textContent = 'Load Newest Stats?';
+    declineLoadDefaultDatabaseButtonEl.textContent = 'No';
+    defaultDatabaseStatusEl.classList.toggle('server-warning', Boolean(meta.usedFallback));
     defaultDatabaseDestructiveWarningEl.classList.toggle('hidden', !wouldDeleteLocalGames);
     defaultDatabaseDestructiveWarningEl.textContent = wouldDeleteLocalGames
       ? `Warning: syncing now would remove ${localGamesMissingFromServer.length} local game${localGamesMissingFromServer.length === 1 ? '' : 's'} that are not on the server. If you already recorded games today, export the database instead of syncing.`
       : '';
     confirmLoadDefaultDatabaseButtonEl.classList.toggle('danger', shouldUseDangerButton);
     confirmLoadDefaultDatabaseButtonEl.classList.toggle('success', !shouldUseDangerButton);
-
-    if (isPlaySafetyGate) {
-      defaultDatabaseTextEl.textContent =
-        `The server has ${formatServerDatabaseChanges(serverChanges)} that this device has not applied.`;
-      defaultDatabaseStatusEl.textContent = [
-        `New-player registration and team balancing are paused until the newest stats are synced.`,
-        `Syncing helps prevent duplicate player accounts and gives the balancer the complete game history.`,
-        `The server has ${meta.players.length} players and ${meta.games.length} games through ${meta.latestGameDate}.`,
-        `Sync the newest stats, then retry your action.`
-      ].join('\n');
-      confirmLoadDefaultDatabaseButtonEl.textContent = wouldDeleteLocalGames
-        ? 'Overwrite Local Games'
-        : 'Sync Newest Stats';
-      return;
-    }
 
     if (meta.usedFallback) {
       defaultDatabaseTextEl.textContent = 'Unable to connect to server.';
@@ -5263,10 +5218,7 @@
   }
 
   async function handleOpenAddPlayerDialog() {
-    if (!await ensurePlayActionServerDataIsCurrent()) {
-      return;
-    }
-
+    warmPlayActionServerCheck();
     openAddPlayerDialog(playerSearchQuery.trim());
   }
 
@@ -5325,23 +5277,6 @@
     }
   }
 
-  function finishPlayActionServerCheck() {
-    if (playActionServerCheckState === 'stale' && defaultDatabaseMeta) {
-      const serverChanges = getServerDatabaseChanges(defaultDatabaseMeta);
-
-      if (!serverChanges.hasChanges) {
-        playActionServerCheckState = 'ready';
-        savePlayActionServerCheckCache('ready', defaultDatabaseMeta);
-        return true;
-      }
-
-      openDefaultDatabaseDialog(defaultDatabaseMeta, 'playSafety');
-      return false;
-    }
-
-    return true;
-  }
-
   function hydratePlayActionServerCheckCache() {
     const cachedCheck = loadPlayActionServerCheckCache();
     if (!cachedCheck) return false;
@@ -5395,52 +5330,6 @@
     if (playActionServerCheckState !== 'unchecked' || playActionServerCheckPromise) return;
     if (hydratePlayActionServerCheckCache()) return;
     startPlayActionServerCheck();
-  }
-
-  async function waitForPlayActionServerCheck(pendingCheck, timeoutMs) {
-    let timeoutId = null;
-    try {
-      return await Promise.race([
-        pendingCheck.then(() => true),
-        new Promise(resolve => {
-          timeoutId = window.setTimeout(() => resolve(false), timeoutMs);
-        }),
-      ]);
-    } finally {
-      if (timeoutId !== null) window.clearTimeout(timeoutId);
-    }
-  }
-
-  async function ensurePlayActionServerDataIsCurrent({ allowBalanceFailOpen = false } = {}) {
-    if (playActionServerCheckPromise) {
-      const pendingCheck = playActionServerCheckPromise;
-      const completed = allowBalanceFailOpen
-        ? await runWithBusy(
-          'Checking server for updates...',
-          async () => waitForPlayActionServerCheck(pendingCheck, PLAY_ACTION_BALANCE_CHECK_WAIT_MS)
-        )
-        : (await runWithBusy('Checking server for updates...', async () => pendingCheck), true);
-      if (!completed) return true;
-      return finishPlayActionServerCheck();
-    }
-
-    if (playActionServerCheckState !== 'unchecked') {
-      return finishPlayActionServerCheck();
-    }
-
-    if (hydratePlayActionServerCheckCache()) {
-      return finishPlayActionServerCheck();
-    }
-
-    const pendingCheck = startPlayActionServerCheck();
-    const completed = allowBalanceFailOpen
-      ? await runWithBusy(
-        'Checking server for updates...',
-        async () => waitForPlayActionServerCheck(pendingCheck, PLAY_ACTION_BALANCE_CHECK_WAIT_MS)
-      )
-      : (await runWithBusy('Checking server for updates...', async () => pendingCheck), true);
-    if (!completed) return true;
-    return finishPlayActionServerCheck();
   }
 
   async function maybeOfferDefaultDatabase() {

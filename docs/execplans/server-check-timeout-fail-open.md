@@ -94,8 +94,8 @@ usable with the device's local data when live verification cannot finish.
 - [x] Implementation and focused fail-open regression.
 - [x] Node application suite, handoff suite, syntax checks, diff check, and
   local-server verification.
-- [ ] Final local audit and scoped release checks.
-- [ ] Scoped release to GitHub `main` and Pages verification.
+- [x] Final local audit and scoped release checks.
+- [x] Scoped release to GitHub `main` and Pages verification.
 
 ## Discoveries
 
@@ -115,8 +115,13 @@ usable with the device's local data when live verification cannot finish.
 - Both local servers expose cache generation
   `vball-static-v33-server-check-timeout`; the primary audit URL is
   `http://127.0.0.1:5173/index.html`.
+- Scoped commit `cd2c18cf8921486c7b823c60887392d00bd49b08` was pushed as a
+  clean fast-forward to GitHub `main`. Pages run `33815095273` completed
+  successfully, and cache-busted production reads verified the v33 service
+  worker plus the 45-second request and three-second balance deadlines.
 
 ## Exact Next Action
 
-Perform the final scoped staging review, commit only the repair files and this
-plan, push `HEAD` to GitHub `main`, and verify the Pages artifact.
+The repair is implemented, tested, pushed, and verified in production. Preserve
+the five unrelated local dirty files for their owning work; no further action is
+required for this incident.

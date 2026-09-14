@@ -1,38 +1,43 @@
-// Session-scoped first-balance check. Never persist failures across app sessions.
-export const SESSION_CHECK_KEY = 'gameDayBalanceSessionCheckV1';
+// Fetch early; balancing only waits for a sync/ignore decision, never the network.
+export const SESSION_CHECK_KEY = 'gameDayBalanceSessionCheckV2';
 export const SESSION_IDLE_MS = 4 * 60 * 60 * 1000;
 
 export function createPlaySessionCheck({
   storage, fetchDatabase, offerSync, notifyUnavailable,
-  now = Date.now, timeoutMs = 10000,
+  notifyChecking = () => {}, notifyReady = () => {},
+  now = Date.now, timeoutMs = 60000,
 }) {
-  let completedAt = null;
-  let pending = null;
+  let state = { status: 'unchecked', lastBalanceAt: now(), meta: null };
+  let request = null;
+  let decision = null;
   try {
     const saved = JSON.parse(storage.getItem(SESSION_CHECK_KEY) || 'null');
-    if (Number.isFinite(saved?.lastBalanceAt)) completedAt = saved.lastBalanceAt;
-  } catch { /* In-memory state still works when storage is unavailable. */ }
+    const age = now() - saved?.lastBalanceAt;
+    if (Number.isFinite(saved?.lastBalanceAt) && age >= 0 && age < SESSION_IDLE_MS &&
+        (saved.status === 'done' || (saved.status === 'ready' && saved.meta &&
+          Array.isArray(saved.meta.players) && Array.isArray(saved.meta.games)))) state = saved;
+  } catch { /* In-memory state remains available without browser storage. */ }
 
-  function finish() {
-    completedAt = now();
-    try {
-      storage.setItem(SESSION_CHECK_KEY, JSON.stringify({ lastBalanceAt: completedAt }));
-    } catch { /* Keep the in-memory session. */ }
+  function save() {
+    try { storage.setItem(SESSION_CHECK_KEY, JSON.stringify(state)); } catch {}
   }
-
-  return function checkBeforeBalance() {
-    if (pending) return pending;
-    const age = now() - completedAt;
-    if (completedAt !== null && age >= 0 && age < SESSION_IDLE_MS) {
-      finish();
-      return Promise.resolve();
+  function expire() {
+    const age = now() - state.lastBalanceAt;
+    if (!request && !decision && (age < 0 || age >= SESSION_IDLE_MS)) {
+      state = { status: 'unchecked', lastBalanceAt: now(), meta: null };
     }
-    pending = (async () => {
+  }
+  function warm() {
+    expire();
+    if (request) return request;
+    if (state.status !== 'unchecked') return Promise.resolve();
+    state.status = 'checking';
+    notifyChecking();
+    request = (async () => {
       const controller = new AbortController();
       let timeout;
-      let meta;
       try {
-        meta = await Promise.race([
+        const meta = await Promise.race([
           Promise.resolve().then(() => fetchDatabase(controller.signal)),
           new Promise((_, reject) => {
             timeout = setTimeout(() => {
@@ -41,14 +46,35 @@ export function createPlaySessionCheck({
             }, timeoutMs);
           }),
         ]);
+        state.status = 'ready';
+        state.meta = meta;
+        notifyReady(meta);
       } catch (error) {
+        state.status = 'done';
+        state.meta = null;
         notifyUnavailable(error);
       } finally {
         clearTimeout(timeout);
+        save();
       }
-      if (meta) await offerSync(meta);
-      finish();
-    })().finally(() => { pending = null; });
-    return pending;
-  };
+    })().finally(() => { request = null; });
+    return request;
+  }
+
+  function checkBeforeBalance() {
+    if (decision) return decision;
+    warm();
+    state.lastBalanceAt = now();
+    if (state.status !== 'ready') {
+      save();
+      return Promise.resolve();
+    }
+    decision = Promise.resolve().then(() => offerSync(state.meta)).then(() => {
+      state = { status: 'done', lastBalanceAt: now(), meta: null };
+      save();
+    }).finally(() => { decision = null; });
+    return decision;
+  }
+  checkBeforeBalance.warm = warm;
+  return checkBeforeBalance;
 }

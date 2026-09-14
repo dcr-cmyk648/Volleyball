@@ -5225,7 +5225,7 @@
     openAddPlayerDialog(playerSearchQuery.trim());
   }
 
-  async function checkServerBeforeFirstBalance() {
+  async function checkServerBeforeFirstBalance({ background = false } = {}) {
     if (!playSessionCheck) {
       // Access may throw in browsers with storage disabled.
       let storage;
@@ -5233,28 +5233,33 @@
       playSessionCheck = createPlaySessionCheck({
         storage,
         fetchDatabase: async signal => {
+          const parsed = await fetchGoogleDriveStats({ signal });
+          const meta = normalizeServerDatabase(parsed, { sourceLabel: 'Google Drive' });
+          if (signal.aborted) throw new Error('Server check timed out.');
+          return meta;
+        },
+        notifyChecking: () => {
           const notice = document.getElementById('serverCheckNotice');
-          notice.classList.add('hidden');
-          showBusy('Checking server for updates...');
-          try {
-            const parsed = await fetchGoogleDriveStats({ signal });
-            const meta = normalizeServerDatabase(parsed, { sourceLabel: 'Google Drive' });
-            // A timed-out request must not update metadata after play continues.
-            if (signal.aborted) throw new Error('Server check timed out.');
-            defaultDatabaseMeta = meta;
-            return meta;
-          } finally {
-            if (!signal.aborted) hideBusy();
-          }
+          notice.textContent = 'Checking Google Drive in the background. You can balance teams while it finishes.';
+          notice.classList.remove('hidden');
+        },
+        notifyReady: meta => {
+          const notice = document.getElementById('serverCheckNotice');
+          const hasChanges = getServerDatabaseChanges(meta).hasChanges;
+          notice.textContent = hasChanges
+            ? 'Server updates are ready. You can sync or ignore them when you next balance teams.'
+            : '';
+          notice.classList.toggle('hidden', !hasChanges);
         },
         notifyUnavailable: () => {
-          hideBusy();
           const notice = document.getElementById('serverCheckNotice');
           notice.textContent = 'Could not reach Google Drive. Continuing with local games; no more automatic checks this session.';
           notice.classList.remove('hidden');
         },
         offerSync: async meta => {
+          document.getElementById('serverCheckNotice').classList.add('hidden');
           if (!getServerDatabaseChanges(meta).hasChanges) return;
+          defaultDatabaseMeta = meta;
           openDefaultDatabaseDialog(meta, 'balance-session');
           declineLoadDefaultDatabaseButtonEl.textContent = 'Ignore for this session';
           confirmLoadDefaultDatabaseButtonEl.textContent = 'Sync and balance';
@@ -5264,7 +5269,8 @@
         },
       });
     }
-    await playSessionCheck();
+    if (background) await playSessionCheck.warm();
+    else await playSessionCheck();
   }
 
   async function maybeOfferDefaultDatabase() {
@@ -5529,6 +5535,9 @@
   renderPlayers();
   updateBalanceStatus();
   maybeOfferDefaultDatabase();
+  if (!hasNoRealData()) {
+    void checkServerBeforeFirstBalance({ background: true });
+  }
   console.log('[vball] index.html version:', VERSION);
 </script>
 </body>

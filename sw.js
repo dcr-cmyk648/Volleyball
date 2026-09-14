@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v35-session-play-check';
+const CACHE_VERSION = 'vball-static-v36-background-session-check';
 const APP_SHELL = [
   './',
   './index.html',

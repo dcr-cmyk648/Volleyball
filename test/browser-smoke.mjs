@@ -1057,14 +1057,14 @@ await evaluate(client, `
   localStorage.setItem('gameDayDefaultDatabasePromptChoice', 'declined');
   localStorage.removeItem('gameDayMainPageState');
   localStorage.removeItem(${JSON.stringify(playActionServerCheckCacheKey)});
-  sessionStorage.removeItem('gameDayBalanceSessionCheckV1');
+  sessionStorage.removeItem('gameDayBalanceSessionCheckV2');
 `);
 
 load = waitForLoad(client);
 await client.send('Page.navigate', { url: `${baseUrl}/index.html` });
 await load;
 
-// The first balance owns the live check; registration and page load do not.
+// Page load warms the check; registration never waits for it.
 const registrationAdvisory = await evaluate(client, `
   document.getElementById('openAddPlayerDialog').click();
   ({
@@ -1072,14 +1072,14 @@ const registrationAdvisory = await evaluate(client, `
     fetches: window.__playSafetyServerFetchCount,
   });
 `);
-if (!registrationAdvisory.open || registrationAdvisory.fetches !== 0) {
+if (!registrationAdvisory.open || registrationAdvisory.fetches !== 1) {
   throw new Error('Registration unexpectedly checked the server.');
 }
 await evaluate(client, `document.getElementById('cancelPlayerButton').click()`);
 
 async function exerciseFirstBalance({ sync = false, offline = false } = {}) {
   await evaluate(client, `
-    sessionStorage.removeItem('gameDayBalanceSessionCheckV1');
+    sessionStorage.removeItem('gameDayBalanceSessionCheckV2');
     localStorage.setItem(${JSON.stringify(playServerNeverResolveKey)}, ${JSON.stringify(String(offline))});
     localStorage.setItem('gameDayPlayers', ${JSON.stringify(JSON.stringify(db.players))});
     localStorage.setItem('gameDayGames', ${JSON.stringify(JSON.stringify([...db.games, localOnlyGame]))});
@@ -1125,7 +1125,7 @@ async function exerciseFirstBalance({ sync = false, offline = false } = {}) {
       result.localOnlyGamePresent !== !sync) {
     throw new Error(`First balance failed: ${JSON.stringify(result)}`);
   }
-  // Page navigation in the same session must not recheck or re-prompt.
+  // Completed results survive navigation. An unfinished request restarts on a new page.
   const reloaded = waitForLoad(client);
   await client.send('Page.navigate', { url: `${baseUrl}/index.html` });
   await reloaded;
@@ -1139,7 +1139,7 @@ async function exerciseFirstBalance({ sync = false, offline = false } = {}) {
       }), 500);
     })
   `, true);
-  if (repeat.fetches !== 0 || repeat.dialog) throw new Error('Repeated balance rechecked the server.');
+  if (repeat.fetches !== (offline ? 1 : 0) || repeat.dialog) throw new Error('Repeated balance did not reuse the background result.');
   return result;
 }
 const balanceIgnore = await exerciseFirstBalance();
@@ -1324,6 +1324,7 @@ await evaluate(client, `
     playServerDb.seasonStartDate || playServerDb.metadata?.seasonStartDate || '2026-01-01'
   )});
   localStorage.setItem(${JSON.stringify(playServerDatabaseOverrideKey)}, ${JSON.stringify(JSON.stringify(playCorrectionServerDb))});
+  sessionStorage.removeItem('gameDayBalanceSessionCheckV2');
   localStorage.setItem('gameDayDefaultDatabasePromptChoice', 'declined');
   localStorage.removeItem('gameDayMainPageState');
   localStorage.removeItem(${JSON.stringify(playActionServerCheckCacheKey)});
@@ -1362,7 +1363,7 @@ const correctionOnlyAdvisory = await evaluate(client, `
 if (
   correctionOnlyAdvisory.dialogOpen ||
   !correctionOnlyAdvisory.addPlayerDialogOpen ||
-  correctionOnlyAdvisory.serverFetches !== 0
+  correctionOnlyAdvisory.serverFetches !== 1
 ) {
   throw new Error(`Correction-only server state gated Play: ${JSON.stringify(correctionOnlyAdvisory)}`);
 }

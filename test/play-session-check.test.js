@@ -9,7 +9,7 @@ function setup(overrides = {}) {
   const calls = { fetch: 0, offer: 0, notice: 0 };
   const options = {
     storage: { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) },
-    fetchDatabase: async () => { calls.fetch++; return { games: [] }; },
+    fetchDatabase: async () => { calls.fetch++; return { players: [], games: [] }; },
     offerSync: async () => { calls.offer++; },
     notifyUnavailable: () => { calls.notice++; },
     ...overrides,
@@ -17,20 +17,23 @@ function setup(overrides = {}) {
   return { options, calls, values, check: createPlaySessionCheck(options) };
 }
 
-test('first balance awaits the live check and sync/ignore choice; repeated clicks share it', async () => {
+test('background check never blocks balance; ready results await sync/ignore once', async () => {
   let releaseFetch, releaseChoice;
   const s = setup({
     fetchDatabase: () => new Promise(resolve => { releaseFetch = resolve; }),
     offerSync: () => new Promise(resolve => { releaseChoice = resolve; }),
   });
   let finished = false;
+  const background = s.check.warm();
+  await s.check();
+  assert.equal(s.calls.offer, 0);
+  releaseFetch({ players: [], games: ['new-game'] });
+  await background;
+  assert.equal(releaseChoice, undefined);
   const first = s.check();
   first.then(() => { finished = true; });
   assert.equal(s.check(), first);
   await Promise.resolve();
-  assert.equal(finished, false);
-  releaseFetch({ games: ['new-game'] });
-  await new Promise(resolve => setImmediate(resolve));
   assert.equal(finished, false);
   releaseChoice();
   await first;
@@ -41,17 +44,21 @@ test('first balance awaits the live check and sync/ignore choice; repeated click
 
 test('completed check survives page navigation but a new app session checks again', async () => {
   const s = setup();
+  await s.check.warm();
   await s.check();
   await s.check();
-  await createPlaySessionCheck(s.options)();
+  const nextPage = createPlaySessionCheck(s.options);
+  await nextPage.warm();
+  await nextPage();
   assert.equal(s.calls.fetch, 1);
   s.values.clear();
-  await createPlaySessionCheck(s.options)();
+  await createPlaySessionCheck(s.options).warm();
   assert.equal(s.calls.fetch, 2);
 });
 
 test('unreachable server gives one notice, allows play, and does not repeat', async () => {
   const s = setup({ fetchDatabase: async () => { throw new Error('offline'); } });
+  await s.check.warm();
   await s.check();
   await s.check();
   await createPlaySessionCheck(s.options)();
@@ -65,7 +72,10 @@ test('hung request times out and aborts; late data cannot prompt or sync', async
     signal = abortSignal;
     return new Promise(resolve => { release = resolve; });
   } });
+  const background = s.check.warm();
   await s.check();
+  assert.equal(signal.aborted, false);
+  await background;
   assert.equal(signal.aborted, true);
   assert.equal(s.calls.notice, 1);
   release({ games: ['late'] });
@@ -78,20 +88,34 @@ test('hung request times out and aborts; late data cannot prompt or sync', async
 test('active balancing extends session; four idle hours requires a fresh check', async () => {
   let clock = 1000;
   const s = setup({ now: () => clock });
+  await s.check.warm();
   await s.check();
   clock += SESSION_IDLE_MS - 1;
   await s.check();
   assert.equal(s.calls.fetch, 1);
   clock += SESSION_IDLE_MS;
+  await s.check.warm();
   await s.check();
   assert.equal(s.calls.fetch, 2);
 });
 
 test('storage failures still allow one check per page', async () => {
   const s = setup({ storage: null });
+  await s.check.warm();
   await s.check();
   await s.check();
   assert.equal(s.calls.fetch, 1);
+});
+
+test('ready background result survives navigation before the first balance', async () => {
+  const s = setup();
+  await s.check.warm();
+  const nextPage = createPlaySessionCheck(s.options);
+  await nextPage.warm();
+  assert.equal(s.calls.fetch, 1);
+  await nextPage();
+  await nextPage();
+  assert.equal(s.calls.offer, 1);
 });
 
 const pageSource = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');

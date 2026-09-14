@@ -1120,6 +1120,7 @@
 
       <div id="selectedCount" class="selected-count">Selected players: 0</div>
       <div id="balanceStatus" class="status">No team assignment yet.</div>
+      <div id="serverCheckNotice" class="status hidden" role="status"></div>
       <div id="errorMessage" class="error"></div>
       <div class="search-row" style="margin-top: 14px;">
         <label for="playerSearchInput">Search players</label>
@@ -1240,6 +1241,7 @@
   </div>
 
 <script type="module">
+  import { createPlaySessionCheck } from './play-session-check.js';
   import {
     VERSION,
     replayRatings,
@@ -1268,8 +1270,6 @@
   const PAGE_STATE_KEY = 'gameDayMainPageState';
 
   const DEFAULT_DB_PROMPT_KEY = 'gameDayDefaultDatabasePromptChoice';
-  const PLAY_ACTION_SERVER_CHECK_CACHE_KEY = 'gameDayPlayActionServerCheckCacheV1';
-  const PLAY_ACTION_SERVER_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
   const GOOGLE_STATS_REQUEST_TIMEOUT_MS = 45 * 1000;
   const DEFAULT_DB_SOURCE_PATH = './default_database';
   const DIRECT_GOOGLE_STATS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwahqGocPhBwCTaB2HjnM3WIjoTOoc-lk94i8JjkRaTfEXf-rT-OXe0pkpQkZk5u0Tm/exec';
@@ -1411,8 +1411,8 @@
   let leagueRotationCandidateIndex = 0;
   let defaultDatabaseMeta = null;
   let defaultDatabaseDialogMode = 'prompt';
-  let playActionServerCheckState = 'unchecked';
-  let playActionServerCheckPromise = null;
+  let playSessionCheck = null;
+  let assigningTeams = false;
   let publicRatingScaleCacheKey = '';
   let publicRatingScaleCache = null;
   let balanceRatingMapCacheKey = '';
@@ -3284,16 +3284,19 @@
   }
 
   async function handleAssignTeamsClick() {
+    if (assigningTeams) return;
     clearError();
-    warmPlayActionServerCheck();
+    if (!confirmReassignWithOutstandingScores()) return;
 
-    if (!confirmReassignWithOutstandingScores()) {
-      return;
+    assigningTeams = true;
+    try {
+      await checkServerBeforeFirstBalance();
+      await runWithBusy('Assigning teams...', ({ updateProgress, yieldToBrowser }) =>
+        assignBalancedTeams({ updateProgress, yieldToBrowser })
+      );
+    } finally {
+      assigningTeams = false;
     }
-
-    await runWithBusy('Assigning teams...', ({ updateProgress, yieldToBrowser }) =>
-      assignBalancedTeams({ updateProgress, yieldToBrowser })
-    );
   }
 
   async function assignBalancedTeams({
@@ -5014,7 +5017,7 @@
     return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
   }
 
-  async function fetchGoogleDriveStats() {
+  async function fetchGoogleDriveStats({ signal = null } = {}) {
     if (!GOOGLE_STATS_ENDPOINTS.length) {
       throw new Error('Google Drive stats endpoint is not configured.');
     }
@@ -5028,7 +5031,7 @@
       try {
         const response = await fetch(endpoint, {
           cache: 'no-store',
-          signal: controller.signal,
+          signal: signal || controller.signal,
         });
 
         if (!response.ok) {
@@ -5052,6 +5055,7 @@
         return parsed;
       } catch (error) {
         errors.push(String(error && error.message ? error.message : error));
+        if (signal?.aborted) break;
       } finally {
         window.clearTimeout(timeout);
       }
@@ -5218,118 +5222,49 @@
   }
 
   async function handleOpenAddPlayerDialog() {
-    warmPlayActionServerCheck();
     openAddPlayerDialog(playerSearchQuery.trim());
   }
 
-  function loadPlayActionServerCheckCache() {
-    try {
-      const cached = JSON.parse(
-        localStorage.getItem(PLAY_ACTION_SERVER_CHECK_CACHE_KEY) || 'null'
-      );
-      const checkedAt = Number(cached?.checkedAt);
-      const age = Date.now() - checkedAt;
-      const state = cached?.state;
-
-      if (
-        !Number.isFinite(checkedAt) ||
-        age < 0 ||
-        age >= PLAY_ACTION_SERVER_CHECK_INTERVAL_MS ||
-        !['ready', 'stale', 'unavailable'].includes(state)
-      ) {
-        localStorage.removeItem(PLAY_ACTION_SERVER_CHECK_CACHE_KEY);
-        return null;
-      }
-
-      const meta = cached?.meta;
-      if (
-        (state === 'ready' || state === 'stale') &&
-        (!meta || !Array.isArray(meta.players) || !Array.isArray(meta.games))
-      ) {
-        localStorage.removeItem(PLAY_ACTION_SERVER_CHECK_CACHE_KEY);
-        return null;
-      }
-
-      return {
-        checkedAt,
-        state,
-        meta: meta || null,
-      };
-    } catch {
-      localStorage.removeItem(PLAY_ACTION_SERVER_CHECK_CACHE_KEY);
-      return null;
+  async function checkServerBeforeFirstBalance() {
+    if (!playSessionCheck) {
+      // Access may throw in browsers with storage disabled.
+      let storage;
+      try { storage = window.sessionStorage; } catch { storage = null; }
+      playSessionCheck = createPlaySessionCheck({
+        storage,
+        fetchDatabase: async signal => {
+          const notice = document.getElementById('serverCheckNotice');
+          notice.classList.add('hidden');
+          showBusy('Checking server for updates...');
+          try {
+            const parsed = await fetchGoogleDriveStats({ signal });
+            const meta = normalizeServerDatabase(parsed, { sourceLabel: 'Google Drive' });
+            // A timed-out request must not update metadata after play continues.
+            if (signal.aborted) throw new Error('Server check timed out.');
+            defaultDatabaseMeta = meta;
+            return meta;
+          } finally {
+            if (!signal.aborted) hideBusy();
+          }
+        },
+        notifyUnavailable: () => {
+          hideBusy();
+          const notice = document.getElementById('serverCheckNotice');
+          notice.textContent = 'Could not reach Google Drive. Continuing with local games; no more automatic checks this session.';
+          notice.classList.remove('hidden');
+        },
+        offerSync: async meta => {
+          if (!getServerDatabaseChanges(meta).hasChanges) return;
+          openDefaultDatabaseDialog(meta, 'balance-session');
+          declineLoadDefaultDatabaseButtonEl.textContent = 'Ignore for this session';
+          confirmLoadDefaultDatabaseButtonEl.textContent = 'Sync and balance';
+          await new Promise(resolve => {
+            defaultDatabaseDialog.addEventListener('close', resolve, { once: true });
+          });
+        },
+      });
     }
-  }
-
-  function savePlayActionServerCheckCache(
-    state,
-    meta = null,
-    checkedAt = Date.now()
-  ) {
-    try {
-      localStorage.setItem(PLAY_ACTION_SERVER_CHECK_CACHE_KEY, JSON.stringify({
-        checkedAt,
-        state,
-        meta: meta && !meta.usedFallback ? meta : null,
-      }));
-    } catch {
-      // The in-memory guard still prevents repeated checks on this page.
-    }
-  }
-
-  function hydratePlayActionServerCheckCache() {
-    const cachedCheck = loadPlayActionServerCheckCache();
-    if (!cachedCheck) return false;
-
-    playActionServerCheckState = cachedCheck.state;
-    if (cachedCheck.meta) {
-      defaultDatabaseMeta = cachedCheck.meta;
-      const serverChanges = getServerDatabaseChanges(defaultDatabaseMeta);
-      playActionServerCheckState = serverChanges.hasChanges ? 'stale' : 'ready';
-      savePlayActionServerCheckCache(
-        playActionServerCheckState,
-        defaultDatabaseMeta,
-        cachedCheck.checkedAt
-      );
-    }
-    return true;
-  }
-
-  function startPlayActionServerCheck() {
-    if (playActionServerCheckPromise) return playActionServerCheckPromise;
-
-    const checkedAt = Date.now();
-    playActionServerCheckPromise = (async () => {
-      try {
-        const meta = await prepareDefaultDatabaseMeta({ forceRefresh: true });
-
-        if (meta.usedFallback) {
-          console.warn('Could not verify live server updates; continuing with local data.', meta.serverConnectionError);
-          playActionServerCheckState = 'unavailable';
-          savePlayActionServerCheckCache('unavailable', null, checkedAt);
-          return;
-        }
-
-        playActionServerCheckState = getServerDatabaseChanges(meta).hasChanges
-          ? 'stale'
-          : 'ready';
-        savePlayActionServerCheckCache(playActionServerCheckState, meta, checkedAt);
-      } catch (error) {
-        console.warn('Could not check the server for updates; continuing with local data.', error);
-        playActionServerCheckState = 'unavailable';
-        savePlayActionServerCheckCache('unavailable', null, checkedAt);
-      }
-    })().finally(() => {
-      playActionServerCheckPromise = null;
-    });
-
-    return playActionServerCheckPromise;
-  }
-
-  function warmPlayActionServerCheck() {
-    if (playActionServerCheckState !== 'unchecked' || playActionServerCheckPromise) return;
-    if (hydratePlayActionServerCheckCache()) return;
-    startPlayActionServerCheck();
+    await playSessionCheck();
   }
 
   async function maybeOfferDefaultDatabase() {
@@ -5360,7 +5295,7 @@
     }
   }
 
-  async function loadDefaultDatabaseIntoStorage(meta = defaultDatabaseMeta) {
+  async function loadDefaultDatabaseIntoStorage(meta = defaultDatabaseMeta, { preservePlayState = false } = {}) {
     if (!meta) {
       meta = await prepareDefaultDatabaseMeta();
     }
@@ -5370,6 +5305,16 @@
     saveTournamentPairs(meta.tournamentPairs);
     if (isValidSeasonStartDate(meta.seasonStartDate)) {
       localStorage.setItem(SEASON_START_DATE_STORAGE_KEY, meta.seasonStartDate);
+    }
+
+    if (preservePlayState) {
+      players = loadPlayers();
+      games = loadGames();
+      syncPresenceState();
+      savePageState();
+      renderPlayers();
+      updateBalanceStatus();
+      return;
     }
 
     presenceState = buildPresenceState(meta.players);
@@ -5542,15 +5487,14 @@
         defaultDatabaseStatusEl.textContent = meta.usedFallback
           ? 'Loading bundled fallback database...'
           : 'Loading newest stats from Google Drive...';
-        await loadDefaultDatabaseIntoStorage(meta);
+        await loadDefaultDatabaseIntoStorage(meta, {
+          preservePlayState: defaultDatabaseDialogMode === 'balance-session',
+        });
       });
       defaultDatabaseDialog.close();
-      playActionServerCheckState = defaultDatabaseMeta?.usedFallback ? 'unavailable' : 'ready';
-      savePlayActionServerCheckCache(
-        playActionServerCheckState,
-        defaultDatabaseMeta
-      );
-      alert(defaultDatabaseMeta?.usedFallback ? 'Bundled fallback database loaded. Server connection is still failing.' : 'Newest stats loaded from Google Drive.');
+      if (defaultDatabaseDialogMode !== 'balance-session') {
+        alert(defaultDatabaseMeta?.usedFallback ? 'Bundled fallback database loaded. Server connection is still failing.' : 'Newest stats loaded from Google Drive.');
+      }
     } catch {
       defaultDatabaseStatusEl.textContent = 'Failed to load database.';
       confirmLoadDefaultDatabaseButtonEl.textContent = originalButtonText;
@@ -5585,16 +5529,6 @@
   renderPlayers();
   updateBalanceStatus();
   maybeOfferDefaultDatabase();
-  if (!hasNoRealData()) {
-    const scheduleServerCheck = () => {
-      if (document.visibilityState === 'visible') warmPlayActionServerCheck();
-    };
-    if ('requestIdleCallback' in window) {
-      window.requestIdleCallback(scheduleServerCheck, { timeout: 1500 });
-    } else {
-      window.setTimeout(scheduleServerCheck, 250);
-    }
-  }
   console.log('[vball] index.html version:', VERSION);
 </script>
 </body>

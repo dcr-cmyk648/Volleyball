@@ -1,7 +1,8 @@
-const CACHE_VERSION = 'vball-static-v34-advisory-play-checks';
+const CACHE_VERSION = 'vball-static-v35-session-play-check';
 const APP_SHELL = [
   './',
   './index.html',
+  './play-session-check.js',
   './tournament.html',
   './stats.html',
   './trend.html',

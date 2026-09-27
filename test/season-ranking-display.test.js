@@ -28,8 +28,51 @@ const {
   getSeasonRankingGameCountPenaltyPoints,
   getSeasonRankingMaxUnpenalizedDisplayRating,
   getSeasonRankingPenaltyPhase,
+  getSeasonRankingReplay,
   toDisplayRating,
 } = ratings;
+
+test('season ratings use each player last 50 games while keeping monthly counts and history', () => {
+  const games = [];
+  for (const [id, total, monthGames] of [['under', 49, 9], ['exact', 50, 10], ['older', 80, 10], ['busy', 80, 70], ['inactive', 80, 0]]) {
+    for (let i = 0; i < total; i++) {
+      games.push({ id: `${id}-${i}`, date: i < total - monthGames ? '2026-08-01' : '2026-09-20',
+        createdAt: games.length, redTeam: [{ id }], blueTeam: [], isLeagueGame: i % 2 === 0 });
+    }
+  }
+  games.reverse();
+  const windowGames = games.filter(game => game.date >= '2026-08-27');
+  const replay = selected => {
+    const counts = new Map();
+    const history = ratings.getGamesSortedOldestFirst(selected).map(game => {
+      const id = game.redTeam[0].id;
+      const count = counts.get(id) || 0;
+      counts.set(id, count + 1);
+      return { game, before: { red: [{ id, mu: count }], blue: [] },
+        after: { red: [{ id, mu: count + 1 }], blue: [] } };
+    });
+    return { history, standings: [...counts].map(([id, games]) => ({ id, games, mu: games, sigma: 2, wins: games, rawOrdinal: games - 7 })) };
+  };
+  const monthly = replay(windowGames);
+  const snapshot = structuredClone(monthly);
+  const result = getSeasonRankingReplay({ games, windowGames, replay: selected => selected === windowGames ? monthly : replay(selected) });
+  assert.deepEqual(monthly, snapshot, 'cached monthly replay is not mutated');
+  assert.equal(result.history.length, windowGames.length);
+  assert.ok(!result.standings.some(row => row.id === 'inactive'));
+  for (const row of result.standings) {
+    const expected = monthly.standings.find(player => player.id === row.id);
+    assert.equal(row.games, expected.games);
+    assert.equal(row.wins, expected.wins);
+    assert.equal(row.mu, row.id === 'under' ? 9 : 50);
+    const latest = result.history.filter(entry => entry.game.redTeam[0].id === row.id).at(-1);
+    assert.equal(latest.after.red[0].mu, row.mu);
+    assert.equal(getSeasonRankingGameCountPenaltyPoints(row.games, 70, 1800),
+      getSeasonRankingGameCountPenaltyPoints(expected.games, 70, 1800));
+  }
+  assert.equal(result.seasonPlayerReplays.get('older').games.filter(game => game.redTeam[0].id === 'older').length, 50);
+  assert.equal(result.seasonPlayerReplays.get('busy').games.filter(game => game.redTeam[0].id === 'busy').length, 50);
+  assert.ok(!result.seasonPlayerReplays.has('under'));
+});
 
 test('grass is preserved as a court type and league context', () => {
   const game = {

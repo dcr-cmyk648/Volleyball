@@ -645,6 +645,7 @@
       getPlayerRatingTimeline,
       getLeagueContextById,
       getSeasonRankingDisplayRawOrdinal,
+      getSeasonRankingReplay,
       getSeasonRankingMaxUnpenalizedDisplayRating,
       replayRatings,
       toDisplayRating as toLinearDisplayRating,
@@ -1399,15 +1400,19 @@
       const scoreboardGames = range === 'allTime'
         ? getTrendScoreboardGames(games, mode)
         : getSeasonRankingWindowGames(games, mode);
-      const replay = applyTrendPlayerCountOverrides(getReplayResult({
+      const replayGames = selectedGames => getReplayResult({
         players,
-        games: scoreboardGames,
+        games: selectedGames,
         seasonLengthMonths,
         volleyballAdjusted,
         volleyballUpdateUsesBalancerContext,
         volleyballUpdateContextMode,
         includeLeagueGames
-      }), scoreboardGames, mode);
+      });
+      const result = range !== 'allTime' && !trendSeasonRankingSettings.removeSeasonWindow
+        ? getSeasonRankingReplay({ games: getTrendScoreboardGames(games, mode), windowGames: scoreboardGames, replay: replayGames })
+        : replayGames(scoreboardGames);
+      const replay = applyTrendPlayerCountOverrides(result, scoreboardGames, mode);
       const eligibleRows = getTrendEligibleRowsForScoreboard(replay, scoreboardGames, mode, range);
       const scoreboardMaxGames = getTrendScoreboardMaxGamesForRows(eligibleRows);
       const scoreboardMaxUnpenalizedDisplayRating =
@@ -1684,19 +1689,24 @@
       const scoreboardGames = rollingWindow
         ? getSeasonRankingWindowGames(games, mode)
         : getTrendScoreboardGames(games, mode);
-      const replay = applyTrendPlayerCountOverrides(getReplayResult({
+      const replayGames = selectedGames => getReplayResult({
         players,
-        games: scoreboardGames,
+        games: selectedGames,
         seasonLengthMonths,
         volleyballAdjusted,
         volleyballUpdateUsesBalancerContext,
         volleyballUpdateContextMode,
         includeLeagueGames
-      }), scoreboardGames, mode);
+      });
+      const result = rollingWindow && !trendSeasonRankingSettings.removeSeasonWindow
+        ? getSeasonRankingReplay({ games: getTrendScoreboardGames(games, mode), windowGames: scoreboardGames, replay: replayGames })
+        : replayGames(scoreboardGames);
+      const replay = applyTrendPlayerCountOverrides(result, scoreboardGames, mode);
 
       return {
         standingsEntry: replay.standings.find(row => String(row.id) === String(playerId)) || null,
         calibratedStartMap: replay.calibratedStartMap || {},
+        seasonPlayerReplay: result.seasonPlayerReplays?.get(String(playerId)),
         scoreboardGames,
         scoreboardMaxGames: rollingWindow
           ? getTrendScoreboardMaxGames(replay, scoreboardGames, mode, 'month')
@@ -1838,20 +1848,35 @@
       includeLeagueGames,
       replayData,
     }) {
-      return getPlayerRatingTimeline({
+      const timelineOptions = {
         players,
-        games: replayData.scoreboardGames,
         playerId,
         seasonal,
         volleyballAdjusted,
         volleyballUpdateUsesBalancerContext,
         volleyballUpdateContextMode,
         includeLeagueGames,
-        _calibratedStarts: replayData.calibratedStartMap,
         options: {
           ...getRatingSectionLeagueOptions(),
           seasonalTaperDays: getSeasonalTaperDays()
         }
+      };
+      const timeline = getPlayerRatingTimeline({
+        ...timelineOptions,
+        games: replayData.scoreboardGames,
+        _calibratedStarts: replayData.calibratedStartMap,
+      });
+      const selected = replayData.seasonPlayerReplay;
+      if (!selected) return timeline;
+      const ratingTimeline = getPlayerRatingTimeline({
+        ...timelineOptions,
+        games: selected.games,
+        _calibratedStarts: selected.result.calibratedStartMap,
+      });
+      const ratingRows = new Map(ratingTimeline.map(row => [String(row.gameId), row]));
+      return timeline.map(row => {
+        const ratingRow = ratingRows.get(String(row.gameId));
+        return ratingRow ? { ...ratingRow, chronologicalIndex: row.chronologicalIndex } : row;
       });
     }
 

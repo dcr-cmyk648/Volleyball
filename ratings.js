@@ -297,7 +297,7 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260723-1';
+export const VERSION = 'beta-20260927-1';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Flatter team-strength weights. Forward validation favored restoring
@@ -930,6 +930,64 @@ export function getGamesSortedOldestFirst(gamesList) {
       return b.originalIndex - a.originalIndex;
     })
     .map(entry => entry.game);
+}
+
+export function getSeasonRankingReplay({ games, windowGames, replay }) {
+  const monthly = replay(windowGames);
+  const sorted = getGamesSortedOldestFirst(games);
+  const indexes = new Map();
+  sorted.forEach((game, index) => {
+    const players = [...(game.redTeam || []), ...(game.isLeagueGame ? [] : game.blueTeam || [])];
+    new Set(players.map(player => String(player.id))).forEach(id => {
+      if (!indexes.has(id)) indexes.set(id, []);
+      indexes.get(id).push(index);
+    });
+  });
+  const replayCache = new Map();
+  const seasonPlayerReplays = new Map();
+  const standings = monthly.standings.map(player => {
+    const id = String(player.id);
+    const playerIndexes = indexes.get(id) || [];
+    if (!player.games || playerIndexes.length < 50) return player;
+    const start = playerIndexes.at(-50);
+    if (!replayCache.has(start)) {
+      const included = new Set(sorted.slice(start));
+      const ratingGames = games.filter(game => included.has(game));
+      const result = replay(ratingGames);
+      replayCache.set(start, {
+        games: ratingGames,
+        result,
+        standings: new Map(result.standings.map(row => [String(row.id), row])),
+        history: new Map(result.history.map(entry => [String(entry.game.id), entry])),
+      });
+    }
+    const selected = replayCache.get(start);
+    const rating = selected.standings.get(id);
+    if (!rating) return player;
+    seasonPlayerReplays.set(id, selected);
+    return {
+      ...player,
+      mu: rating.mu,
+      sigma: rating.sigma,
+      rawOrdinal: rating.rawOrdinal,
+      displayRating: rating.displayRating,
+      leaderboardRawOrdinal: rating.leaderboardRawOrdinal,
+      leaderboardRating: rating.leaderboardRating,
+      rating: rating.rating,
+    };
+  });
+  const history = monthly.history.map(entry => {
+    const replaceRatings = phase => Object.fromEntries(['red', 'blue'].map(side => [
+      side,
+      entry[phase][side].map(player => {
+        const selected = seasonPlayerReplays.get(String(player.id));
+        const replacement = selected?.history.get(String(entry.game.id));
+        return replacement?.[phase]?.[side]?.find(row => String(row.id) === String(player.id)) || player;
+      }),
+    ]));
+    return { ...entry, before: replaceRatings('before'), after: replaceRatings('after') };
+  });
+  return { ...monthly, standings, history, seasonPlayerReplays };
 }
 
 export function getScoreMarginDetails(scoreRed, scoreBlue, options = {}) {

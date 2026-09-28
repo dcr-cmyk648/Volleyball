@@ -297,7 +297,7 @@ export const DEFAULT_RATING_OPTIONS = {
 // divide by 50:
 //   35 / 50 = 0.7
 //   220 / 50 = 4.4
-export const VERSION = 'beta-20260927-1';
+export const VERSION = 'beta-20260927-2';
 
 export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // Flatter team-strength weights. Forward validation favored restoring
@@ -330,11 +330,12 @@ export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   environmentSiloAdjustmentCap: 1.5,
   environmentSiloMinDelta: 0.5,
   pairAdjustmentMode: 'blend',
-  pairAdjustmentMinGames: 8,
+  pairAdjustmentMinGames: 10,
   pairAdjustmentConfidenceGames: 4,
   pairAdjustmentMaxBlend: 0.75,
   pairAdjustmentPerPairCap: 0.5,
-  pairAdjustmentTeamCap: 0.75,
+  pairAdjustmentScale: 3,
+  pairAdjustmentTeamCap: 2.25,
   pairAdjustmentMinDelta: 0.1,
   probabilityScale: 4.2,
   // Post-hoc probability calibration. This sharpens displayed/model win
@@ -349,6 +350,14 @@ export const DEFAULT_VOLLEYBALL_BALANCE_OPTIONS = {
   // from whipsawing the leaderboard, without overriding seasonal taper of old games.
   finalUpdateMultiplierMin: 0.75,
   finalUpdateMultiplierMax: 1.35,
+};
+
+// The pair-balancing sweep held rating updates fixed. Preserve their existing
+// pair context while allowing explicitly supplied replay overrides for evals.
+const DEFAULT_VOLLEYBALL_UPDATE_PAIR_OPTIONS = {
+  pairAdjustmentMinGames: 8,
+  pairAdjustmentScale: 1,
+  pairAdjustmentTeamCap: 0.75,
 };
 
 function clamp(value, min, max) {
@@ -1641,6 +1650,7 @@ function getPairAdjustmentForTeam(players = [], pairMap, volleyballOptions = {})
   const confidenceGames = Math.max(0.01, Number(volleyballOptions.pairAdjustmentConfidenceGames) || 4);
   const maxBlend = clamp(Number(volleyballOptions.pairAdjustmentMaxBlend) || 0, 0, 1);
   const perPairCap = Math.max(0, Number(volleyballOptions.pairAdjustmentPerPairCap) || 0);
+  const scale = Math.max(0, Number(volleyballOptions.pairAdjustmentScale ?? 1) || 0);
   const teamCap = Math.max(0, Number(volleyballOptions.pairAdjustmentTeamCap) || Infinity);
   const minDelta = Math.max(0, Number(volleyballOptions.pairAdjustmentMinDelta) || 0);
   let total = 0;
@@ -1659,7 +1669,7 @@ function getPairAdjustmentForTeam(players = [], pairMap, volleyballOptions = {})
   });
 
   return {
-    adjustment: clamp(total, -teamCap, teamCap),
+    adjustment: clamp(total * scale, -teamCap, teamCap),
     usablePairs,
   };
 }
@@ -3507,6 +3517,7 @@ export function replayRatings({
   includeLeagueGames = true,
   _calibratedStarts = null,
 } = {}) {
+  volleyballOptions = { ...DEFAULT_VOLLEYBALL_UPDATE_PAIR_OPTIONS, ...volleyballOptions };
   const cfg = mergeRatingOptions(options);
   const ratingMap = {};
   const statsMap = {};
@@ -4070,6 +4081,7 @@ export function getPlayerRatingTimeline({
   includeLeagueGames = true,
   _calibratedStarts = null,
 } = {}) {
+  volleyballOptions = { ...DEFAULT_VOLLEYBALL_UPDATE_PAIR_OPTIONS, ...volleyballOptions };
   const cfg = mergeRatingOptions(options);
   const ratingMap = {};
   const statsMap = {};

@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v37-season-last-fifty';
+const CACHE_VERSION = 'vball-static-v38-pair-three-times';
 const APP_SHELL = [
   './',
   './index.html',

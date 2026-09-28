@@ -5,6 +5,46 @@ snapshot first; older sections are retained only as historical background.
 
 ---
 
+## 0. Authoritative restart snapshot — September 27, 2026: pair adjustment
+
+- User approved the 10-prior-shared-game threshold and 3x teammate adjustment,
+  with a final per-team cap of +/-2.25 raw power, and explicitly requested a
+  commit and push to `main`.
+- Implemented in an isolated Windows checkout of current `origin/main` at
+  `1d7e048`. Earlier pair sweeps used local beta; current-main validation below
+  supersedes their absolute ForwardIQ figures for this rollout.
+- `pairAdjustmentScale: 3` scales the summed, per-pair-clipped residual before
+  applying the final team cap. Confidence shrinkage, per-pair clipping, and the
+  minimum residual remain unchanged. The 10-game threshold can first affect a
+  pair's eleventh shared scored nonleague game.
+- Rating replay and player timelines retain their prior pair-update defaults
+  (8 games, 1x, cap 0.75), matching the experiment's fixed-rating design.
+  Explicit replay overrides remain available for evaluation.
+- Ratings version: `beta-20260927-2`; service-worker cache:
+  `vball-static-v38-pair-three-times`.
+- Fresh frozen data: 384 games and 76 players, including six games on
+  September 27. The local `default_database` refresh is intentionally unstaged
+  and excluded from publication.
+- Validation against current-main code on 264 prior-only nonleague forecasts:
+  ForwardIQ 65.578 -> 66.810; Brier 0.255799 -> 0.254636; winner accuracy
+  50.00% -> 52.65%; margin MAE 2.9690 -> 2.9709. All pair corrections match
+  exactly three times the old scorer with the threshold set to 10. Full rating
+  replay, learned pair map, and six sampled player timelines are unchanged.
+- All 55 JavaScript unit tests pass, including new threshold, scale, cap, and
+  unchanged-replay checks. Windows sandbox process isolation required running
+  the unit files with `node --test --experimental-test-isolation=none`.
+- Full browser smoke passed at `http://127.0.0.1:5191/`, including Play and the
+  Season Ranking/Trend/Game History consistency pass. The sampled default view
+  matches at rating 2300 and 55 games; advanced settings match at 2409 and 49
+  games. JavaScript syntax and `git diff --check` pass.
+- Publication is limited to `ratings.js`, `sw.js`, the new
+  `test/pair-adjustment.test.js`, and this snapshot. Other local beta work is
+  preserved separately.
+- No handoff lease exists in this new worktree. The repository's Mac-only
+  handoff status script cannot run on Windows because it imports `fcntl`.
+
+---
+
 ## 0. Authoritative restart snapshot — August 3, 2026
 
 This section supersedes every older branch, data, test, and uncommitted-state

@@ -1,5 +1,6 @@
 # Project Constraints
 
+- Preview links must use Tailscale so the user can open them on a phone. Before assigning a preview address/port, inspect existing Tailscale Serve routes and listening ports; preserve other services and verify the resulting link serves this checkout.
 - League games must materially contribute to ratings. Keep league update impact at least `1.0x`; do not add hidden league `mu` or `sigma` dampeners below `1.0`.
 - After every change touching ratings, rating display, league handling, Season Ranking, Trend, or Game History, run a consistency pass across Season Ranking, Trend, and Game History. Verify they use the same rating options, league inclusion rules, team-size filtering, rolling-window game set, and visible rating/rank/game-count transform for sampled players.
 - After every interface/UI change, start or continue a local server and report the exact server URL in chat so the user can open the app and audit the change.

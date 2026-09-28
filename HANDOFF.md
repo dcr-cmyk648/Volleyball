@@ -5,6 +5,83 @@ snapshot first; older sections are retained only as historical background.
 
 ---
 
+## 0. Authoritative restart snapshot — September 28, 2026: Bayesian display scale
+
+- User approved calibrating the Overall Bayesian public scale to the normal
+  board. `OVERALL_DYNAMIC_DISPLAY_MULTIPLIER = 5` is a fixed display-only
+  factor: `1500 + 250 * (mu - 25)`. Neutral remains exactly 1500.
+- The factor comes from a 4.85652 normal/Bayesian interquartile-width ratio
+  among the same 37 players with at least ten games. The live app does not
+  renormalize the factor. Current data spans 750–2718, with middle-50% width
+  490.38 versus the normal board's 476.31. See
+  `eval/reports/2026-09-28-bayesian-display-scale.md` and the reproducible
+  `eval/overall_display_calibration.mjs` harness.
+- Model priors, likelihood, process dynamics, latent estimates, uncertainty,
+  growth rates, and full posterior history are unchanged, verified by deep
+  comparison with the pre-display-change snapshot. Public uncertainty bands
+  and history changes use the same 5x units as the table. Existing V5 caches
+  are valid and display correctly on reload without recalculation.
+- All 60 unit tests, full browser regression, dynamic history regression,
+  and the current-data mobile Tailscale preview checks pass. App version:
+  `beta-20260928-1`; service-worker cache:
+  `vball-static-v40-bayesian-display-scale`.
+- Phone preview remains
+  `https://cortan.taile197db.ts.net:8455/stats.html?tab=allTime&mode=composite`.
+  Route ownership and exact served content were verified. Do not send
+  localhost-only previews.
+- User authorized deployment to `main` on September 28. The verified release
+  is prepared on the latest production base, `4e4eb16`, with the local
+  `default_database` refresh excluded from the commit. Production is
+  `https://dcr-cmyk648.github.io/Volleyball/`. Refresh the app and calculate
+  Bayesian ratings once to migrate an older production V4 snapshot to V5.
+- This supersedes the September 27 snapshot's scale/range claims. Worktree,
+  model scope, excluded `default_database`, and Windows handoff-tool limitation
+  remain as documented below.
+
+---
+
+## 0. Authoritative restart snapshot — September 27, 2026: Bayesian trajectories
+
+- September 28 preview update: phone-accessible HTTPS is
+  `https://cortan.taile197db.ts.net:8455/stats.html?tab=allTime&mode=composite`.
+  Port 8455 was absent from both Tailscale Serve and all TCP listeners before
+  assignment. It proxies the dedicated loopback server on port 5192 (hidden
+  background Node process), and every pre-existing Serve route was preserved.
+  HTTP 200 and exact content matches for Stats, ratings, and the Bayesian model
+  were verified through the Tailscale URL. All future preview links must use
+  Tailscale, with the same collision checks.
+- September 28 scale clarification: 1500 is now the Bayesian mean-skill origin,
+  but its public point units have not been calibrated to the normal board.
+  The normal board displays `1500 + 50*(mu - 3.5*sigma)` minus applicable
+  penalties, and rises with both skill and reduced uncertainty. Do not claim
+  that the current 1350–1744 preview matches its approximately 967–2884 scale.
+- User authorized implementing a 1500-neutral, time-varying Bayesian model
+  with external calibration and a separation between lasting skill and
+  session form. Work is in `.worktrees/bayesian-trajectories`, detached from
+  deployed commit `4e4eb16`. No commit or push was requested or performed.
+- Overall Bayesian starting skill SD is 180 public points (previously 45),
+  process SD remains 20 points per square-root month, and new player/date
+  form SD is 100 points. The growth population prior is centered on zero.
+  League context SD remains 25 and league observations retain full weight.
+- Overall table and history now center `mu = 25` at 1500. Current 384-game
+  data yields 1350–1744 instead of 2737–2935. Model/storage identity and
+  service-worker version changed; recalculate Overall to create a new snapshot.
+- Scope is Overall Bayesian and its history overlay; the other scoreboard
+  models and all user-facing explanatory text are preserved.
+- 59 unit tests, full browser regression, and the dynamic history browser
+  regression pass. A 145-game, 24-date forward comparison finds essentially
+  unchanged RMSE with slightly higher MAE. See
+  `eval/reports/2026-09-27-bayesian-trajectories.md` for details and limitations.
+- Local preview: `http://127.0.0.1:5192/stats.html?tab=allTime&mode=composite`.
+  App version `beta-20260927-3`; cache `vball-static-v39-bayesian-skill-and-form`.
+- `default_database` is freshly updated from Drive and intentionally
+  unstaged; exclude it from publication. `eval/node_modules` is a local
+  ignored junction to the root checkout's installed dependencies.
+- No handoff lease exists in this isolated worktree. The Mac-only handoff
+  utility still fails on Windows because it imports `fcntl`.
+
+---
+
 ## 0. Authoritative restart snapshot — September 27, 2026: pair adjustment
 
 - User approved the 10-prior-shared-game threshold and 3x teammate adjustment,

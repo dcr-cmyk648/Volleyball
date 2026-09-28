@@ -11,31 +11,58 @@ import {
 } from "./bayesian-ratings.js";
 
 export const OVERALL_DYNAMIC_MODEL_VERSION =
-  "overall-session-exposure-hierarchical-v1";
+  "overall-skill-and-session-form-v2";
 export const OVERALL_DYNAMIC_SNAPSHOT_SCHEMA_VERSION = 3;
 export const OVERALL_DYNAMIC_SNAPSHOT_STORAGE_KEY =
-  "gameDayBayesianScoreboardSnapshotV4:overall-session-exposure";
+  "gameDayBayesianScoreboardSnapshotV5:overall-skill-and-form";
 export const OVERALL_DYNAMIC_N_EFF = 10;
 export const OVERALL_DYNAMIC_SESSION_EXPOSURE_INCREMENT = 0.25;
 export const OVERALL_DYNAMIC_EXPOSURE_CURVE_SCALE = 75;
-export const OVERALL_DYNAMIC_POPULATION_RATE_CENTER_PUBLIC = 1;
+export const OVERALL_DYNAMIC_POPULATION_RATE_CENTER_PUBLIC = 0;
 export const OVERALL_DYNAMIC_POPULATION_RATE_SD_PUBLIC = 2;
 export const OVERALL_DYNAMIC_PLAYER_DEVIATION_SD_PUBLIC = 3;
 export const OVERALL_DYNAMIC_PROCESS_SD_PUBLIC = 20;
-export const OVERALL_DYNAMIC_INITIAL_SD_PUBLIC = 45;
+export const OVERALL_DYNAMIC_INITIAL_SD_PUBLIC = 180;
 export const OVERALL_DYNAMIC_CONTEXT_SD_PUBLIC = 25;
+export const OVERALL_DYNAMIC_SESSION_FORM_SD_PUBLIC = 100;
+export const OVERALL_DYNAMIC_DISPLAY_BASE = 1500;
+// Fixed display-only calibration. The middle-50% spread among the same
+// 10+-game players was 4.86x wider on the normal board (2026-09-28).
+// Freeze a rounded 5x factor; do not renormalize when players/games change.
+export const OVERALL_DYNAMIC_DISPLAY_MULTIPLIER = 5;
 export const OVERALL_DYNAMIC_LEAGUE_INDIVIDUAL_SIGMA_FLOOR = 3.75;
 export const OVERALL_DYNAMIC_BRACKET_DATES = ["2026-08-19", "2026-08-20"];
 export const OVERALL_DYNAMIC_PUBLIC_POINTS_PER_RAW_ORDINAL = 50;
+// These legacy PUBLIC_POINTS constants are fixed model calibration units.
+// Changing them also changes priors and dynamics. Display scaling belongs
+// exclusively in getOverallDynamicDisplayRaw, after fitting the model.
 export const OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT =
   BAYESIAN_DISPLAY_SCALE * OVERALL_DYNAMIC_PUBLIC_POINTS_PER_RAW_ORDINAL;
 export const OVERALL_DYNAMIC_MONTHLY_SD_DISPLAY =
-  OVERALL_DYNAMIC_PROCESS_SD_PUBLIC;
+  OVERALL_DYNAMIC_PROCESS_SD_PUBLIC * OVERALL_DYNAMIC_DISPLAY_MULTIPLIER;
 export const OVERALL_DYNAMIC_MONTHLY_SD_LATENT =
   OVERALL_DYNAMIC_PROCESS_SD_PUBLIC / OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT;
 export const OVERALL_DYNAMIC_MONTHLY_BROWNIAN_DAYS = 30;
 export const OVERALL_DYNAMIC_WEEKLY_BUCKET_ANCHOR = "2000-01-03";
 const EPS = 1e-9;
+
+// Between-player skill, lasting change, and temporary form have independent
+// priors. A wide starting prior does not require volatile rating trajectories.
+export const DEFAULT_OVERALL_DYNAMIC_OPTIONS = Object.freeze({
+  initialSdPublic: OVERALL_DYNAMIC_INITIAL_SD_PUBLIC,
+  processSdPublic: OVERALL_DYNAMIC_PROCESS_SD_PUBLIC,
+  contextSdPublic: OVERALL_DYNAMIC_CONTEXT_SD_PUBLIC,
+  sessionFormSdPublic: OVERALL_DYNAMIC_SESSION_FORM_SD_PUBLIC,
+});
+
+export function getOverallDynamicDisplayRaw(mu) {
+  return (Number(mu) - BAYESIAN_DISPLAY_BASE) * OVERALL_DYNAMIC_DISPLAY_MULTIPLIER;
+}
+
+export function toOverallDynamicDisplayRating(mu) {
+  return OVERALL_DYNAMIC_DISPLAY_BASE +
+    OVERALL_DYNAMIC_PUBLIC_POINTS_PER_RAW_ORDINAL * getOverallDynamicDisplayRaw(mu);
+}
 
 export function getDynamicLeagueIndividualEffectiveSize(
   games = [],
@@ -133,6 +160,7 @@ export function calculateOverallDynamicScoreboard({
   players = [],
   games = [],
   onProgress = null,
+  options = {},
 } = {}) {
   const progress = (percent, stage, message, diagnostics = {}) =>
     onProgress?.({ type: "progress", percent, stage, message, diagnostics });
@@ -141,7 +169,12 @@ export function calculateOverallDynamicScoreboard({
     "validate",
     "Validating Overall games and building appearance-date states",
   );
-  const z = indexInput(players, games);
+  const config = { ...DEFAULT_OVERALL_DYNAMIC_OPTIONS, ...options };
+  for (const key of Object.keys(DEFAULT_OVERALL_DYNAMIC_OPTIONS)) {
+    if (!Number.isFinite(config[key]) || config[key] <= 0)
+      throw new Error(`Invalid dynamic Overall option: ${key}`);
+  }
+  const z = indexInput(players, games, config);
   progress(
     15,
     "build",
@@ -177,7 +210,8 @@ export function calculateOverallDynamicScoreboard({
       nEff: OVERALL_DYNAMIC_N_EFF,
       sessionExposureIncrement: OVERALL_DYNAMIC_SESSION_EXPOSURE_INCREMENT,
       exposureCurveScale: OVERALL_DYNAMIC_EXPOSURE_CURVE_SCALE,
-      processSdPublic: OVERALL_DYNAMIC_PROCESS_SD_PUBLIC,
+      processSdPublic: config.processSdPublic,
+      parameters: config,
       publicPointsPerLatent: OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
       leagueGamesIncluded: z.counts.leagueGames,
       bracketLeagueGamesIncluded: z.counts.bracketLeagueGames,
@@ -195,6 +229,7 @@ export function calculateOverallDynamicScoreboard({
       dimensions: {
         total: z.dimension,
         appearanceStates: z.stateCount,
+        sessionForms: z.formIndexes.size,
         leagueContexts: z.contextIndexes.size,
         bracket: 1,
         populationRate: 1,
@@ -295,7 +330,7 @@ export function validateOverallDynamicSnapshot(snapshot) {
   return true;
 }
 
-function indexInput(players, games) {
+function indexInput(players, games, options) {
   const ps = (Array.isArray(players) ? players : [])
       .filter((p) => p?.id != null && String(p.name || "").trim())
       .map((p) => ({ id: String(p.id), name: String(p.name).trim() }))
@@ -395,6 +430,9 @@ function indexInput(players, games) {
     playerStates.set(p.id, states);
     states.forEach((s) => stateIndexes.set(`${p.id}|${s.date}`, s.index));
   }
+  const formIndexes = new Map(
+    [...stateIndexes.keys()].map((key) => [key, dimension++]),
+  );
   const contextKeys = [
       ...new Set(raw.filter((o) => o.league).map((o) => o.contextKey)),
     ].sort(),
@@ -439,22 +477,24 @@ function indexInput(players, games) {
   }
   const observations = raw.map((o) => ({
     ...o,
-    redTerms: o.red.map((id) => ({
-      index: stateIndexes.get(`${id}|${o.date}`),
-      weight: 1 / o.red.length,
-    })),
+    redTerms: o.red.flatMap((id) => [
+      { index: stateIndexes.get(`${id}|${o.date}`), weight: 1 / o.red.length },
+      { index: formIndexes.get(`${id}|${o.date}`), weight: 1 / o.red.length },
+    ]),
     blueTerms: o.league
       ? [
           { index: contextIndexes.get(o.contextKey), weight: 1 },
           ...(o.bracket ? [{ index: bracketIndex, weight: 1 }] : []),
         ]
-      : o.blue.map((id) => ({
-          index: stateIndexes.get(`${id}|${o.date}`),
-          weight: 1 / o.blue.length,
-        })),
+      : o.blue.flatMap((id) => [
+          { index: stateIndexes.get(`${id}|${o.date}`), weight: 1 / o.blue.length },
+          { index: formIndexes.get(`${id}|${o.date}`), weight: 1 / o.blue.length },
+        ]),
   }));
   return {
     players: ps,
+    options,
+    formIndexes,
     observations,
     warnings,
     counts,
@@ -556,22 +596,31 @@ function objectiveGradientHessian(x, z) {
       prior(
         [{ index: states[0].index, weight: 1 }],
         0,
-        OVERALL_DYNAMIC_INITIAL_SD_PUBLIC /
+        z.options.initialSdPublic /
           OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
       );
   });
+  // A player's form is shared by every game that day and resets next session.
+  // It affects the likelihood, never the published skill or its trajectory.
+  z.formIndexes.forEach((index) =>
+    prior(
+      [{ index, weight: 1 }],
+      0,
+      z.options.sessionFormSdPublic / OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
+    ),
+  );
   z.contextIndexes.forEach((index) =>
     prior(
       [{ index, weight: 1 }],
       0,
-      OVERALL_DYNAMIC_CONTEXT_SD_PUBLIC /
+      z.options.contextSdPublic /
         OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
     ),
   );
   prior(
     [{ index: z.bracketIndex, weight: 1 }],
     0,
-    OVERALL_DYNAMIC_CONTEXT_SD_PUBLIC /
+    z.options.contextSdPublic /
       OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
   );
   prior(
@@ -597,7 +646,7 @@ function objectiveGradientHessian(x, z) {
       ],
       d = z.deviationIndexes.get(t.id);
     if (d != null) terms.push({ index: d, weight: -t.deltaH });
-    prior(terms, 0, Math.sqrt(transitionVariance(t.date, t.nextDate)));
+    prior(terms, 0, Math.sqrt(transitionVariance(t.date, t.nextDate, z.options.processSdPublic)));
   });
   z.observations.forEach((o) => {
     const terms = [
@@ -642,7 +691,7 @@ function formatRatings(z, x, posterior, factor) {
       p.name,
       index == null ? 0 : x[index],
       index == null
-        ? (OVERALL_DYNAMIC_INITIAL_SD_PUBLIC /
+        ? (z.options.initialSdPublic /
             OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT) **
             2
         : (posterior.variances[index] ?? 1),
@@ -773,10 +822,10 @@ function formatPlayerRates(z, x, factor) {
     }),
   };
 }
-function transitionVariance(a, b) {
+function transitionVariance(a, b, processSdPublic = OVERALL_DYNAMIC_PROCESS_SD_PUBLIC) {
   const days = Math.max(1, (dayMs(b) - dayMs(a)) / 86400000),
     sd =
-      (OVERALL_DYNAMIC_PROCESS_SD_PUBLIC /
+      (processSdPublic /
         OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT) *
       Math.sqrt(days / OVERALL_DYNAMIC_MONTHLY_BROWNIAN_DAYS);
   return sd * sd;

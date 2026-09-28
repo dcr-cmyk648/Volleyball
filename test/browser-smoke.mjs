@@ -32,7 +32,7 @@ const nonLeagueSeasonRankingWindowGames = nonLeagueGames.filter(game => {
   const date = getGameDateValue(game);
   return isValidDateString(date) && date >= getSeasonRankingWindowCutoffDate(nonLeagueGames);
 });
-const snapshotKey = 'gameDayBayesianScoreboardSnapshotV4:overall-session-exposure';
+const snapshotKey = 'gameDayBayesianScoreboardSnapshotV5:overall-skill-and-form';
 const bigTeamSnapshotKey = 'gameDayBayesianScoreboardSnapshotV1:bigTeam';
 const smallTeamSnapshotKey = 'gameDayBayesianScoreboardSnapshotV1:smallTeam';
 const seasonRankingSettingsKey = 'gameDaySeasonRankingAdvancedSettingsV1';
@@ -1378,7 +1378,7 @@ if (completed.games !== 126 || completed.scored !== 123 || completed.winnerOnly 
 }
 if (
   completed.schemaVersion !== 3 ||
-  completed.modelVersion !== 'overall-session-exposure-hierarchical-v1' ||
+  completed.modelVersion !== 'overall-skill-and-session-form-v2' ||
   completed.dynamicConverged !== true ||
   completed.leagueGamesIncluded !== leagueGameCount ||
   completed.bigTeamSchemaVersion !== 1 ||

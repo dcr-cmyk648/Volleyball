@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   calculateOverallDynamicScoreboard,
+  toOverallDynamicDisplayRating,
+  getOverallDynamicDisplayRaw,
+  OVERALL_DYNAMIC_DISPLAY_MULTIPLIER,
   formatDynamicLeagueIndividualRating,
   getDynamicLeagueIndividualEffectiveSize,
   getOverallDynamicCumulativeExposureTransform,
@@ -70,7 +73,7 @@ test("exposure math and public/latent conversions are exact", () => {
   assert.equal(
     OVERALL_DYNAMIC_POPULATION_RATE_CENTER_PUBLIC /
       OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
-    1 / OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT,
+    0,
   );
   assert.equal(
     OVERALL_DYNAMIC_POPULATION_RATE_SD_PUBLIC /
@@ -231,7 +234,7 @@ test("snapshot has a new Overall-only identity, rejects weekly-v3, and round-tri
   assert.equal(snapshot.modelVersion, OVERALL_DYNAMIC_MODEL_VERSION);
   assert.equal(
     OVERALL_DYNAMIC_SNAPSHOT_STORAGE_KEY,
-    "gameDayBayesianScoreboardSnapshotV4:overall-session-exposure",
+    "gameDayBayesianScoreboardSnapshotV5:overall-skill-and-form",
   );
   assert.equal(
     validateOverallDynamicSnapshot(JSON.parse(JSON.stringify(snapshot))),
@@ -431,4 +434,79 @@ test("snapshot validation rejects invalid history", () => {
       }),
     /history exposure/,
   );
+});
+
+test("neutral skill displays as 1500 and balanced exposure never earns free improvement", () => {
+  const a = player("a"), b = player("b"), unused = player("unused");
+  const games = Array.from({ length: 12 }, (_, i) =>
+    internal(`tie-${i}`, `2026-${String(i + 1).padStart(2, '0')}-01`, [a], [b], 'red', 25, 25));
+  const snapshot = calculateOverallDynamicScoreboard({ players: [a, b, unused], games });
+  for (const id of ['a', 'b', 'unused'])
+    assert.equal(toOverallDynamicDisplayRating(row(snapshot, id).mu), 1500);
+  for (const knot of snapshot.history.a)
+    assert.equal(toOverallDynamicDisplayRating(knot.mu), 1500);
+  assert.equal(snapshot.playerRates.population.rate, 0);
+  assert.equal(toOverallDynamicDisplayRating(27) - toOverallDynamicDisplayRating(25), 500);
+});
+
+test("public scale is fixed, symmetric around 1500, and scales uncertainty with the mean", () => {
+  assert.equal(OVERALL_DYNAMIC_DISPLAY_MULTIPLIER, 5);
+  assert.equal(toOverallDynamicDisplayRating(21), 500);
+  assert.equal(toOverallDynamicDisplayRating(25), 1500);
+  assert.equal(toOverallDynamicDisplayRating(29), 2500);
+  assert.equal(getOverallDynamicDisplayRaw(29), 20);
+  const mu = 28, sigma = 1.5;
+  const center = toOverallDynamicDisplayRating(mu);
+  const lower = toOverallDynamicDisplayRating(mu - sigma);
+  const upper = toOverallDynamicDisplayRating(mu + sigma);
+  assert.equal((lower + upper) / 2, center);
+  assert.equal((upper - lower) / 2, 375);
+  // Public units must never be used to retune the model implicitly.
+  assert.equal(OVERALL_DYNAMIC_PUBLIC_POINTS_PER_LATENT, 25 / 3 * 50);
+  assert.equal(OVERALL_DYNAMIC_MONTHLY_SD_LATENT, 20 / (25 / 3 * 50));
+});
+
+test("strong repeated evidence can separate players without an artificial rating range", () => {
+  const a = player('a'), b = player('b');
+  const games = Array.from({ length: 12 }, (_, i) =>
+    internal(`win-${i}`, `2026-${String(i + 1).padStart(2, '0')}-01`, [a], [b], 'red', 25, 8));
+  const input = { players: [a, b], games };
+  const broad = calculateOverallDynamicScoreboard(input);
+  const narrow = calculateOverallDynamicScoreboard({ ...input, options: { initialSdPublic: 45 } });
+  const gap = s => toOverallDynamicDisplayRating(row(s, 'a').mu) - toOverallDynamicDisplayRating(row(s, 'b').mu);
+  assert.ok(gap(broad) > 350, `supported skill gap: ${gap(broad)}`);
+  assert.ok(gap(broad) > gap(narrow));
+});
+
+test("temporary session form reduces the lasting effect of a run of games", () => {
+  const a = player('a'), b = player('b');
+  const baseline = Array.from({ length: 12 }, (_, i) =>
+    internal(`base-${i}`, `2026-01-${String(i + 1).padStart(2, '0')}`, [a], [b], 'red', 25, 25));
+  const wins = Array.from({ length: 16 }, (_, i) => internal(`run-${i}`, '2026-01-13', [a], [b], 'red', 25, 8));
+  const input = { players: [a, b], games: [...baseline, ...wins] };
+  const withForm = calculateOverallDynamicScoreboard(input);
+  const withoutForm = calculateOverallDynamicScoreboard({ ...input, options: { sessionFormSdPublic: 0.001 } });
+  const move = s => toOverallDynamicDisplayRating(row(s, 'a').mu) - 1500;
+  assert.ok(move(withForm) > 0);
+  assert.ok(move(withForm) < move(withoutForm) * 0.85, `${move(withForm)} vs ${move(withoutForm)}`);
+  assert.equal(withForm.diagnostics.dimensions.sessionForms, 26);
+});
+
+test("external results can establish shared improvement even when internal results stay even", () => {
+  const a = player('a'), b = player('b');
+  const games = Array.from({ length: 12 }, (_, i) => {
+    const date = `2026-${String(i + 1).padStart(2, '0')}-01`;
+    return [
+      internal(`internal-${i}`, date, [a], [b], 'red', 25, 25),
+      ...Array.from({ length: 6 }, (_, j) =>
+        league(`external-${i}-${j}`, date, [a, b], i < 6 ? 'blue' : 'red', i < 6 ? 10 : 25, i < 6 ? 25 : 10)),
+    ];
+  }).flat();
+  const snapshot = calculateOverallDynamicScoreboard({ players: [a, b], games });
+  for (const id of ['a', 'b']) {
+    const history = snapshot.history[id];
+    const change = toOverallDynamicDisplayRating(history.at(-1).mu) - toOverallDynamicDisplayRating(history[0].mu);
+    assert.ok(change > 80, `external improvement recovered: ${change}`);
+  }
+  assert.ok(Math.abs(row(snapshot, 'a').mu - row(snapshot, 'b').mu) < 1e-8);
 });

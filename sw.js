@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'vball-static-v38-pair-three-times';
+const CACHE_VERSION = 'vball-static-v40-bayesian-display-scale';
 const APP_SHELL = [
   './',
   './index.html',
